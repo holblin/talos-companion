@@ -15,3 +15,6 @@ url = "https://nodejs.org/dist/v24.22.2/node-v24.22.2-win-x64.zip"
 [[tools.rust]]
 version = "1.99.1"
 backend = "core:rust"
+
+[tools.rust.options]
+components = "clippy,rustfmt"

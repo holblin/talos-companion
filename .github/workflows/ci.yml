@@ -8,8 +8,8 @@ jobs:
   application:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v3
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
       - run: mise run web:install
       - run: mise run web:build
       - run: mise run check
@@ -17,7 +17,7 @@ jobs:
   container:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -t talos-companion:ci .
       - name: Verify one layer and runtime contents
         run: |
