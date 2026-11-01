@@ -15,6 +15,6 @@ The refresh token, client secret, and destination folder ID are persisted in `/d
 
 Google OAuth applications left in external **Testing** mode commonly issue refresh tokens that expire after seven days for Drive scopes. For unattended backups, configure the consent-screen publishing/user type appropriately for your account and verify a later scheduled upload. Google may require consent-screen review depending on your configuration. Do not rely on a one-time successful upload as evidence that future refreshes will remain valid.
 
-Every Drive upload first creates a local encrypted file. If Google is unavailable or the grant expires, the local file remains available for download. The UI reports transfer failure, and scheduled failures go to container logs. This implementation uses a single multipart upload; the recovery archive limit is 256 MiB.
+Every Drive upload first creates a local encrypted file. If Google is unavailable or the grant expires, the local file remains available for download. The UI reports transfer failure, and scheduled failures go to container logs. Files use Google's resumable-upload protocol in 8 MiB chunks; a failed transfer must be retried as a new backup. The recovery archive limit is 256 MiB.
 
 References: [Drive OAuth scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth), [web-server OAuth flow](https://developers.google.com/identity/protocols/oauth2/web-server), and [Drive uploads](https://developers.google.com/workspace/drive/api/guides/manage-uploads).

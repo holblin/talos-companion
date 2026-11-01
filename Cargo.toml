@@ -16,7 +16,7 @@ hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["server-auto", "tokio", "http1", "http2"] }
 jsonwebtoken = "9"
 rand = "0.8"
-reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls-webpki-roots"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
 rsa = { version = "0.9", features = ["pem"] }
 s3s = "0.17.0"
 s3s-fs = "0.17.0"

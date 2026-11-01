@@ -2,6 +2,8 @@
 
 A small, self-hosted Rust + React application for Talos Omni identity and recovery. Deploy it on Unraid with one container. The final Docker image is built **from scratch, with exactly one filesystem layer containing only a static Rust executable and the compiled frontend**.
 
+![Companion dashboard, using an isolated test account](docs/assets/dashboard.jpg)
+
 ## What it does
 
 - First launch: create an administrator or restore an encrypted recovery file.

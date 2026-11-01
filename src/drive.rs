@@ -176,29 +176,64 @@ pub async fn upload(app: &App, name: &str, bytes: Vec<u8>) -> anyhow::Result<()>
     let bearer = token["access_token"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Google returned no access token"))?;
-    let metadata = serde_json::to_vec(&json!({"name":name,"parents":[d.folder_id]}))?;
-    // Drive requires multipart/related, rather than multipart/form-data.
-    let boundary = format!("companion-{}", secret());
-    let mut body = Vec::with_capacity(bytes.len() + 1024);
-    body.extend_from_slice(
-        format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n").as_bytes(),
-    );
-    body.extend_from_slice(&metadata);
-    body.extend_from_slice(
-        format!("\r\n--{boundary}\r\nContent-Type: application/octet-stream\r\n\r\n").as_bytes(),
-    );
-    body.extend_from_slice(&bytes);
-    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
-    app.http
-        .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+    // Resumable uploads support files over 5 MB. Use 8 MiB chunks (a multiple of 256 KiB).
+    let response = app
+        .http
+        .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable")
         .bearer_auth(bearer)
-        .header(
-            "content-type",
-            format!("multipart/related; boundary={boundary}"),
-        )
-        .body(body)
+        .header("x-upload-content-type", "application/octet-stream")
+        .header("x-upload-content-length", bytes.len())
+        .json(&json!({"name":name,"parents":[d.folder_id]}))
         .send()
         .await?
         .error_for_status()?;
+    let session = url::Url::parse(
+        response
+            .headers()
+            .get("location")
+            .ok_or_else(|| anyhow::anyhow!("Google returned no upload session"))?
+            .to_str()?,
+    )?;
+    anyhow::ensure!(
+        session.scheme() == "https"
+            && session
+                .host_str()
+                .is_some_and(|h| h == "googleapis.com" || h.ends_with(".googleapis.com")),
+        "Unexpected Google upload session origin"
+    );
+    const CHUNK: usize = 8 * 1024 * 1024;
+    for (index, chunk) in bytes.chunks(CHUNK).enumerate() {
+        let start = index * CHUNK;
+        let end = start + chunk.len() - 1;
+        let response = app
+            .http
+            .put(session.clone())
+            .bearer_auth(bearer)
+            .header("content-type", "application/octet-stream")
+            .header(
+                "content-range",
+                format!("bytes {start}-{end}/{}", bytes.len()),
+            )
+            .body(chunk.to_vec())
+            .send()
+            .await?;
+        if end + 1 == bytes.len() {
+            anyhow::ensure!(
+                response.status().is_success(),
+                "Drive upload failed with status {}",
+                response.status()
+            );
+        } else {
+            anyhow::ensure!(
+                response.status().as_u16() == 308
+                    && response
+                        .headers()
+                        .get("range")
+                        .and_then(|r| r.to_str().ok())
+                        == Some(format!("bytes=0-{end}").as_str()),
+                "Google did not acknowledge the uploaded chunk"
+            );
+        }
+    }
     Ok(())
 }

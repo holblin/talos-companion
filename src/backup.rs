@@ -223,10 +223,14 @@ fn stage(bytes: &[u8], root: &Path) -> anyhow::Result<Store> {
             std::fs::create_dir_all(target)?;
         } else {
             std::fs::create_dir_all(target.parent().unwrap())?;
-            let mut out = std::fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(target)?;
+            let mut options = std::fs::OpenOptions::new();
+            options.create_new(true).write(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut out = options.open(target)?;
             std::io::copy(&mut entry, &mut out)?;
         }
     }
