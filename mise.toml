@@ -1,0 +1,45 @@
+[tools]
+rust = "1.99.1"
+node = "24.22.2"
+
+[env]
+RUST_BACKTRACE = "1"
+
+[tasks."web:install"]
+dir = "web"
+run = "npm ci"
+
+[tasks."web:dev"]
+dir = "web"
+run = "npm run dev -- --host 127.0.0.1"
+
+[tasks."web:build"]
+dir = "web"
+run = "npm run build"
+
+[tasks.dev]
+run = "cargo run"
+env = { PUBLIC_URL = "http://localhost:5173" }
+
+[tasks.test]
+run = ["cargo test --all-targets --locked", "cargo build --locked", "node --test tests/integration.mjs"]
+
+[tasks."web:check"]
+dir = "web"
+run = "npm run build"
+
+[tasks.fmt]
+run = "cargo fmt --all"
+
+[tasks.check]
+run = ["cargo fmt --all -- --check", "cargo clippy --all-targets -- -D warnings", "cargo test --all-targets"]
+
+[tasks.build]
+depends = ["web:build"]
+run = "cargo build --release --locked"
+
+[tasks."docker:build"]
+run = "docker build -t talos-companion:local ."
+
+[tasks.up]
+run = "docker compose up -d --build"

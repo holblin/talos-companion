@@ -1,0 +1,29 @@
+services:
+  companion:
+    image: talos-companion:local
+    build: .
+    container_name: talos-companion
+    restart: unless-stopped
+    user: "${PUID:-99}:${PGID:-100}"
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+      - "${S3_PORT:-9000}:9000"
+    environment:
+      PUBLIC_URL: "${PUBLIC_URL:?Set PUBLIC_URL in .env}"
+      SETUP_TOKEN: "${SETUP_TOKEN:?Set SETUP_TOKEN in .env}"
+      BACKUP_PASSPHRASE: "${BACKUP_PASSPHRASE:?Set BACKUP_PASSPHRASE in .env}"
+      BACKUP_INTERVAL_SECONDS: "${BACKUP_INTERVAL_SECONDS:-86400}"
+      SCHEDULE_DESTINATION: "${SCHEDULE_DESTINATION:-local}"
+      MOUNTED_BACKUP_DIR: /destinations/network
+      RUST_LOG: talos_companion=info
+    volumes:
+      - "${DATA_PATH:-./data}:/data"
+      # This path must already be a mounted Unraid share. See docs/unraid.md.
+      - type: bind
+        source: "${NETWORK_BACKUP_PATH:-./network-backups}"
+        target: /destinations/network
+        bind:
+          create_host_path: false
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]

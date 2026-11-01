@@ -1,0 +1,40 @@
+name: Verify
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+      - run: mise run web:install
+      - run: mise run web:build
+      - run: mise run check
+      - run: mise run test
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t talos-companion:ci .
+      - name: Verify one layer and runtime contents
+        run: |
+          test "$(docker image inspect talos-companion:ci --format '{{len .RootFS.Layers}}')" = 1
+          docker save -o /tmp/companion-image.tar talos-companion:ci
+          python3 scripts/verify_image.py /tmp/companion-image.tar
+      - name: Container smoke test
+        run: |
+          mkdir -p /tmp/companion-data
+          sudo chown 99:100 /tmp/companion-data
+          docker run -d --name companion -p 8080:8080 \
+            -v /tmp/companion-data:/data --read-only --cap-drop ALL \
+            -e PUBLIC_URL=http://localhost:8080 \
+            -e SETUP_TOKEN=ci-setup-token-at-least-24-characters \
+            -e BACKUP_PASSPHRASE=ci-backup-passphrase-at-least-16 \
+            talos-companion:ci
+          for i in $(seq 1 30); do curl -fsS http://localhost:8080/healthz && break || sleep 1; done
+          curl -fsS http://localhost:8080/ | grep 'Talos Companion'
+          docker exec companion /talos-companion --healthcheck
+          docker rm -f companion

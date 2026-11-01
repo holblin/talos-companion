@@ -1,0 +1,9 @@
+/target/
+/web/node_modules/
+/web/dist/
+/data/
+/.env
+/.mise.local.toml
+*.tcb
+*.pem
+*.log

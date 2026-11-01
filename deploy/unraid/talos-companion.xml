@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>talos-companion</Name>
+  <Repository>talos-companion:local</Repository>
+  <Registry>https://github.com/holblin/talos-companion</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/holblin/talos-companion/issues</Support>
+  <Project>https://github.com/holblin/talos-companion</Project>
+  <Overview>Self-hosted identity and encrypted recovery for Talos Omni. Build the local image before installing this template.</Overview>
+  <Category>Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <ExtraParams>--user 99:100 --read-only --cap-drop ALL --security-opt no-new-privileges:true</ExtraParams>
+  <Config Name="Web port" Target="8080" Default="8080" Mode="tcp" Description="Web/API/OIDC" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="S3 port" Target="9000" Default="9000" Mode="tcp" Description="Omni S3 receiver" Type="Port" Display="always" Required="true" Mask="false">9000</Config>
+  <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/talos-companion" Mode="rw" Description="Pre-create with ownership 99:100" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/talos-companion</Config>
+  <Config Name="Network backup share" Target="/destinations/network" Default="" Mode="rw" Description="Existing NFS or SMB mount managed by Unraid" Type="Path" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Public URL" Target="PUBLIC_URL" Default="" Mode="" Description="Exact public HTTPS origin" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Setup token" Target="SETUP_TOKEN" Default="" Mode="" Description="24+ random characters" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Backup passphrase" Target="BACKUP_PASSPHRASE" Default="" Mode="" Description="16+ characters; keep a separate recovery copy" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Mounted destination" Target="MOUNTED_BACKUP_DIR" Default="/destinations/network" Mode="" Description="Use only with a real host mount" Type="Variable" Display="advanced" Required="false" Mask="false">/destinations/network</Config>
+  <Config Name="Backup interval" Target="BACKUP_INTERVAL_SECONDS" Default="86400" Mode="" Description="Seconds between recovery snapshots" Type="Variable" Display="advanced" Required="true" Mask="false">86400</Config>
+  <Config Name="Scheduled destination" Target="SCHEDULE_DESTINATION" Default="local" Mode="" Description="local, mounted, or drive" Type="Variable" Display="advanced" Required="true" Mask="false">local</Config>
+</Container>
