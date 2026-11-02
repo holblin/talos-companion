@@ -50,8 +50,9 @@ export default function SetupWizard({
   useEffect(() => {
     heading.current?.focus();
   }, [step]);
-  const setAccountField = (name: keyof typeof account, value: string) =>
+  const setAccountField = (name: keyof typeof account, value: string) => {
     setAccount({ ...account, [name]: value });
+  };
   async function next() {
     setError("");
     setBusy(true);
@@ -82,8 +83,10 @@ export default function SetupWizard({
             "x-setup-token": token,
           });
         } else {
+          if (!file)
+            throw new Error("Choose a recovery file before restoring.");
           const payload = new FormData();
-          payload.append("file", file!);
+          payload.append("file", file);
           payload.append("passphrase", passphrase);
           if (override) payload.append("account", JSON.stringify(account));
           await api("/api/restore", payload, "POST", {
@@ -115,7 +118,9 @@ export default function SetupWizard({
         autoComplete="name"
         maxLength={100}
         value={account.name}
-        onChange={(e) => setAccountField("name", e.target.value)}
+        onChange={(e) => {
+          setAccountField("name", e.target.value);
+        }}
       />
       <Field
         label="Email address"
@@ -124,7 +129,9 @@ export default function SetupWizard({
         autoComplete="username"
         maxLength={254}
         value={account.email}
-        onChange={(e) => setAccountField("email", e.target.value)}
+        onChange={(e) => {
+          setAccountField("email", e.target.value);
+        }}
       />
       <Field
         label="Password (at least 12 characters)"
@@ -134,7 +141,9 @@ export default function SetupWizard({
         minLength={12}
         maxLength={256}
         value={account.password}
-        onChange={(e) => setAccountField("password", e.target.value)}
+        onChange={(e) => {
+          setAccountField("password", e.target.value);
+        }}
       />
       <Field
         label="Confirm password"
@@ -142,7 +151,9 @@ export default function SetupWizard({
         type="password"
         autoComplete="new-password"
         value={confirmation}
-        onChange={(e) => setConfirmation(e.target.value)}
+        onChange={(e) => {
+          setConfirmation(e.target.value);
+        }}
       />
     </>
   );
@@ -211,7 +222,9 @@ export default function SetupWizard({
                       type="radio"
                       name="mode"
                       checked={mode === "create"}
-                      onChange={() => setMode("create")}
+                      onChange={() => {
+                        setMode("create");
+                      }}
                     />
                     <strong>Start a new installation</strong>
                     <span>
@@ -223,7 +236,9 @@ export default function SetupWizard({
                       type="radio"
                       name="mode"
                       checked={mode === "restore"}
-                      onChange={() => setMode("restore")}
+                      onChange={() => {
+                        setMode("restore");
+                      }}
                     />
                     <strong>Restore an existing companion</strong>
                     <span>
@@ -268,7 +283,9 @@ export default function SetupWizard({
                   type="password"
                   autoComplete="off"
                   value={token}
-                  onChange={(e) => setToken(e.target.value)}
+                  onChange={(e) => {
+                    setToken(e.target.value);
+                  }}
                 />
                 <p className="hint">
                   Find SETUP_TOKEN in your Unraid container settings or Docker
@@ -311,7 +328,9 @@ export default function SetupWizard({
                       <input
                         type="file"
                         accept=".tcb"
-                        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                        onChange={(e) => {
+                          setFile(e.target.files?.[0] ?? null);
+                        }}
                         required={!file}
                       />
                     </label>
@@ -327,7 +346,9 @@ export default function SetupWizard({
                       type="password"
                       autoComplete="off"
                       value={passphrase}
-                      onChange={(e) => setPassphrase(e.target.value)}
+                      onChange={(e) => {
+                        setPassphrase(e.target.value);
+                      }}
                     />
                     <p className="hint">
                       Use the passphrase from when this backup was created. It
@@ -338,7 +359,9 @@ export default function SetupWizard({
                       <input
                         type="checkbox"
                         checked={override}
-                        onChange={(e) => setOverride(e.target.checked)}
+                        onChange={(e) => {
+                          setOverride(e.target.checked);
+                        }}
                       />
                       Replace the first administrator’s login details
                     </label>
@@ -377,15 +400,15 @@ export default function SetupWizard({
                   <input
                     type="checkbox"
                     checked={settings.schedule.enabled}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setSettings({
                         ...settings,
                         schedule: {
                           ...settings.schedule,
                           enabled: e.target.checked,
                         },
-                      })
-                    }
+                      });
+                    }}
                   />
                   Enable scheduled backups
                 </label>
@@ -393,15 +416,15 @@ export default function SetupWizard({
                   <span>Backup frequency</span>
                   <select
                     value={settings.schedule.interval_seconds}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setSettings({
                         ...settings,
                         schedule: {
                           ...settings.schedule,
                           interval_seconds: Number(e.target.value),
                         },
-                      })
-                    }
+                      });
+                    }}
                   >
                     {![3600, 21600, 86400, 604800].includes(
                       settings.schedule.interval_seconds,
@@ -420,15 +443,15 @@ export default function SetupWizard({
                   <span>Scheduled destination</span>
                   <select
                     value={settings.schedule.destination}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setSettings({
                         ...settings,
                         schedule: {
                           ...settings.schedule,
                           destination: e.target.value,
                         },
-                      })
-                    }
+                      });
+                    }}
                   >
                     <option value="local">Local storage</option>
                     <option value="mounted" disabled={!deployment?.mounted}>
@@ -450,15 +473,15 @@ export default function SetupWizard({
                   max={1000000}
                   step={1}
                   value={settings.retention.recovery_keep_last}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setSettings({
                       ...settings,
                       retention: {
                         ...settings.retention,
                         recovery_keep_last: Number(e.target.value),
                       },
-                    })
-                  }
+                    });
+                  }}
                 />
                 <Field
                   label="Omni snapshots to keep per cluster"
@@ -467,15 +490,15 @@ export default function SetupWizard({
                   max={1000000}
                   step={1}
                   value={settings.retention.snapshot_keep_last}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setSettings({
                       ...settings,
                       retention: {
                         ...settings.retention,
                         snapshot_keep_last: Number(e.target.value),
                       },
-                    })
-                  }
+                    });
+                  }}
                 />
                 <p className="hint">
                   0 keeps everything. Old files are pruned only after a
@@ -500,7 +523,7 @@ export default function SetupWizard({
                   <dd>
                     {mode === "create"
                       ? "New companion"
-                      : `Restore ${file?.name}`}
+                      : `Restore ${file?.name ?? "selected backup"}`}
                   </dd>
                   <dt>Administrator</dt>
                   <dd>
@@ -513,7 +536,7 @@ export default function SetupWizard({
                     {mode === "restore"
                       ? "Restore the saved schedule and retention settings"
                       : settings?.schedule.enabled
-                        ? `Every ${settings.schedule.interval_seconds / 3600} hours → ${settings.schedule.destination}`
+                        ? `Every ${String(settings.schedule.interval_seconds / 3600)} hours → ${settings.schedule.destination}`
                         : "Scheduled backups disabled"}
                   </dd>
                   {mode === "create" && (
@@ -540,7 +563,9 @@ export default function SetupWizard({
                     type="checkbox"
                     required
                     checked={savedPassphrase}
-                    onChange={(e) => setSavedPassphrase(e.target.checked)}
+                    onChange={(e) => {
+                      setSavedPassphrase(e.target.checked);
+                    }}
                   />
                   I have stored the backup passphrase somewhere safe outside
                   this server.

@@ -5,22 +5,30 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run lint && npm run typecheck && vite build",
+    "lint": "eslint src vite.config.ts --max-warnings 0",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "format": "prettier --write src vite.config.ts",
-    "format:check": "prettier --check src vite.config.ts"
+    "format": "prettier --write src vite.config.ts eslint.config.mjs tsconfig.json",
+    "format:check": "prettier --check src vite.config.ts eslint.config.mjs tsconfig.json"
+  },
+  "overrides": {
+    "minimatch": "11.0.1"
   },
   "dependencies": {
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@types/node": "26.6.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
+    "eslint": "10.14.0",
     "prettier": "3.9.10",
-    "typescript": "7.0.2",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1",
     "vite": "8.3.5"
   }
 }

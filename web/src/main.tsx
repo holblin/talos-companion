@@ -1,5 +1,5 @@
 import { StrictMode, useEffect, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { SubmitEvent, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import { api } from "./api";
@@ -34,12 +34,15 @@ const views: View[] = [
   "Settings",
 ];
 const symbols = ["◈", "↗", "◎", "⊞", "⚙"];
-function fields(e: FormEvent<HTMLFormElement>) {
+function fields(e: SubmitEvent<HTMLFormElement>) {
   e.preventDefault();
-  return Object.fromEntries(new FormData(e.currentTarget)) as Record<
-    string,
-    string
-  >;
+  const result: Record<string, string> = {};
+  for (const [key, value] of new FormData(e.currentTarget)) {
+    if (typeof value !== "string")
+      throw new Error("Expected a text form field.");
+    result[key] = value;
+  }
+  return result;
 }
 function Logo() {
   return (
@@ -100,7 +103,12 @@ function Secret({ label, value }: { label: string; value: string }) {
       <span>{label}</span>
       <div>
         <code>{show ? value : "••••••••••••••••••••••••"}</code>
-        <button className="text-button" onClick={() => setShow(!show)}>
+        <button
+          className="text-button"
+          onClick={() => {
+            setShow(!show);
+          }}
+        >
           {show ? "Hide" : "Reveal"}
         </button>
       </div>
@@ -252,19 +260,9 @@ function App() {
         </div>
         <main className="welcome-form">
           <div className="onboarding">
-            <span className="eyebrow">
-              {initialized ? "WELCOME BACK" : "LET’S GET YOU SET UP"}
-            </span>
-            <h2>
-              {initialized
-                ? "Sign in to your companion"
-                : "A fresh start. Or a safe return."}
-            </h2>
-            <p className="muted">
-              {initialized
-                ? "Use your companion account to continue."
-                : "Create your first administrator, or bring everything back from an encrypted backup."}
-            </p>
+            <span className="eyebrow">WELCOME BACK</span>
+            <h2>Sign in to your companion</h2>
+            <p className="muted">Use your companion account to continue.</p>
             {messages}
             <fieldset disabled={busy}>
               <form
@@ -332,7 +330,9 @@ function App() {
               <button
                 key={v}
                 className={view === v ? "selected" : ""}
-                onClick={() => setView(v)}
+                onClick={() => {
+                  setView(v);
+                }}
               >
                 <span>{symbols[views.indexOf(v)]}</span>
                 {v}
@@ -439,7 +439,9 @@ function App() {
                     </p>
                     <button
                       className="primary"
-                      onClick={() => setView("Backups")}
+                      onClick={() => {
+                        setView("Backups");
+                      }}
                     >
                       Manage your backups ↗
                     </button>
@@ -475,7 +477,9 @@ function App() {
                     </div>
                     <button
                       className="text-button"
-                      onClick={() => setView("Identity")}
+                      onClick={() => {
+                        setView("Identity");
+                      }}
                     >
                       Connection settings →
                     </button>
@@ -534,11 +538,11 @@ function App() {
                     Encryption uses your BACKUP_PASSPHRASE. Recovery files
                     stream without a fixed size cap. Retention:{" "}
                     {overview?.retention.recovery_keep_last
-                      ? `newest ${overview.retention.recovery_keep_last} recovery files per destination`
+                      ? `newest ${String(overview.retention.recovery_keep_last)} recovery files per destination`
                       : "all recovery files"}
                     {"; "}
                     {overview?.retention.snapshot_keep_last
-                      ? `newest ${overview.retention.snapshot_keep_last} Omni snapshots per cluster`
+                      ? `newest ${String(overview.retention.snapshot_keep_last)} Omni snapshots per cluster`
                       : "all received Omni snapshots"}
                     .
                   </p>
@@ -754,7 +758,7 @@ function App() {
                       void work(async () => {
                         await api("/api/users", {
                           ...data,
-                          admin: data.admin === "on",
+                          admin: data["admin"] === "on",
                         });
                         form.reset();
                         await refresh();
@@ -786,16 +790,18 @@ function App() {
                           await api("/api/settings", {
                             retention: {
                               recovery_keep_last: Number(
-                                data.recovery_keep_last,
+                                data["recovery_keep_last"],
                               ),
                               snapshot_keep_last: Number(
-                                data.snapshot_keep_last,
+                                data["snapshot_keep_last"],
                               ),
                             },
                             schedule: {
-                              enabled: data.enabled === "on",
-                              interval_seconds: Number(data.interval_seconds),
-                              destination: data.destination,
+                              enabled: data["enabled"] === "on",
+                              interval_seconds: Number(
+                                data["interval_seconds"],
+                              ),
+                              destination: data["destination"],
                             },
                           });
                           await refresh();
@@ -935,7 +941,7 @@ function App() {
                       <Input
                         label="Google client ID"
                         name="client_id"
-                        defaultValue={overview?.drive.client_id}
+                        defaultValue={overview?.drive.client_id ?? ""}
                       />
                       <Input
                         label="Google client secret"
@@ -947,7 +953,7 @@ function App() {
                         name="folder_id"
                         required={false}
                         placeholder="Leave empty to create a dedicated folder"
-                        defaultValue={overview?.drive.folder_id}
+                        defaultValue={overview?.drive.folder_id ?? ""}
                       />
                       <button className="primary">
                         Save and authorize Google Drive ↗
@@ -1014,7 +1020,9 @@ function BackupTable({ backups }: { backups: Backup[] }) {
     </div>
   );
 }
-createRoot(document.getElementById("root")!).render(
+const root = document.getElementById("root");
+if (!root) throw new Error("The application root element is missing.");
+createRoot(root).render(
   <StrictMode>
     <App />
   </StrictMode>,

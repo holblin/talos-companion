@@ -12,10 +12,18 @@ export async function api<T>(
       ...(!form && body ? { "content-type": "application/json" } : {}),
       ...extra,
     },
-    body: body ? (form ? body : JSON.stringify(body)) : undefined,
+    ...(body ? { body: form ? body : JSON.stringify(body) } : {}),
   });
-  const value = await response.json();
-  if (!response.ok)
-    throw new Error(value.error ?? `Request failed (${response.status})`);
+  const value: unknown = await response.json();
+  if (!response.ok) {
+    const message =
+      typeof value === "object" &&
+      value !== null &&
+      "error" in value &&
+      typeof value.error === "string"
+        ? value.error
+        : `Request failed (${String(response.status)})`;
+    throw new Error(message);
+  }
   return value as T;
 }

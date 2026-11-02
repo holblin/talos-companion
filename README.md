@@ -69,6 +69,14 @@ mise run docker:build
 
 CI uses mise for the same checks and verifies the built image has exactly one layer. It also checks the scratch container can serve the frontend and run its own health probe.
 
+## Language safety checks
+
+Project-owned Rust code forbids `unsafe` in every target, including tests. Compiler warnings and Clippy's standard lint group are errors. This policy does not ban unsafe implementation details inside the Rust standard library or third-party crates.
+
+The frontend and Vite configuration use TypeScript strict mode, checked indexed access, exact optional properties, dependency declaration checking, and unused/unreachable-code checks. Type-aware ESLint uses `strictTypeChecked` and rejects explicit `any`, unsafe operations, non-null assertions, and TypeScript suppression comments; inline ESLint overrides are disabled. Every frontend build runs these checks. TypeScript is pinned to 6.0.3, the newest stable release supported by the type-aware lint tooling; TypeScript 7 is currently outside its supported range. The lint dependency tree pins minimatch 11.0.1 to avoid the glob amplification advisory.
+
+Run `mise run check` and `mise run web:check` locally; GitHub Actions runs both.
+
 ## Configuration
 
 First launch opens a guided installation wizard: choose a fresh installation or recovery, verify the setup token, enter administrator or recovery details, choose an initial backup routine, and review before applying. The final checklist explains Omni integration, external destinations, and the first recovery file. Recovery can replace the first administrator’s credentials while preserving identity and other accounts. Setup-token validation reveals deployment details only to someone holding that token.

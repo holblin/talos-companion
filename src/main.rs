@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 mod auth;
 mod backup;
 mod backup_format;
