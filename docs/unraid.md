@@ -1,8 +1,8 @@
 # Deploy on Unraid
 
-Unraid uses Linux amd64, which is the image’s build target. Build the image with Docker Compose on Unraid, or build on another Linux amd64 Docker host and transfer it with `docker save` / `docker load`. No container image has been published to a registry by this project.
+The Linux amd64 image is published on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion). Use `holblin/talos-companion:0.1.0` for a pinned version, or `holblin/talos-companion:latest` for the current stable release. `deploy/compose.hub.yaml` runs the registry image without a local build. Source builds using the main `compose.yaml` remain available.
 
-The repository now includes a private build/publish workflow and a template-only bundle generator. See [publishing instructions](publishing.md) for Docker Hub credentials, registry-only Compose installation, and the deferred Community Apps submission. Public template distribution is not enabled.
+The repository includes a private build/publish workflow and a template-only bundle generator. See [publishing instructions](publishing.md) for registry-only Compose installation and the deferred Community Apps submission. Public template distribution is not enabled. The generated template can already be installed manually on your own Unraid server.
 
 ## Persistent paths and ports
 

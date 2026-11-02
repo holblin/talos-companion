@@ -5,12 +5,14 @@ publishes the Unraid template repository, or grants an open-source license to th
 
 ## Current state
 
-- Image destination configured: `holblin/talos-companion`.
+- Public image published: [`holblin/talos-companion:0.1.0`](https://hub.docker.com/r/holblin/talos-companion/tags), also tagged `latest` and `sha-66ec26b5ecac236effc5d73937b6dfc9e0b9cd0b`.
+- The first release digest is `sha256:c7d653fbef035575e11a7425a26fb2ce32d270b04a63e90d891d665a57b8fec8`. All three tags resolve to that same image. Registry verification confirms Linux amd64, one filesystem layer, UID `99:100`, and the Rust entrypoint. The compressed layer is approximately 7.2 MiB.
+- [The first publishing run](https://github.com/holblin/talos-companion/actions/runs/41387951309) passed all application, container, and template checks before upload. Docker Hub credentials are saved as an encrypted GitHub Actions secret, not in repository files.
 - `.github/workflows/release.yml` can build, test, and package the image without uploading it.
 - Publishing is an explicit manual workflow choice, off by default. Ordinary commits never push images.
 - `scripts/prepare-unraid.ps1` generates a separate template-only repository in `dist/community-apps`.
 - The proposed future public repository is `holblin/talos-companion-unraid`; it has not been created or published.
-- Generated files remain private. Registry upload needs Docker Hub credentials; catalog submission needs your approval and Unraid account.
+- Generated template files remain private. Future registry uploads use the saved Docker Hub secret; catalog submission still needs your approval and Unraid account.
 
 ## One-time Docker Hub setup
 

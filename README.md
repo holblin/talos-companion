@@ -19,6 +19,10 @@ This is an initial implementation. The S3 backend uses the upstream experimental
 
 ## Run on Unraid
 
+The image is available on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion): `holblin/talos-companion:0.1.0` or `holblin/talos-companion:latest`. Use `deploy/compose.hub.yaml` to run it without a source build. The generated Unraid template is ready for manual installation; Community Apps publication remains deferred. See [Unraid instructions](docs/unraid.md).
+
+To build from this private source repository instead:
+
 1. Clone this private repository onto your build host.
 2. Copy `.env.example` to `.env`, set your public URL, and replace both secret placeholders with independent random values. Save the backup passphrase separately from this server.
 3. Pre-create the data and destination directories with ownership matching `PUID:PGID` (default `99:100`). For a local trial on Linux:
