@@ -1,94 +1,95 @@
-use crate::{auth, model::*};
+use crate::{auth, backup_format, model::*, retention};
 use axum::{
     Json,
+    body::Body,
     extract::{Multipart, Path as AxumPath, State},
     http::{HeaderMap, header},
+    response::{IntoResponse, Response},
 };
-use chacha20poly1305::{
-    ChaCha20Poly1305, KeyInit,
-    aead::{Aead, Payload},
-};
-use rand::{RngCore, rngs::OsRng};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
-    io::{Read, Write},
+    io::{self, BufReader, BufWriter, Read, Write},
     path::{Component, Path},
 };
+use tokio::io::AsyncWriteExt;
+use tokio_util::io::ReaderStream;
 
-pub const LIMIT: usize = 256 * 1024 * 1024;
-const MAGIC: &[u8] = b"TCBACKUP\x01";
-fn derive(pass: &str, salt: &[u8]) -> anyhow::Result<[u8; 32]> {
-    let mut key = [0; 32];
-    argon2::Argon2::default()
-        .hash_password_into(pass.as_bytes(), salt, &mut key)
-        .map_err(|_| anyhow::anyhow!("Key derivation failed"))?;
-    Ok(key)
+const BUFFER: usize = 64 * 1024;
+
+fn archive(
+    state: &Store,
+    receiver: &Path,
+    pass: &str,
+    directory: &Path,
+    name: &str,
+    keep_snapshots: usize,
+) -> anyhow::Result<()> {
+    let mut tmp = tempfile::NamedTempFile::new_in(directory)?;
+    {
+        let output = BufWriter::with_capacity(BUFFER, tmp.as_file_mut());
+        let encrypted = backup_format::encrypt(output, pass)?;
+        let mut tar = tar::Builder::new(encrypted);
+        tar.follow_symlinks(false);
+        let bytes = serde_json::to_vec(state)?;
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(0o600);
+        header.set_cksum();
+        tar.append_data(&mut header, "state.json", bytes.as_slice())?;
+        let omitted = retention::snapshot_paths(receiver, keep_snapshots)?
+            .into_iter()
+            .collect();
+        append_receiver(&mut tar, receiver, &omitted)?;
+        tar.append_dir_all("vault", receiver.parent().unwrap().join("vault"))?;
+        let encrypted = tar.into_inner()?;
+        let mut output = encrypted.finish()?;
+        output.flush()?;
+    }
+    tmp.as_file().sync_all()?;
+    tmp.persist(directory.join(name))?;
+    Ok(())
 }
-pub fn encrypt(data: &[u8], pass: &str) -> anyhow::Result<Vec<u8>> {
-    let mut salt = [0; 16];
-    let mut nonce = [0; 12];
-    OsRng.fill_bytes(&mut salt);
-    OsRng.fill_bytes(&mut nonce);
-    let cipher = ChaCha20Poly1305::new((&derive(pass, &salt)?).into());
-    let encrypted = cipher
-        .encrypt(
-            (&nonce).into(),
-            Payload {
-                msg: data,
-                aad: MAGIC,
-            },
-        )
-        .map_err(|_| anyhow::anyhow!("Encryption failed"))?;
-    Ok([MAGIC, &salt, &nonce, &encrypted].concat())
-}
-pub fn decrypt(data: &[u8], pass: &str) -> anyhow::Result<Vec<u8>> {
-    anyhow::ensure!(
-        data.len() > MAGIC.len() + 44 && data.starts_with(MAGIC),
-        "Unsupported backup format"
-    );
-    let p = MAGIC.len();
-    let cipher = ChaCha20Poly1305::new((&derive(pass, &data[p..p + 16])?).into());
-    cipher
-        .decrypt(
-            data[p + 16..p + 28].into(),
-            Payload {
-                msg: &data[p + 28..],
-                aad: MAGIC,
-            },
-        )
-        .map_err(|_| anyhow::anyhow!("Wrong passphrase or damaged backup"))
-}
-struct Bounded(Vec<u8>);
-impl Write for Bounded {
-    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-        if self.0.len().saturating_add(b.len()) > LIMIT {
-            return Err(std::io::Error::other(
-                "Backup exceeds the 256 MiB snapshot limit",
-            ));
+
+fn append_receiver<W: Write>(
+    tar: &mut tar::Builder<W>,
+    root: &Path,
+    omitted: &std::collections::HashSet<std::path::PathBuf>,
+) -> anyhow::Result<()> {
+    let mut directories = vec![(root.to_owned(), std::path::PathBuf::from("receiver"))];
+    while let Some((directory, name)) = directories.pop() {
+        tar.append_dir(&name, &directory)?;
+        for entry in std::fs::read_dir(&directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            if omitted.contains(&path) {
+                continue;
+            }
+            let name = name.join(entry.file_name());
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                directories.push((path, name));
+            } else {
+                anyhow::ensure!(
+                    kind.is_file(),
+                    "Receiver links and special files cannot be archived"
+                );
+                tar.append_path_with_name(path, name)?;
+            }
         }
-        self.0.extend_from_slice(b);
-        Ok(b.len())
     }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
+    Ok(())
 }
-fn archive(state: &Store, receiver: &Path, pass: &str) -> anyhow::Result<Vec<u8>> {
-    let mut tar = tar::Builder::new(Bounded(Vec::new()));
-    tar.follow_symlinks(false);
-    let bytes = serde_json::to_vec(state)?;
-    let mut header = tar::Header::new_gnu();
-    header.set_size(bytes.len() as u64);
-    header.set_mode(0o600);
-    header.set_cksum();
-    tar.append_data(&mut header, "state.json", bytes.as_slice())?;
-    tar.append_dir_all("receiver", receiver)?;
-    tar.append_dir_all("vault", receiver.parent().unwrap().join("vault"))?;
-    let bytes = tar.into_inner()?.0;
-    encrypt(&bytes, pass)
-}
+
 pub async fn create(app: &App, destination: &str) -> Result<Value> {
+    // Once started, finish the durable snapshot and cleanup even if the browser disconnects.
+    let app = app.clone();
+    let destination = destination.to_owned();
+    tokio::spawn(async move { create_inner(&app, &destination).await })
+        .await
+        .map_err(anyhow::Error::from)?
+}
+async fn create_inner(app: &App, destination: &str) -> Result<Value> {
     let _serial = app.backup_lock.lock().await;
     if !matches!(destination, "local" | "mounted" | "drive") {
         return Err(bad("Unknown destination"));
@@ -96,45 +97,64 @@ pub async fn create(app: &App, destination: &str) -> Result<Value> {
     if destination == "mounted" && app.mounted.is_none() {
         return Err(bad("No mounted destination configured"));
     }
-    let _io = app.io.write().await;
+    let io_guard = app.io.clone().write_owned().await;
     let state = app.store.read().await.clone().ok_or_else(denied)?;
-    let path = app.data.join("receiver");
-    let pass = app.backup_passphrase.clone();
-    let bytes = tokio::task::spawn_blocking(move || archive(&state, &path, &pass))
-        .await
-        .map_err(anyhow::Error::from)??;
-    drop(_io);
     let name = format!("companion-{}-{}.tcb", now(), &secret()[..8]);
     let target = app.data.join("backups").join(&name);
-    {
-        let mut tmp = tempfile::NamedTempFile::new_in(app.data.join("backups"))
-            .map_err(anyhow::Error::from)?;
-        tmp.write_all(&bytes).map_err(anyhow::Error::from)?;
-        tmp.as_file().sync_all().map_err(anyhow::Error::from)?;
-        tmp.persist(&target).map_err(anyhow::Error::from)?;
-    }
-    // Keep the durable local file even if the remote transfer fails.
-    let transfer: std::result::Result<(), anyhow::Error> = match destination {
+    let data = app.data.clone();
+    let pass = app.backup_passphrase.clone();
+    let snapshot_name = name.clone();
+    let keep_snapshots = app.retention.snapshot_keep_last;
+    let retention_warning = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<String>> {
+        // The lock lives in this worker too, so aborting an HTTP handler cannot expose a half-read source.
+        let _io = io_guard;
+        archive(&state, &data.join("receiver"), &pass, &data.join("backups"), &snapshot_name,keep_snapshots)?;
+        // Expire received snapshots only AFTER a new complete, durable recovery file exists.
+        Ok(retention::received_snapshots(&data.join("receiver"), keep_snapshots).err().map(|e| {
+            tracing::error!(error=%e,"received snapshot retention failed");
+            "Recovery file saved, but received-snapshot retention failed; check server logs.".to_owned()
+        }))
+    }).await.map_err(anyhow::Error::from)??;
+    let mut warnings: Vec<String> = retention_warning.into_iter().collect();
+    let transfer: anyhow::Result<()> = match destination {
         "mounted" => {
-            let dir = app.mounted.as_ref().unwrap();
-            // Never create the mount root: a missing Unraid mount must fail, not silently write locally.
-            (|| {
+            let dir = app.mounted.clone().unwrap();
+            let source = target.clone();
+            let name = name.clone();
+            let keep = app.retention.recovery_keep_last;
+            tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
                 anyhow::ensure!(dir.is_dir(), "Mounted destination is unavailable");
-                let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
-                tmp.write_all(&bytes)?;
+                let mut tmp = tempfile::NamedTempFile::new_in(&dir)?;
+                io::copy(&mut std::fs::File::open(source)?, tmp.as_file_mut())?;
                 tmp.as_file().sync_all()?;
                 tmp.persist(dir.join(&name))?;
+                retention::recovery_files(&dir, keep, &name)?;
                 Ok(())
-            })()
+            })
+            .await
+            .map_err(anyhow::Error::from)?
         }
-        "drive" => crate::drive::upload(app, &name, bytes).await,
+        "drive" => crate::drive::upload(app, &name, &target).await,
         _ => Ok(()),
     };
-    let warning = transfer.err().map(|e| {
-        tracing::error!(error=%e,"backup transfer failed");
-        "Remote transfer failed. The local backup is available; check server logs."
-    });
-    Ok(json!({"name":name,"destination":destination,"warning":warning}))
+    if let Err(e) = transfer {
+        tracing::error!(error=%e,"backup transfer or destination retention failed");
+        warnings.push("Remote transfer or destination retention failed. The local backup is available; check server logs.".into());
+    }
+    let directory = app.data.join("backups");
+    let keep = app.retention.recovery_keep_last;
+    let current = name.clone();
+    if let Err(e) =
+        tokio::task::spawn_blocking(move || retention::recovery_files(&directory, keep, &current))
+            .await
+            .map_err(anyhow::Error::from)?
+    {
+        tracing::error!(error=%e,"local recovery retention failed");
+        warnings.push("Recovery file saved, but local retention failed; check server logs.".into());
+    }
+    Ok(
+        json!({"name":name,"destination":destination,"warning":if warnings.is_empty(){None}else{Some(warnings.join(" "))}}),
+    )
 }
 #[derive(Deserialize)]
 pub struct Create {
@@ -151,52 +171,51 @@ pub async fn make(
 }
 pub async fn list(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     auth::admin(&app, &headers).await?;
-    let mut items = Vec::new();
-    for entry in std::fs::read_dir(app.data.join("backups")).map_err(anyhow::Error::from)? {
-        let entry = entry.map_err(anyhow::Error::from)?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if valid_name(&name) {
-            items.push(
-                json!({"name":name,"bytes":entry.metadata().map_err(anyhow::Error::from)?.len()}),
-            );
+    let directory = app.data.join("backups");
+    let items = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<Value>> {
+        let mut items = Vec::new();
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if retention::recovery_name(&name) && entry.file_type()?.is_file() {
+                items.push(json!({"name":name,"bytes":entry.metadata()?.len()}));
+            }
         }
-    }
-    items.sort_by(|a, b| b["name"].as_str().cmp(&a["name"].as_str()));
+        items.sort_by(|a, b| b["name"].as_str().cmp(&a["name"].as_str()));
+        Ok(items)
+    })
+    .await
+    .map_err(anyhow::Error::from)??;
     Ok(Json(json!(items)))
-}
-fn valid_name(name: &str) -> bool {
-    name.starts_with("companion-")
-        && name.ends_with(".tcb")
-        && name
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'.')
 }
 pub async fn download(
     State(app): State<App>,
     headers: HeaderMap,
     AxumPath(name): AxumPath<String>,
-) -> Result<([(header::HeaderName, String); 2], Vec<u8>)> {
+) -> Result<Response> {
     auth::admin(&app, &headers).await?;
-    if !valid_name(&name) {
+    if !retention::recovery_name(&name) {
         return Err(bad("Invalid filename"));
     }
-    let bytes = tokio::fs::read(app.data.join("backups").join(&name))
+    let file = tokio::fs::File::open(app.data.join("backups").join(&name))
         .await
         .map_err(anyhow::Error::from)?;
+    let size = file.metadata().await.map_err(anyhow::Error::from)?.len();
     Ok((
         [
-            (header::CONTENT_TYPE, "application/octet-stream".into()),
+            (header::CONTENT_TYPE, "application/octet-stream".to_owned()),
             (
                 header::CONTENT_DISPOSITION,
                 format!("attachment; filename=\"{name}\""),
             ),
+            (header::CONTENT_LENGTH, size.to_string()),
         ],
-        bytes,
-    ))
+        Body::from_stream(ReaderStream::with_capacity(file, BUFFER)),
+    )
+        .into_response())
 }
-fn stage(bytes: &[u8], root: &Path) -> anyhow::Result<Store> {
-    let mut archive = tar::Archive::new(bytes);
-    let mut total = 0u64;
+fn stage(reader: impl Read, root: &Path) -> anyhow::Result<Store> {
+    let mut archive = tar::Archive::new(reader);
     let mut seen = std::collections::HashSet::new();
     for entry in archive.entries()? {
         let mut entry = entry?;
@@ -208,16 +227,13 @@ fn stage(bytes: &[u8], root: &Path) -> anyhow::Result<Store> {
                     || path.starts_with("vault")),
             "Unsafe archive path"
         );
+        anyhow::ensure!(seen.len() < 1_000_000, "Too many archive entries");
         anyhow::ensure!(seen.insert(path.clone()), "Duplicate archive entry");
         let kind = entry.header().entry_type();
         anyhow::ensure!(
             kind.is_file() || kind.is_dir(),
             "Archive links and special files are forbidden"
         );
-        total = total
-            .checked_add(entry.size())
-            .ok_or_else(|| anyhow::anyhow!("Archive too large"))?;
-        anyhow::ensure!(total <= LIMIT as u64, "Archive too large");
         let target = root.join(&path);
         if kind.is_dir() {
             std::fs::create_dir_all(target)?;
@@ -234,6 +250,9 @@ fn stage(bytes: &[u8], root: &Path) -> anyhow::Result<Store> {
             std::io::copy(&mut entry, &mut out)?;
         }
     }
+    // tar stops at its end marker; consume the remaining encrypted stream to verify
+    // its final authentication tag and detect truncation even after all files were read.
+    io::copy(&mut archive.into_inner(), &mut io::sink())?;
     let mut buffer = Vec::new();
     std::fs::File::open(root.join("state.json"))?
         .take(1024 * 1024)
@@ -264,6 +283,20 @@ fn stage(bytes: &[u8], root: &Path) -> anyhow::Result<Store> {
     std::fs::create_dir_all(root.join("vault"))?;
     Ok(s)
 }
+async fn text_field(mut field: axum::extract::multipart::Field<'_>) -> Result<String> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = field
+        .chunk()
+        .await
+        .map_err(|_| bad("Invalid restore field"))?
+    {
+        if bytes.len().saturating_add(chunk.len()) > 8192 {
+            return Err(bad("Restore metadata is too large"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    String::from_utf8(bytes).map_err(|_| bad("Restore metadata must be UTF-8"))
+}
 pub async fn restore(
     State(app): State<App>,
     headers: HeaderMap,
@@ -273,45 +306,70 @@ pub async fn restore(
     if app.store.read().await.is_some() {
         return Err(bad("Restore is available only on a fresh instance"));
     }
+    let serial = app
+        .backup_lock
+        .clone()
+        .try_lock_owned()
+        .map_err(|_| bad("Another backup or restore is already running"))?;
     let mut file = None;
     let mut pass = None;
     let mut override_account = None;
-    while let Some(field) = multipart
+    while let Some(mut field) = multipart
         .next_field()
         .await
         .map_err(|_| bad("Invalid upload"))?
     {
         match field.name().unwrap_or("") {
             "file" => {
-                let b = field
-                    .bytes()
-                    .await
-                    .map_err(|_| bad("Upload is too large"))?;
-                if b.len() > LIMIT + 128 {
-                    return Err(bad("Backup is too large"));
+                if file.is_some() {
+                    return Err(bad("Duplicate backup file"));
                 }
-                file = Some(b.to_vec());
+                let tmp =
+                    tempfile::NamedTempFile::new_in(&app.data).map_err(anyhow::Error::from)?;
+                let mut output =
+                    tokio::fs::File::from_std(tmp.reopen().map_err(anyhow::Error::from)?);
+                while let Some(chunk) = field
+                    .chunk()
+                    .await
+                    .map_err(|_| bad("Backup upload failed"))?
+                {
+                    output
+                        .write_all(&chunk)
+                        .await
+                        .map_err(anyhow::Error::from)?;
+                }
+                output.flush().await.map_err(anyhow::Error::from)?;
+                output.sync_all().await.map_err(anyhow::Error::from)?;
+                drop(output);
+                file = Some(tmp);
             }
-            "passphrase" => pass = Some(field.text().await.map_err(|_| bad("Missing passphrase"))?),
+            "passphrase" => {
+                if pass.is_some() {
+                    return Err(bad("Duplicate passphrase"));
+                }
+                pass = Some(text_field(field).await?);
+            }
             "account" => {
+                if override_account.is_some() {
+                    return Err(bad("Duplicate account override"));
+                }
                 override_account = Some(
-                    serde_json::from_str::<auth::Account>(
-                        &field.text().await.map_err(|_| bad("Invalid account"))?,
-                    )
-                    .map_err(|_| bad("Invalid account"))?,
-                )
+                    serde_json::from_str::<auth::Account>(&text_field(field).await?)
+                        .map_err(|_| bad("Invalid account"))?,
+                );
             }
             _ => return Err(bad("Unknown restore field")),
         }
     }
-    let encrypted = file.ok_or_else(|| bad("Choose a backup file"))?;
+    let upload = file.ok_or_else(|| bad("Choose a backup file"))?;
     let pass = pass.ok_or_else(|| bad("Provide the original backup passphrase"))?;
     let data = app.data.clone();
-    let (temp, mut s) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let bytes = decrypt(&encrypted, &pass)?;
+    let (temp, mut s, _serial) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let reader = BufReader::with_capacity(BUFFER, std::fs::File::open(upload.path())?);
+        let reader = backup_format::decrypt(reader, &pass)?;
         let temp = tempfile::tempdir_in(data)?;
-        let s = stage(&bytes, temp.path())?;
-        Ok((temp, s))
+        let s = stage(reader, temp.path())?;
+        Ok((temp, s, serial))
     })
     .await
     .map_err(anyhow::Error::from)?
@@ -373,35 +431,34 @@ pub async fn restore(
 mod tests {
     use super::*;
     #[test]
-    fn authenticated_encryption_rejects_wrong_password_and_tampering() {
-        let data = encrypt(
-            b"account and cluster secrets",
-            "a very long recovery passphrase",
-        )
-        .unwrap();
+    fn stage_verifies_reader_after_tar_end_marker() {
+        struct AuthenticationFailure;
+        impl Read for AuthenticationFailure {
+            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+                Err(io::Error::other("final authentication failed"))
+            }
+        }
+        let bytes = tar::Builder::new(Vec::new()).into_inner().unwrap();
+        let reader = io::Cursor::new(bytes).chain(AuthenticationFailure);
+        let temp = tempfile::tempdir().unwrap();
         assert_eq!(
-            decrypt(&data, "a very long recovery passphrase").unwrap(),
-            b"account and cluster secrets"
+            stage(reader, temp.path()).err().unwrap().to_string(),
+            "final authentication failed"
         );
-        assert!(decrypt(&data, "wrong passphrase").is_err());
-        let mut damaged = data;
-        let last = damaged.len() - 1;
-        damaged[last] ^= 1;
-        assert!(decrypt(&damaged, "a very long recovery passphrase").is_err());
     }
     #[test]
     fn archive_rejects_symlinks() {
-        let mut b = tar::Builder::new(Vec::new());
+        let mut tar = tar::Builder::new(Vec::new());
         let mut h = tar::Header::new_gnu();
         h.set_entry_type(tar::EntryType::Symlink);
         h.set_size(0);
         h.set_mode(0o777);
         h.set_link_name("/etc/passwd").unwrap();
         h.set_cksum();
-        b.append_data(&mut h, "receiver/link", std::io::empty())
+        tar.append_data(&mut h, "receiver/link", io::empty())
             .unwrap();
-        let bytes = b.into_inner().unwrap();
+        let bytes = tar.into_inner().unwrap();
         let temp = tempfile::tempdir().unwrap();
-        assert!(stage(&bytes, temp.path()).is_err());
+        assert!(stage(bytes.as_slice(), temp.path()).is_err());
     }
 }

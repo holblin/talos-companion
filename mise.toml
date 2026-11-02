@@ -22,7 +22,7 @@ run = "cargo run"
 env = { PUBLIC_URL = "http://localhost:5173" }
 
 [tasks.test]
-run = ["cargo test --all-targets --locked", "cargo build --locked", "node --test tests/integration.mjs"]
+run = ["cargo test --all-targets --locked", "cargo build --locked", "node --test tests/integration.mjs tests/streaming.mjs"]
 
 [tasks."web:check"]
 dir = "web"

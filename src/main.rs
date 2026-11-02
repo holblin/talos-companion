@@ -1,9 +1,11 @@
 mod auth;
 mod backup;
+mod backup_format;
 mod drive;
 mod model;
 mod oidc;
 mod receiver;
+mod retention;
 mod vault;
 
 use axum::{
@@ -23,7 +25,7 @@ async fn overview(State(app): State<App>, headers: HeaderMap) -> Result<Json<Val
     let guard = app.store.read().await;
     let s = guard.as_ref().ok_or_else(denied)?;
     Ok(Json(
-        json!({"issuer":app.public_url,"client_id":s.client_id,"client_secret":s.client_secret,"redirect_uri":s.redirect_uri,"s3_access_key":s.s3_access_key,"s3_secret_key":s.s3_secret_key,"bucket":"omni","mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"drive":{"client_id":s.drive.client_id,"folder_id":s.drive.folder_id,"connected":!s.drive.refresh_token.is_empty()},"snapshot_limit_mib":256}),
+        json!({"issuer":app.public_url,"client_id":s.client_id,"client_secret":s.client_secret,"redirect_uri":s.redirect_uri,"s3_access_key":s.s3_access_key,"s3_secret_key":s.s3_secret_key,"bucket":"omni","mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"drive":{"client_id":s.drive.client_id,"folder_id":s.drive.folder_id,"connected":!s.drive.refresh_token.is_empty()},"streaming_backups":true,"retention":app.retention}),
     ))
 }
 async fn secure_headers(req: axum::extract::Request, next: Next) -> Response {
@@ -44,7 +46,7 @@ fn router(app: App) -> Router {
         .route("/api/setup", post(auth::setup))
         .route(
             "/api/restore",
-            post(backup::restore).layer(DefaultBodyLimit::max(backup::LIMIT + 1024 * 1024)),
+            post(backup::restore).layer(DefaultBodyLimit::disable()),
         )
         .route("/api/login", post(auth::login))
         .route("/api/logout", post(auth::logout))
@@ -153,6 +155,10 @@ mod tests {
             })),
             io: Default::default(),
             backup_lock: Default::default(),
+            retention: crate::retention::Retention {
+                recovery_keep_last: 7,
+                snapshot_keep_last: 30,
+            },
             data: dir.path().into(),
             public_url: "http://localhost:8080".into(),
             setup_token: "a secure and long setup token".into(),

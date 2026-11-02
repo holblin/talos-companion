@@ -15,7 +15,8 @@ type Overview = {
   bucket: string;
   mounted: string | null;
   drive: { client_id: string; folder_id: string; connected: boolean };
-  snapshot_limit_mib: number;
+  streaming_backups: boolean;
+  retention: { recovery_keep_last: number; snapshot_keep_last: number };
 };
 type View = "Overview" | "Backups" | "Identity" | "Accounts" | "Settings";
 const views: View[] = [
@@ -648,9 +649,16 @@ function App() {
                   <BackupTable backups={backups} />
                   <p className="hint">
                     Recovery files contain password hashes and identity keys.
-                    Encryption uses your BACKUP_PASSPHRASE. This first version
-                    supports snapshots up to 256 MiB and keeps local files until
-                    you remove them from storage.
+                    Encryption uses your BACKUP_PASSPHRASE. Recovery files
+                    stream without a fixed size cap. Retention:{" "}
+                    {overview?.retention.recovery_keep_last
+                      ? `newest ${overview.retention.recovery_keep_last} recovery files per destination`
+                      : "all recovery files"}
+                    {"; "}
+                    {overview?.retention.snapshot_keep_last
+                      ? `newest ${overview.retention.snapshot_keep_last} Omni snapshots per cluster`
+                      : "all received Omni snapshots"}
+                    .
                   </p>
                 </Card>
                 <Card title="Omni credentials and recovery material">
