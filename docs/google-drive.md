@@ -7,7 +7,7 @@ Companion uploads encrypted `.tcb` recovery files using a native Rust HTTPS clie
 3. Register `https://YOUR-COMPANION-ORIGIN/oauth/google/callback` as an authorized redirect URI. It must exactly match `PUBLIC_URL` plus that path. For local testing, Google permits localhost HTTP redirect URIs.
 4. In Companion → Settings, enter the client ID and client secret. Leave the folder ID empty to have Companion create a dedicated **Talos Companion backups** folder during authorization. You may instead reuse a folder previously created by this same OAuth application.
 5. Choose Save and authorize, then sign in to Google and grant the requested access. After the callback, Drive is shown as connected.
-6. In Backups, choose **Back up to Drive**. Or set `SCHEDULE_DESTINATION=drive` in the container environment for scheduled copies.
+6. In Backups, choose **Back up to Drive**. For scheduled copies, choose **Google Drive** in **Settings → Backup settings**.
 
 The application requests `https://www.googleapis.com/auth/drive.file`, which limits it to files it creates or explicitly opens with the OAuth application. Supplying an arbitrary existing folder ID does not grant access to that folder. Letting Companion create the folder avoids that issue without requesting full Drive access.
 
@@ -17,6 +17,6 @@ Google OAuth applications left in external **Testing** mode commonly issue refre
 
 Every Drive upload first creates a local encrypted file. If Google is unavailable or the grant expires, the local file remains available for download. The UI reports transfer failure, and scheduled failures go to container logs. Files are read from disk using Google's resumable-upload protocol in bounded 8 MiB chunks, with no archive size cap. Access tokens are refreshed between chunks when needed, so multi-hour transfers are not limited by one token's lifetime. A failed network transfer must be retried as a new backup.
 
-After successful upload, `BACKUP_KEEP_LAST` (default seven, `0` disables) controls retention in the configured folder. Only recovery files tagged by this application are candidates; unrelated Drive files are untouched. Expired files are moved to Trash rather than permanently deleted. Use a dedicated folder for this instance. Retention errors are reported alongside transfer errors, while the local recovery file remains available.
+After successful upload, the recovery retention setting in **Settings → Backup settings** (default seven, `0` disables) controls retention in the configured folder. Only recovery files tagged by this application are candidates; unrelated Drive files are untouched. Expired files are moved to Trash rather than permanently deleted. Use a dedicated folder for this instance. Retention errors are reported alongside transfer errors, while the local recovery file remains available.
 
 References: [Drive OAuth scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth), [web-server OAuth flow](https://developers.google.com/identity/protocols/oauth2/web-server), and [Drive uploads](https://developers.google.com/workspace/drive/api/guides/manage-uploads).

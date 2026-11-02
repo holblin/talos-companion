@@ -19,8 +19,4 @@
   <Config Name="Setup token" Target="SETUP_TOKEN" Default="" Mode="" Description="24+ random characters" Type="Variable" Display="always" Required="true" Mask="true"></Config>
   <Config Name="Backup passphrase" Target="BACKUP_PASSPHRASE" Default="" Mode="" Description="16+ characters; keep a separate recovery copy" Type="Variable" Display="always" Required="true" Mask="true"></Config>
   <Config Name="Mounted destination" Target="MOUNTED_BACKUP_DIR" Default="/destinations/network" Mode="" Description="Use only with a real host mount" Type="Variable" Display="advanced" Required="false" Mask="false">/destinations/network</Config>
-  <Config Name="Backup interval" Target="BACKUP_INTERVAL_SECONDS" Default="86400" Mode="" Description="Seconds between recovery snapshots" Type="Variable" Display="advanced" Required="true" Mask="false">86400</Config>
-  <Config Name="Scheduled destination" Target="SCHEDULE_DESTINATION" Default="local" Mode="" Description="local, mounted, or drive" Type="Variable" Display="advanced" Required="true" Mask="false">local</Config>
-  <Config Name="Recovery files to keep" Target="BACKUP_KEEP_LAST" Default="7" Mode="" Description="Newest recovery files per destination; 0 disables retention" Type="Variable" Display="advanced" Required="true" Mask="false">7</Config>
-  <Config Name="Omni snapshots to keep" Target="OMNI_SNAPSHOT_KEEP_LAST" Default="30" Mode="" Description="Newest received snapshots per cluster; 0 disables retention" Type="Variable" Display="advanced" Required="true" Mask="false">30</Config>
 </Container>

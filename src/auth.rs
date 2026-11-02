@@ -106,18 +106,46 @@ pub fn make_user(input: Account) -> Result<User> {
 pub async fn status(State(app): State<App>) -> Json<Value> {
     Json(json!({"initialized":app.store.read().await.is_some()}))
 }
+#[derive(Deserialize)]
+pub struct Setup {
+    #[serde(flatten)]
+    pub account: Account,
+    pub settings: Option<crate::settings::Settings>,
+}
+pub async fn setup_check(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+    setup_auth(&app, &headers)?;
+    if app.store.read().await.is_some() {
+        return Err(bad("Already initialized"));
+    }
+    Ok(Json(
+        json!({"public_url":app.public_url,"mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"settings":app.settings.borrow().clone()}),
+    ))
+}
 pub async fn setup(
     State(app): State<App>,
     headers: HeaderMap,
-    Json(mut input): Json<Account>,
+    Json(input): Json<Setup>,
 ) -> Result<Json<Value>> {
     setup_auth(&app, &headers)?;
+    let _serial = app.backup_lock.lock().await;
     let mut guard = app.store.write().await;
     if guard.is_some() {
         return Err(bad("Already initialized"));
     }
-    input.admin = true;
-    let u = make_user(input)?;
+    let mut account = input.account;
+    account.admin = true;
+    let u = make_user(account)?;
+    let previous = app.settings.borrow().clone();
+    let settings = input.settings.unwrap_or_else(|| previous.clone());
+    settings.validate().map_err(|e| bad(&e.to_string()))?;
+    if settings.schedule.enabled
+        && (settings.schedule.destination == "drive"
+            || (settings.schedule.destination == "mounted" && app.mounted.is_none()))
+    {
+        return Err(bad(
+            "Choose an available destination for the initial schedule",
+        ));
+    }
     let key = rsa::RsaPrivateKey::new(&mut rand::rngs::OsRng, 2048).map_err(anyhow::Error::from)?;
     let store = Store {
         version: 1,
@@ -133,8 +161,13 @@ pub async fn setup(
         s3_secret_key: secret(),
         drive: Drive::default(),
     };
-    app.persist(&store)?;
+    settings.persist(&app.data)?;
+    if let Err(e) = app.persist(&store) {
+        previous.persist(&app.data)?;
+        return Err(e.into());
+    }
     *guard = Some(store);
+    app.settings.send_replace(settings);
     Ok(Json(json!({"ok":true})))
 }
 #[derive(Deserialize)]

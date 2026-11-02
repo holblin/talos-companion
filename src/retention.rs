@@ -1,28 +1,12 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
-#[derive(Clone, Copy, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Retention {
     pub recovery_keep_last: usize,
     pub snapshot_keep_last: usize,
-}
-impl Retention {
-    pub fn from_env() -> anyhow::Result<Self> {
-        fn count(name: &str, default: usize) -> anyhow::Result<usize> {
-            match std::env::var(name) {
-                Ok(value) => value
-                    .parse()
-                    .map_err(|_| anyhow::anyhow!("{name} must be a nonnegative integer")),
-                Err(std::env::VarError::NotPresent) => Ok(default),
-                Err(e) => Err(e.into()),
-            }
-        }
-        Ok(Self {
-            recovery_keep_last: count("BACKUP_KEEP_LAST", 7)?,
-            snapshot_keep_last: count("OMNI_SNAPSHOT_KEEP_LAST", 30)?,
-        })
-    }
 }
 
 pub fn recovery_name(name: &str) -> bool {

@@ -23,7 +23,7 @@ fn archive(
     pass: &str,
     directory: &Path,
     name: &str,
-    keep_snapshots: usize,
+    settings: &crate::settings::Settings,
 ) -> anyhow::Result<()> {
     let mut tmp = tempfile::NamedTempFile::new_in(directory)?;
     {
@@ -40,7 +40,13 @@ fn archive(
         header.set_mode(0o600);
         header.set_cksum();
         tar.append_data(&mut header, "state.json", bytes.as_slice())?;
-        let omitted = retention::snapshot_paths(receiver, keep_snapshots)?
+        let bytes = serde_json::to_vec(settings)?;
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(0o600);
+        header.set_cksum();
+        tar.append_data(&mut header, "config.json", bytes.as_slice())?;
+        let omitted = retention::snapshot_paths(receiver, settings.retention.snapshot_keep_last)?
             .into_iter()
             .collect();
         append_receiver(&mut tar, receiver, &omitted)?;
@@ -94,6 +100,7 @@ pub async fn create(app: &App, destination: &str) -> Result<Value> {
 }
 async fn create_inner(app: &App, destination: &str) -> Result<Value> {
     let _serial = app.backup_lock.lock().await;
+    let settings = app.settings.borrow().clone();
     if !matches!(destination, "local" | "mounted" | "drive") {
         return Err(bad("Unknown destination"));
     }
@@ -107,11 +114,12 @@ async fn create_inner(app: &App, destination: &str) -> Result<Value> {
     let data = app.data.clone();
     let pass = app.backup_passphrase.clone();
     let snapshot_name = name.clone();
-    let keep_snapshots = app.retention.snapshot_keep_last;
+    let keep_snapshots = settings.retention.snapshot_keep_last;
+    let keep = settings.retention.recovery_keep_last;
     let retention_warning = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<String>> {
         // The lock lives in this worker too, so aborting an HTTP handler cannot expose a half-read source.
         let _io = io_guard;
-        archive(&state, &data.join("receiver"), &pass, &data.join("backups"), &snapshot_name,keep_snapshots)?;
+        archive(&state, &data.join("receiver"), &pass, &data.join("backups"), &snapshot_name, &settings)?;
         // Expire received snapshots only AFTER a new complete, durable recovery file exists.
         Ok(retention::received_snapshots(&data.join("receiver"), keep_snapshots).err().map(|e| {
             tracing::error!(error=%e,"received snapshot retention failed");
@@ -124,7 +132,6 @@ async fn create_inner(app: &App, destination: &str) -> Result<Value> {
             let dir = app.mounted.clone().unwrap();
             let source = target.clone();
             let name = name.clone();
-            let keep = app.retention.recovery_keep_last;
             tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
                 anyhow::ensure!(dir.is_dir(), "Mounted destination is unavailable");
                 let mut tmp = tempfile::NamedTempFile::new_in(&dir)?;
@@ -137,7 +144,7 @@ async fn create_inner(app: &App, destination: &str) -> Result<Value> {
             .await
             .map_err(anyhow::Error::from)?
         }
-        "drive" => crate::drive::upload(app, &name, &target).await,
+        "drive" => crate::drive::upload(app, &name, &target, keep).await,
         _ => Ok(()),
     };
     if let Err(e) = transfer {
@@ -145,7 +152,6 @@ async fn create_inner(app: &App, destination: &str) -> Result<Value> {
         warnings.push("Remote transfer or destination retention failed. The local backup is available; check server logs.".into());
     }
     let directory = app.data.join("backups");
-    let keep = app.retention.recovery_keep_last;
     let current = name.clone();
     if let Err(e) =
         tokio::task::spawn_blocking(move || retention::recovery_files(&directory, keep, &current))
@@ -226,6 +232,7 @@ fn stage(reader: impl Read, root: &Path) -> anyhow::Result<Store> {
         anyhow::ensure!(
             path.components().all(|c| matches!(c, Component::Normal(_)))
                 && (path == Path::new("state.json")
+                    || path == Path::new("config.json")
                     || path.starts_with("receiver")
                     || path.starts_with("vault")),
             "Unsafe archive path"
@@ -233,6 +240,12 @@ fn stage(reader: impl Read, root: &Path) -> anyhow::Result<Store> {
         anyhow::ensure!(seen.len() < 1_000_000, "Too many archive entries");
         anyhow::ensure!(seen.insert(path.clone()), "Duplicate archive entry");
         let kind = entry.header().entry_type();
+        if path == Path::new("state.json") || path == Path::new("config.json") {
+            anyhow::ensure!(
+                kind.is_file() && entry.size() <= 1024 * 1024,
+                "Invalid metadata file"
+            );
+        }
         anyhow::ensure!(
             kind.is_file() || kind.is_dir(),
             "Archive links and special files are forbidden"
@@ -256,6 +269,9 @@ fn stage(reader: impl Read, root: &Path) -> anyhow::Result<Store> {
     // tar stops at its end marker; consume the remaining encrypted stream to verify
     // its final authentication tag and detect truncation even after all files were read.
     io::copy(&mut archive.into_inner(), &mut io::sink())?;
+    let settings: crate::settings::Settings =
+        serde_json::from_slice(&std::fs::read(root.join("config.json"))?)?;
+    settings.validate()?;
     let mut buffer = Vec::new();
     std::fs::File::open(root.join("state.json"))?
         .take(1024 * 1024)
@@ -399,10 +415,11 @@ pub async fn restore(
     if guard.is_some() {
         return Err(bad("Already initialized"));
     }
-    // Swap staged data before the state commit; roll back all swaps on failure.
+    let settings = crate::settings::Settings::load(temp.path())?;
+    // Swap staged data and configuration before the state commit; roll back all swaps on failure.
     let mut moved = Vec::new();
     let committed = (|| -> anyhow::Result<()> {
-        for name in ["receiver", "vault"] {
+        for name in ["receiver", "vault", "config.json"] {
             let live = app.data.join(name);
             let old = temp.path().join(format!("previous-{name}"));
             std::fs::rename(&live, &old)?;
@@ -427,6 +444,7 @@ pub async fn restore(
         return Err(e.into());
     }
     *guard = Some(s);
+    app.settings.send_replace(settings);
     Ok(Json(json!({"ok":true})))
 }
 

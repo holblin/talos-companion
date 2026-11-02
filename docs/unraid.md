@@ -31,7 +31,7 @@ Companion needs only filesystem access. It does not need SMB/NFS packages, share
 
 The destination root must exist. The app and Compose configuration deliberately avoid creating it if it is absent. A failed transfer retains the local backup and reports an error. An existing directory alone does not prove a network filesystem is mounted: configure Unraid so the container stops or fails closed when the share disappears. Avoid an ordinary empty directory at the same path silently substituting for your network mount.
 
-Use `SCHEDULE_DESTINATION=mounted` to copy scheduled recovery files to that share. The local recovery file is always written first. `BACKUP_KEEP_LAST` defaults to seven complete recovery files per destination; `OMNI_SNAPSHOT_KEEP_LAST` defaults to 30 received snapshots per cluster. Set either to `0` to disable that policy. Old files are pruned only after a new local or destination file is committed. Use a dedicated destination directory for this instance.
+Choose **Mounted NFS / SMB** in **Settings → Backup settings** for scheduled copies. The same page controls recovery retention (default seven files per destination) and Omni snapshot retention (default 30 per cluster); zero disables pruning. Changes persist in `/data/config.json` and apply immediately. Pruning happens only after a successful backup. Use a dedicated destination directory.
 
 Large backups stream through bounded buffers; they have no fixed byte-size cap. Restore needs temporary disk space for both the encrypted upload and extracted files. Configure proxy upload limits/timeouts accordingly. S3 operations pause while a consistent source snapshot is archived, so Omni's timeouts must allow for the time spent reading and encrypting the retained data.
 

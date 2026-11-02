@@ -6,6 +6,7 @@ mod model;
 mod oidc;
 mod receiver;
 mod retention;
+mod settings;
 mod vault;
 
 use axum::{
@@ -25,7 +26,7 @@ async fn overview(State(app): State<App>, headers: HeaderMap) -> Result<Json<Val
     let guard = app.store.read().await;
     let s = guard.as_ref().ok_or_else(denied)?;
     Ok(Json(
-        json!({"issuer":app.public_url,"client_id":s.client_id,"client_secret":s.client_secret,"redirect_uri":s.redirect_uri,"s3_access_key":s.s3_access_key,"s3_secret_key":s.s3_secret_key,"bucket":"omni","mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"drive":{"client_id":s.drive.client_id,"folder_id":s.drive.folder_id,"connected":!s.drive.refresh_token.is_empty()},"streaming_backups":true,"retention":app.retention}),
+        json!({"issuer":app.public_url,"client_id":s.client_id,"client_secret":s.client_secret,"redirect_uri":s.redirect_uri,"s3_access_key":s.s3_access_key,"s3_secret_key":s.s3_secret_key,"bucket":"omni","mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"drive":{"client_id":s.drive.client_id,"folder_id":s.drive.folder_id,"connected":!s.drive.refresh_token.is_empty()},"streaming_backups":true,"retention":app.settings.borrow().retention,"settings":app.settings.borrow().clone()}),
     ))
 }
 async fn secure_headers(req: axum::extract::Request, next: Next) -> Response {
@@ -44,6 +45,7 @@ fn router(app: App) -> Router {
         .route("/healthz", get(|| async { Json(json!({"ok":true})) }))
         .route("/api/status", get(auth::status))
         .route("/api/setup", post(auth::setup))
+        .route("/api/setup/check", post(auth::setup_check))
         .route(
             "/api/restore",
             post(backup::restore).layer(DefaultBodyLimit::disable()),
@@ -55,6 +57,7 @@ fn router(app: App) -> Router {
         .route("/api/users", get(auth::users).post(auth::add))
         .route("/api/users/{id}", delete(auth::remove))
         .route("/api/overview", get(overview))
+        .route("/api/settings", get(settings::get).post(settings::update))
         .route("/api/oidc", post(oidc::configure))
         .route("/api/backups", get(backup::list).post(backup::make))
         .route("/api/backups/{name}", get(backup::download))
@@ -98,22 +101,7 @@ async fn main() -> anyhow::Result<()> {
     let receiver_app = app.clone();
     // A failed receiver stops the application so that Docker can restart it instead of reporting a healthy but incomplete service.
     let receiver = receiver::run(receiver_app);
-    let scheduled = async {
-        let seconds = std::env::var("BACKUP_INTERVAL_SECONDS")
-            .ok()
-            .and_then(|x| x.parse::<u64>().ok())
-            .unwrap_or(86400)
-            .max(60);
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(seconds)).await;
-            if app.store.read().await.is_some() {
-                let destination = std::env::var("SCHEDULE_DESTINATION").unwrap_or("local".into());
-                if let Err(e) = backup::create(&app, &destination).await {
-                    tracing::error!(message=%e.1,"scheduled backup failed");
-                }
-            }
-        }
-    };
+    let scheduled = settings::run(&app);
     let address = std::env::var("LISTEN_ADDR").unwrap_or("0.0.0.0:8080".into());
     let listener = tokio::net::TcpListener::bind(&address).await?;
     tracing::info!(%address,"Companion listening");
@@ -155,10 +143,7 @@ mod tests {
             })),
             io: Default::default(),
             backup_lock: Default::default(),
-            retention: crate::retention::Retention {
-                recovery_keep_last: 7,
-                snapshot_keep_last: 30,
-            },
+            settings: tokio::sync::watch::channel(settings::Settings::default()).0,
             data: dir.path().into(),
             public_url: "http://localhost:8080".into(),
             setup_token: "a secure and long setup token".into(),

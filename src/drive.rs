@@ -148,7 +148,12 @@ pub async fn callback(
     Ok(Redirect::to("/?drive=connected"))
 }
 
-pub async fn upload(app: &App, name: &str, path: &std::path::Path) -> anyhow::Result<()> {
+pub async fn upload(
+    app: &App,
+    name: &str,
+    path: &std::path::Path,
+    keep: usize,
+) -> anyhow::Result<()> {
     let s = app
         .store
         .read()
@@ -193,7 +198,7 @@ pub async fn upload(app: &App, name: &str, path: &std::path::Path) -> anyhow::Re
         "https://www.googleapis.com/drive/v3/files",
         tokens.bearer().await?,
         &d.folder_id,
-        app.retention.recovery_keep_last,
+        keep,
         name,
     )
     .await?;

@@ -38,8 +38,49 @@ test(
         400,
       );
       assert.equal(
-        (await request(a, "/api/setup", { body: account, setup: true })).status,
+        (await request(a, "/api/setup/check", { body: {} })).status,
+        403,
+      );
+      const deployment = await (
+        await request(a, "/api/setup/check", { body: {}, setup: true })
+      ).json();
+      assert.equal(deployment.public_url, `http://127.0.0.1:${a}`);
+      assert.equal(deployment.settings.retention.recovery_keep_last, 7);
+      const initialSettings = {
+        retention: { recovery_keep_last: 9, snapshot_keep_last: 12 },
+        schedule: {
+          enabled: false,
+          interval_seconds: 3600,
+          destination: "local",
+        },
+      };
+      assert.equal(
+        (
+          await request(a, "/api/setup", {
+            body: {
+              ...account,
+              settings: {
+                ...initialSettings,
+                schedule: { ...initialSettings.schedule, interval_seconds: 0 },
+              },
+            },
+            setup: true,
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await request(a, "/api/setup", {
+            body: { ...account, settings: initialSettings },
+            setup: true,
+          })
+        ).status,
         200,
+      );
+      assert.deepEqual(
+        JSON.parse(await readFile(join(dir, "source", "config.json"), "utf8")),
+        initialSettings,
       );
       assert.equal(
         (await request(a, "/api/setup", { body: account, setup: true })).status,
@@ -71,6 +112,79 @@ test(
         403,
       );
       assert.equal((await request(a, "/api/backups")).status, 401);
+      assert.equal((await request(a, "/api/settings")).status, 401);
+      assert.equal(
+        (await request(a, "/api/settings", { cookie: memberCookie })).status,
+        403,
+      );
+      const backupSettings = {
+        retention: { recovery_keep_last: 2, snapshot_keep_last: 2 },
+        schedule: {
+          enabled: false,
+          interval_seconds: 7200,
+          destination: "mounted",
+        },
+      };
+      assert.equal(
+        (
+          await request(a, "/api/settings", {
+            cookie: memberCookie,
+            body: backupSettings,
+          })
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await request(a, "/api/settings", {
+            cookie,
+            body: backupSettings,
+            origin: "https://evil.example",
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await request(a, "/api/settings", {
+            cookie,
+            body: {
+              ...backupSettings,
+              schedule: { ...backupSettings.schedule, interval_seconds: 0 },
+            },
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await request(a, "/api/settings", {
+            cookie,
+            body: {
+              ...backupSettings,
+              schedule: {
+                ...backupSettings.schedule,
+                enabled: true,
+                destination: "drive",
+              },
+            },
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (await request(a, "/api/settings", { cookie, body: backupSettings }))
+          .status,
+        200,
+      );
+      assert.deepEqual(
+        await (await request(a, "/api/settings", { cookie })).json(),
+        backupSettings,
+      );
+      assert.deepEqual(
+        JSON.parse(await readFile(join(dir, "source", "config.json"), "utf8")),
+        backupSettings,
+      );
       const callback = "https://omni.example.com/oidc/consume";
       assert.equal(
         (
@@ -343,6 +457,14 @@ test(
       await stop(source.child);
       const restarted = await server(a, join(dir, "source"));
       children.push(restarted.child);
+      const diskSettings = JSON.parse(
+        await readFile(join(dir, "source", "config.json"), "utf8"),
+      );
+      assert.deepEqual(
+        diskSettings,
+        backupSettings,
+        "configuration survives restart",
+      );
       cookie = await login(a);
       assert.equal(
         (await (await request(a, "/api/me", { cookie })).json()).id,
@@ -445,6 +567,11 @@ test(
       ).json();
       assert.equal(restoredSettings.client_secret, settings.client_secret);
       assert.equal(restoredSettings.s3_secret_key, settings.s3_secret_key);
+      assert.deepEqual(
+        restoredSettings.settings,
+        backupSettings,
+        "recovery restores saved backup configuration",
+      );
       for (let i = 0; i < 30; i++) {
         try {
           if ((await s3(b + 1, settings, "GET", "/omni?list-type=2")).ok) break;

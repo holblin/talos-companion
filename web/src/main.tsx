@@ -2,10 +2,17 @@ import { StrictMode, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
+import { api } from "./api";
+import SetupWizard from "./SetupWizard";
 
 type User = { id: string; email: string; name: string; admin: boolean };
 type Backup = { name: string; bytes: number };
+type Settings = {
+  retention: { recovery_keep_last: number; snapshot_keep_last: number };
+  schedule: { enabled: boolean; interval_seconds: number; destination: string };
+};
 type Overview = {
+  settings: Settings;
   issuer: string;
   client_id: string;
   client_secret: string;
@@ -27,27 +34,6 @@ const views: View[] = [
   "Settings",
 ];
 const symbols = ["◈", "↗", "◎", "⊞", "⚙"];
-async function api<T>(
-  path: string,
-  body?: unknown,
-  method?: string,
-  extra: Record<string, string> = {},
-): Promise<T> {
-  const form = body instanceof FormData;
-  const response = await fetch(path, {
-    method: method ?? (body ? "POST" : "GET"),
-    headers: {
-      "x-requested-with": "talos-companion",
-      ...(!form && body ? { "content-type": "application/json" } : {}),
-      ...extra,
-    },
-    body: body ? (form ? body : JSON.stringify(body)) : undefined,
-  });
-  const value = await response.json();
-  if (!response.ok)
-    throw new Error(value.error ?? `Request failed (${response.status})`);
-  return value as T;
-}
 function fields(e: FormEvent<HTMLFormElement>) {
   e.preventDefault();
   return Object.fromEntries(new FormData(e.currentTarget)) as Record<
@@ -74,7 +60,10 @@ function Input({
   type?: string;
   required?: boolean;
   placeholder?: string;
-  defaultValue?: string;
+  defaultValue?: string | number;
+  min?: number;
+  max?: number;
+  step?: number;
   minLength?: number;
   autoComplete?: string;
 }) {
@@ -149,8 +138,6 @@ function App() {
   const [backups, setBackups] = useState<Backup[]>([]);
   const [vault, setVault] = useState<string[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [mode, setMode] = useState<"create" | "restore">("create");
-  const [override, setOverride] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -222,7 +209,17 @@ function App() {
       </main>
     );
 
-  if (!initialized || !user)
+  if (!initialized)
+    return (
+      <SetupWizard
+        onComplete={() => {
+          setInitialized(true);
+          setNotice("Setup complete. Sign in to continue.");
+        }}
+      />
+    );
+
+  if (!user)
     return (
       <div className="welcome">
         <div className="welcome-story">
@@ -270,151 +267,36 @@ function App() {
             </p>
             {messages}
             <fieldset disabled={busy}>
-              {initialized ? (
-                <form
-                  onSubmit={(e) => {
-                    const data = fields(e);
-                    void work(async () => {
-                      const u = await api<User>("/api/login", data);
-                      const next = new URLSearchParams(location.search).get(
-                        "next",
-                      );
-                      if (next?.startsWith("/oauth/authorize?"))
-                        location.assign(next);
-                      else setUser(u);
-                    });
-                  }}
-                >
-                  <Input
-                    label="Email address"
-                    name="email"
-                    type="email"
-                    autoComplete="username"
-                  />
-                  <Input
-                    label="Password"
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                  />
-                  <button className="primary wide">
-                    {busy ? "Signing in…" : "Sign in →"}
-                  </button>
-                </form>
-              ) : (
-                <>
-                  <div className="mode-tabs">
-                    <button
-                      className={mode === "create" ? "active" : ""}
-                      onClick={() => setMode("create")}
-                    >
-                      ＋ Create an account
-                    </button>
-                    <button
-                      className={mode === "restore" ? "active" : ""}
-                      onClick={() => setMode("restore")}
-                    >
-                      ↶ Restore a backup
-                    </button>
-                  </div>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const form = new FormData(e.currentTarget);
-                      const setup = String(form.get("setup_token"));
-                      void work(async () => {
-                        if (mode === "create") {
-                          await api(
-                            "/api/setup",
-                            Object.fromEntries(form),
-                            "POST",
-                            { "x-setup-token": setup },
-                          );
-                        } else {
-                          const payload = new FormData();
-                          const file = form.get("file");
-                          if (file) payload.append("file", file);
-                          payload.append(
-                            "passphrase",
-                            String(form.get("passphrase")),
-                          );
-                          if (override)
-                            payload.append(
-                              "account",
-                              JSON.stringify({
-                                name: form.get("name"),
-                                email: form.get("email"),
-                                password: form.get("password"),
-                              }),
-                            );
-                          await api("/api/restore", payload, "POST", {
-                            "x-setup-token": setup,
-                          });
-                        }
-                        setInitialized(true);
-                        setNotice(
-                          "Your companion is ready. Sign in to continue.",
-                        );
-                      });
-                    }}
-                  >
-                    <Input
-                      label="Setup token"
-                      name="setup_token"
-                      type="password"
-                      autoComplete="off"
-                    />
-                    {mode === "create" ? (
-                      <AccountFields />
-                    ) : (
-                      <>
-                        <label className="field">
-                          <span>Encrypted backup (.tcb)</span>
-                          <input
-                            type="file"
-                            name="file"
-                            accept=".tcb"
-                            required
-                          />
-                        </label>
-                        <Input
-                          label="Original backup passphrase"
-                          name="passphrase"
-                          type="password"
-                        />
-                        <label className="check">
-                          <input
-                            type="checkbox"
-                            checked={override}
-                            onChange={(e) => setOverride(e.target.checked)}
-                          />{" "}
-                          Override the first administrator’s credentials
-                        </label>
-                        {override && (
-                          <>
-                            <p className="hint">
-                              The administrator’s identity ID stays the same.
-                              Other restored accounts are preserved.
-                            </p>
-                            <AccountFields />
-                          </>
-                        )}
-                      </>
-                    )}
-                    <button className="primary wide">
-                      {busy
-                        ? "Working…"
-                        : mode === "create"
-                          ? "Create your companion →"
-                          : "Restore your companion →"}
-                    </button>
-                  </form>
-                  <p className="hint">
-                    Find the setup token in your container environment. Keep
-                    your backup passphrase somewhere separate from this server.
-                  </p>
-                </>
-              )}
+              <form
+                onSubmit={(e) => {
+                  const data = fields(e);
+                  void work(async () => {
+                    const u = await api<User>("/api/login", data);
+                    const next = new URLSearchParams(location.search).get(
+                      "next",
+                    );
+                    if (next?.startsWith("/oauth/authorize?"))
+                      location.assign(next);
+                    else setUser(u);
+                  });
+                }}
+              >
+                <Input
+                  label="Email address"
+                  name="email"
+                  type="email"
+                  autoComplete="username"
+                />
+                <Input
+                  label="Password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                />
+                <button className="primary wide">
+                  {busy ? "Signing in…" : "Sign in →"}
+                </button>
+              </form>
             </fieldset>
           </div>
         </main>
@@ -894,6 +776,109 @@ function App() {
             )}
             {(view === "Settings" || !user.admin) && (
               <div className="two-cols">
+                {user.admin && overview && (
+                  <Card title="Backup settings">
+                    <form
+                      key={JSON.stringify(overview.settings)}
+                      onSubmit={(e) => {
+                        const data = fields(e);
+                        void work(async () => {
+                          await api("/api/settings", {
+                            retention: {
+                              recovery_keep_last: Number(
+                                data.recovery_keep_last,
+                              ),
+                              snapshot_keep_last: Number(
+                                data.snapshot_keep_last,
+                              ),
+                            },
+                            schedule: {
+                              enabled: data.enabled === "on",
+                              interval_seconds: Number(data.interval_seconds),
+                              destination: data.destination,
+                            },
+                          });
+                          await refresh();
+                          setNotice("Backup settings saved and applied.");
+                        });
+                      }}
+                    >
+                      <Input
+                        label="Recovery files to keep per destination"
+                        name="recovery_keep_last"
+                        type="number"
+                        min={0}
+                        max={1000000}
+                        step={1}
+                        defaultValue={
+                          overview.settings.retention.recovery_keep_last
+                        }
+                      />
+                      <Input
+                        label="Omni snapshots to keep per cluster"
+                        name="snapshot_keep_last"
+                        type="number"
+                        min={0}
+                        max={1000000}
+                        step={1}
+                        defaultValue={
+                          overview.settings.retention.snapshot_keep_last
+                        }
+                      />
+                      <p className="hint">
+                        Use 0 to keep everything. Retention applies after the
+                        next successful backup.
+                      </p>
+                      <label className="check">
+                        <input
+                          name="enabled"
+                          type="checkbox"
+                          defaultChecked={overview.settings.schedule.enabled}
+                        />
+                        Enable scheduled backups
+                      </label>
+                      <Input
+                        label="Backup interval (seconds)"
+                        name="interval_seconds"
+                        type="number"
+                        min={60}
+                        max={31536000}
+                        step={1}
+                        defaultValue={
+                          overview.settings.schedule.interval_seconds
+                        }
+                      />
+                      <p className="hint">
+                        3600 = hourly · 86400 = daily. Saving resets the
+                        schedule timer.
+                      </p>
+                      <label className="field">
+                        <span>Scheduled destination</span>
+                        <select
+                          name="destination"
+                          defaultValue={overview.settings.schedule.destination}
+                        >
+                          <option value="local">Local storage</option>
+                          <option value="mounted" disabled={!overview.mounted}>
+                            Mounted NFS / SMB
+                          </option>
+                          <option
+                            value="drive"
+                            disabled={!overview.drive.connected}
+                          >
+                            Google Drive
+                          </option>
+                        </select>
+                      </label>
+                      <button className="primary">Save backup settings</button>
+                    </form>
+                    <p className="hint">
+                      Saved in /data/config.json and included in recovery
+                      backups. Changes apply immediately. An active backup
+                      finishes with its original settings.
+                    </p>
+                  </Card>
+                )}
                 <Card title="Change your password">
                   <form
                     onSubmit={(e) => {

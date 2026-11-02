@@ -71,6 +71,23 @@ CI uses mise for the same checks and verifies the built image has exactly one la
 
 ## Configuration
 
+First launch opens a guided installation wizard: choose a fresh installation or recovery, verify the setup token, enter administrator or recovery details, choose an initial backup routine, and review before applying. The final checklist explains Omni integration, external destinations, and the first recovery file. Recovery can replace the first administrator’s credentials while preserving identity and other accounts. Setup-token validation reveals deployment details only to someone holding that token.
+
+Environment variables are startup values supplied by Docker. Only deployment paths, network addresses, and startup secrets use them. Administrators manage retention and scheduled backups in **Settings → Backup settings**, without restarting the container. Defaults are seven recovery files per destination, 30 Omni snapshots per cluster, and a daily local backup. Set a retention count to zero to keep everything; scheduling can be disabled.
+
+The UI atomically saves settings in `/data/config.json`. To edit the file manually, stop the container, edit it, and restart. Invalid configuration prevents startup instead of silently replacing your choices. Supported fields:
+
+```json
+{
+  "retention": { "recovery_keep_last": 7, "snapshot_keep_last": 30 },
+  "schedule": { "enabled": true, "interval_seconds": 86400, "destination": "local" }
+}
+```
+
+Intervals range from 60 seconds to one year; destinations are `local`, `mounted`, or `drive`. Saving resets the schedule timer. An active backup finishes using the settings it started with. Recovery files include this configuration and restore it with your accounts. Deployment paths and startup secrets still come from the replacement container.
+
+Local and mounted retention runs after a successful write. Drive retention runs after a successful upload and moves expired application-tagged recovery files in its configured folder to Trash. Remote failures preserve the new local recovery file and appear in the UI/logs. Use dedicated destination directories/folders for this instance.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PUBLIC_URL` | `http://localhost:8080` | Exact browser origin and OIDC issuer; use HTTPS in deployment. |
@@ -81,10 +98,6 @@ CI uses mise for the same checks and verifies the built image has exactly one la
 | `LISTEN_ADDR` | `0.0.0.0:8080` | Web/API listener. |
 | `S3_LISTEN_ADDR` | `0.0.0.0:9000` | Authenticated S3 listener, starts after setup. |
 | `MOUNTED_BACKUP_DIR` | unset | Existing directory for NFS/SMB/local copies. |
-| `BACKUP_INTERVAL_SECONDS` | `86400` | Schedule interval; minimum 60 seconds. |
-| `SCHEDULE_DESTINATION` | `local` | `local`, `mounted`, or `drive`. |
-| `BACKUP_KEEP_LAST` | `7` | Newest recovery files to retain per local/mounted/Drive destination; `0` disables pruning. |
-| `OMNI_SNAPSHOT_KEEP_LAST` | `30` | Newest received Omni snapshots to retain per cluster; `0` disables pruning. |
 
 ## Recovery and limits
 
@@ -95,8 +108,6 @@ There is **no fixed recovery-file size cap**. Archive creation, encryption, brow
 Creation writes an encrypted temporary file in `/data/backups`, completes encryption, syncs the file, and atomically publishes it. Failure does not publish a partial recovery file. Restore spools the encrypted upload to a private temporary file, then decrypts/extracts into a private staging directory. The stream is consumed through its final authentication tag before any state is replaced. Allow space for the encrypted upload **and** extracted data during restore, and configure your reverse proxy to allow large uploads and long-running requests.
 
 Retention runs on backup creation, including scheduled backups. New archives include only the newest configured Omni snapshots per cluster. Expired source snapshots are removed **only after** the new local recovery file is fully committed. Only Omni's recognized `<cluster-UUID>/<16-hex-reverse-timestamp>.snapshot` objects and their exact `s3s-fs` sidecars are pruned; unrelated objects, credential files, and multipart staging files are preserved. The receiver pauses S3 operations while archiving and pruning, so configure Omni/proxy timeouts for large snapshots.
-
-Local and mounted destinations retain the newest `BACKUP_KEEP_LAST` complete recovery files after a successful write. Google Drive retention runs after successful upload, only for files tagged by this application in the configured folder; expired files are moved to Google Trash. Remote failures leave the newest local recovery file available and are reported in the UI/logs. Retention failures are also reported. Counts are per destination, not per day; set either variable to `0` to retain everything under that policy. Use a dedicated destination directory/folder for this companion instance.
 
 Restore is permitted only on an uninitialized instance. The archive is decrypted and validated incrementally in staging before replacement. Absolute paths, traversal, links, special files, duplicate paths, unsupported versions, malformed identity state, oversized metadata fields, and archives with over one million entries are rejected. Archive byte size is not limited. Sessions and pending authorization codes live only in memory and are never backed up. New `PUBLIC_URL`, setup token, and backup passphrase values come from the replacement container environment.
 
