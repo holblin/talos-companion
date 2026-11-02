@@ -65,6 +65,13 @@ export async function request(
   { body, cookie, method, setup, origin } = {},
 ) {
   const form = body instanceof FormData;
+  if (
+    form &&
+    path === "/api/restore" &&
+    !body.has("backup_passphrase_confirmation")
+  ) {
+    body.append("backup_passphrase_confirmation", passphrase);
+  }
   const res = await fetch(`http://127.0.0.1:${port}${path}`, {
     method: method ?? (body ? "POST" : "GET"),
     redirect: "manual",

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { InputHTMLAttributes } from "react";
 import { api } from "./api";
+import RecoveryPassphrase from "./RecoveryPassphrase";
 
 type Settings = {
   retention: { recovery_keep_last: number; snapshot_keep_last: number };
   schedule: { enabled: boolean; interval_seconds: number; destination: string };
 };
 type Deployment = {
+  backup_passphrase: string;
   public_url: string;
   mounted: string | null;
   settings: Settings;
@@ -38,6 +40,7 @@ export default function SetupWizard({
   const [passphrase, setPassphrase] = useState("");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [savedPassphrase, setSavedPassphrase] = useState(false);
+  const [recoveryConfirmation, setRecoveryConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
@@ -63,6 +66,8 @@ export default function SetupWizard({
         });
         setDeployment(result);
         setSettings(result.settings);
+        setSavedPassphrase(false);
+        setRecoveryConfirmation("");
       }
       if (step === 2) {
         if (mode === "restore" && !file)
@@ -78,16 +83,38 @@ export default function SetupWizard({
           );
       }
       if (reviewing) {
+        if (
+          !savedPassphrase ||
+          !deployment ||
+          recoveryConfirmation !== deployment.backup_passphrase
+        ) {
+          throw new Error(
+            "Save your backup passphrase and re-enter it to confirm. Uncheck the box to see the original again.",
+          );
+        }
         if (mode === "create") {
-          await api("/api/setup", { ...account, settings }, "POST", {
-            "x-setup-token": token,
-          });
+          await api(
+            "/api/setup",
+            {
+              ...account,
+              settings,
+              backup_passphrase_confirmation: recoveryConfirmation,
+            },
+            "POST",
+            {
+              "x-setup-token": token,
+            },
+          );
         } else {
           if (!file)
             throw new Error("Choose a recovery file before restoring.");
           const payload = new FormData();
           payload.append("file", file);
           payload.append("passphrase", passphrase);
+          payload.append(
+            "backup_passphrase_confirmation",
+            recoveryConfirmation,
+          );
           if (override) payload.append("account", JSON.stringify(account));
           await api("/api/restore", payload, "POST", {
             "x-setup-token": token,
@@ -98,6 +125,8 @@ export default function SetupWizard({
         setAccount({ ...account, password: "" });
         setConfirmation("");
         setFile(null);
+        setDeployment(null);
+        setRecoveryConfirmation("");
       }
       setStep(step + 1);
     } catch (e) {
@@ -289,7 +318,9 @@ export default function SetupWizard({
                 />
                 <p className="hint">
                   Find SETUP_TOKEN in your Unraid container settings or Docker
-                  .env file. It was supplied when this container was started.
+                  .env file. If no override was supplied, find the generated
+                  token in the container's first-start logs or its private
+                  /data/setup-token file.
                 </p>
                 <div className="wizard-note">
                   <strong>Before continuing</strong>
@@ -514,7 +545,8 @@ export default function SetupWizard({
                   {mode === "create"
                     ? "creating your installation"
                     : "restoring your companion"}
-                  . Passwords and passphrases are hidden.
+                  . Save and verify the recovery details below before
+                  continuing.
                 </p>
                 <dl className="wizard-review">
                   <dt>Public address / OIDC issuer</dt>
@@ -558,18 +590,17 @@ export default function SetupWizard({
                     and update PUBLIC_URL before connecting Omni.
                   </p>
                 )}
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    required
-                    checked={savedPassphrase}
-                    onChange={(e) => {
-                      setSavedPassphrase(e.target.checked);
-                    }}
+                {deployment && (
+                  <RecoveryPassphrase
+                    passphrase={deployment.backup_passphrase}
+                    issuer={deployment.public_url}
+                    setupToken={token}
+                    saved={savedPassphrase}
+                    confirmation={recoveryConfirmation}
+                    onSaved={setSavedPassphrase}
+                    onConfirmation={setRecoveryConfirmation}
                   />
-                  I have stored the backup passphrase somewhere safe outside
-                  this server.
-                </label>
+                )}
                 <p className="hint">
                   {mode === "restore"
                     ? "Recovered identities and integration credentials are preserved. Recheck external destinations on this replacement server after sign-in."

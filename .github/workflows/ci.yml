@@ -46,6 +46,21 @@ jobs:
           curl -fsS http://localhost:8080/ | grep 'Talos Companion'
           docker exec companion /talos-companion --healthcheck
           docker rm -f companion
+      - name: Verify automatic private startup secrets
+        run: |
+          mkdir -p /tmp/companion-auto
+          sudo chown 99:100 /tmp/companion-auto
+          sudo chmod 700 /tmp/companion-auto
+          docker run -d --name companion-auto -p 8080:8080 \
+            -v /tmp/companion-auto:/data --read-only --cap-drop ALL \
+            -e PUBLIC_URL=http://localhost:8080 talos-companion:ci
+          for i in $(seq 1 30); do curl -fsS http://localhost:8080/healthz && break || sleep 1; done
+          docker exec companion-auto /talos-companion --healthcheck
+          for name in setup-token backup-passphrase; do
+            sudo test -s "/tmp/companion-auto/$name"
+            test "$(sudo stat -c '%a:%u:%g' "/tmp/companion-auto/$name")" = '600:99:100'
+          done
+          docker rm -f companion-auto
       - name: Package the verified image for the private release workflow
         if: github.event_name == 'workflow_dispatch'
         run: gzip -c /tmp/companion-image.tar > /tmp/companion-image.tar.gz

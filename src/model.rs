@@ -51,6 +51,33 @@ pub fn secret() -> String {
     OsRng.fill_bytes(&mut b);
     hex::encode(b)
 }
+fn stored_secret(
+    data: &std::path::Path,
+    filename: &str,
+    initialized: bool,
+) -> anyhow::Result<(String, bool)> {
+    let path = data.join(filename);
+    match std::fs::read_to_string(&path) {
+        Ok(value) => Ok((value, false)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && !initialized => {
+            use std::io::Write;
+            let value = secret();
+            let mut tmp = tempfile::NamedTempFile::new_in(data)?;
+            tmp.write_all(value.as_bytes())?;
+            tmp.as_file().sync_all()?;
+            match tmp.persist_noclobber(&path) {
+                Ok(_) => Ok((value, true)),
+                Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    Ok((std::fs::read_to_string(path)?, false))
+                }
+                Err(e) => Err(e.into()),
+            }
+        }
+        Err(e) => Err(anyhow::anyhow!(
+            "Cannot load {filename}: {e}. Supply the original startup secret or restore its private file; initialized instances never generate a replacement silently."
+        )),
+    }
+}
 pub fn hash_password(password: &str) -> Result<String> {
     if password.len() < 12 || password.len() > 256 {
         return Err(bad("Passwords must contain 12–256 characters"));
@@ -59,6 +86,33 @@ pub fn hash_password(password: &str) -> Result<String> {
         .hash_password(password.as_bytes(), &SaltString::generate(&mut OsRng))
         .map(|p| p.to_string())
         .map_err(|_| bad("Unable to hash password"))
+}
+#[cfg(test)]
+mod secret_tests {
+    use super::*;
+    #[test]
+    fn generated_secrets_are_persistent_private_and_never_replaced_silently() {
+        let dir = tempfile::tempdir().unwrap();
+        let (original, generated) = stored_secret(dir.path(), "backup-passphrase", false).unwrap();
+        assert!(generated);
+        assert_eq!(original.len(), 64);
+        let (reloaded, generated) = stored_secret(dir.path(), "backup-passphrase", true).unwrap();
+        assert!(!generated);
+        assert_eq!(original, reloaded);
+        assert!(stored_secret(dir.path(), "missing", true).is_err());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(dir.path().join("backup-passphrase"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+    }
 }
 pub fn verify_password(password: &str, hash: &str) -> bool {
     PasswordHash::new(hash).is_ok_and(|h| {
@@ -150,16 +204,32 @@ impl App {
                 && url.username().is_empty(),
             "PUBLIC_URL must be an HTTP(S) origin"
         );
-        let setup_token = std::env::var("SETUP_TOKEN").unwrap_or_default();
+        let (setup_token, generated_setup) =
+            match std::env::var("SETUP_TOKEN").ok().filter(|v| !v.is_empty()) {
+                Some(value) => (value, false),
+                None => stored_secret(&data, "setup-token", store.is_some())?,
+            };
         anyhow::ensure!(
             setup_token.len() >= 24,
             "Set SETUP_TOKEN to a random value with at least 24 characters"
         );
-        let backup_passphrase = std::env::var("BACKUP_PASSPHRASE").unwrap_or_default();
+        let (backup_passphrase, _) = match std::env::var("BACKUP_PASSPHRASE")
+            .ok()
+            .filter(|v| !v.is_empty())
+        {
+            Some(value) => (value, false),
+            None => stored_secret(&data, "backup-passphrase", store.is_some())?,
+        };
         anyhow::ensure!(
             backup_passphrase.len() >= 16,
             "Set BACKUP_PASSPHRASE to at least 16 characters; keep it separately for recovery"
         );
+        if generated_setup {
+            tracing::info!("First-launch setup token (keep private): {setup_token}");
+            tracing::info!(
+                "Backup passphrase generated and stored privately; save it from the setup wizard before creating backups"
+            );
+        }
         Ok(Self {
             store: Arc::new(RwLock::new(store)),
             memory: Arc::new(Mutex::new(Memory {

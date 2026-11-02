@@ -32,6 +32,7 @@ test(
         name: "Large backup admin",
         email: "admin@example.com",
         password: "a very secure password",
+        backup_passphrase_confirmation: passphrase,
       };
       assert.equal(
         (await request(18500, "/api/setup", { setup: true, body: account }))

@@ -7,6 +7,7 @@ mod drive;
 mod model;
 mod oidc;
 mod receiver;
+mod recovery;
 mod retention;
 mod settings;
 mod vault;
@@ -49,6 +50,8 @@ fn router(app: App) -> Router {
         .route("/api/status", get(auth::status))
         .route("/api/setup", post(auth::setup))
         .route("/api/setup/check", post(auth::setup_check))
+        .route("/api/setup/recovery-key", post(recovery::download))
+        .route("/api/setup/github-keys", post(recovery::github))
         .route(
             "/api/restore",
             post(backup::restore).layer(DefaultBodyLimit::disable()),

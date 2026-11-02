@@ -96,8 +96,10 @@ Version and ``sha-<commit>`` tags are available for published versions.
    Then open Docker > Add Container and choose talos-companion.
 3. Set PUBLIC_URL to the exact address you will use, including scheme and port.
    Use HTTPS at your reverse proxy for deployment beyond a trusted local network.
-4. Set SETUP_TOKEN to 24+ random characters and BACKUP_PASSPHRASE to a separate
-   16+ character secret. Keep the backup passphrase outside this server.
+4. Leave secret overrides empty to generate private persistent secrets automatically,
+   or supply your own SETUP_TOKEN (24+ characters) and BACKUP_PASSPHRASE (16+ characters).
+   Find the generated setup token in first-start container logs. At Review, save the shown
+   backup passphrase outside this server, check the saved box, and re-enter it to confirm.
 5. Start the container and open its WebUI. The wizard guides account creation or restore,
    backup scheduling, retention, and connection preparation. All backup settings can
    be updated later in Settings and persist in ``/data/config.json``.
@@ -107,6 +109,9 @@ Version and ``sha-<commit>`` tags are available for published versions.
 
 The setup token, account password, and backup passphrase are different secrets.
 The web listener is port 8080; the S3 receiver starts after initialization on port 9000.
+The wizard can also encrypt a recovery copy of the passphrase to age or SSH public keys,
+including supported keys imported from GitHub. Keep the matching private key yourself.
+Decrypt the note locally with age, then use its recovered passphrase with the .tcb backup.
 
 ## Optional NFS / SMB destination
 

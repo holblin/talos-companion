@@ -23,7 +23,7 @@ chown 99:100 /mnt/user/appdata/talos-companion
 chmod 700 /mnt/user/appdata/talos-companion
 ```
 
-Set a stable `PUBLIC_URL`, a random `SETUP_TOKEN` (24+ characters), and a separate `BACKUP_PASSPHRASE` (16+ characters). Store the passphrase outside Unraid. Real `.env` files, keys, and recovery archives must not be committed to Git.
+Set a stable `PUBLIC_URL`. Leave `SETUP_TOKEN` and `BACKUP_PASSPHRASE` empty to generate persistent private secrets, or provide explicit overrides of 24+ and 16+ characters respectively. Find the generated setup token in first-start container logs or the private appdata `setup-token` file. At Review, save the shown backup passphrase outside Unraid and re-enter it after checking the saved box. The `backup-passphrase` file is also private persistent appdata. Real `.env` files, generated secrets, keys, and recovery archives must not be committed to Git.
 
 ## NFS and SMB
 

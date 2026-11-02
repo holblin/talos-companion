@@ -160,7 +160,8 @@ body {
 }
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 button,
@@ -690,12 +691,30 @@ select {
   font-size: 12px;
 }
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   border-color: #bdd498;
   outline: 2px solid #97ae6422;
 }
 input[type="file"] {
   font-size: 11px;
+}
+.recovery-passphrase details {
+  margin: 20px 0;
+}
+.recovery-passphrase summary {
+  cursor: pointer;
+  color: #d4e9b6;
+}
+.recovery-passphrase textarea {
+  width: 100%;
+  color: #e7ece7;
+  background: #111714;
+  border: 1px solid #3a473c;
+  border-radius: 6px;
+  padding: 12px;
+  font: inherit;
+  resize: vertical;
 }
 .check {
   display: flex;

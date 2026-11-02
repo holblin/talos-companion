@@ -24,7 +24,7 @@ The image is available on [Docker Hub](https://hub.docker.com/r/holblin/talos-co
 To build from this private source repository instead:
 
 1. Clone this private repository onto your build host.
-2. Copy `.env.example` to `.env`, set your public URL, and replace both secret placeholders with independent random values. Save the backup passphrase separately from this server.
+2. Copy `.env.example` to `.env` and set your public URL. Leave the secret overrides empty to generate private persistent secrets automatically, or supply your own independent random values.
 3. Pre-create the data and destination directories with ownership matching `PUID:PGID` (default `99:100`). For a local trial on Linux:
 
    ```sh
@@ -34,7 +34,7 @@ To build from this private source repository instead:
    ```
 
 4. Run `docker compose up -d --build` (or `mise run up`).
-5. Open the configured public URL. Enter the setup token, then create an administrator or restore a `.tcb` file.
+5. Open the configured public URL. Find the generated setup token in first-start container logs (or `/data/setup-token`), then create an administrator or restore a `.tcb` file. At Review, save the backup passphrase outside the server, check the saved box, and re-enter it to confirm. Uncheck to reveal it again if needed.
 
 The image runs as an unprivileged numeric user with a read-only root filesystem. `/data` must be writable. The container needs no shell, Node, rclone, dynamically linked libraries, or CA files; the Rust HTTPS client includes public trust roots.
 
@@ -54,7 +54,7 @@ mise run web:install
 
 Tool versions live in `mise.toml`; download metadata lives in `mise.lock`. Rust and npm dependencies have their own committed lockfiles. The frontend pins React 19.3.1, Vite 8.3.5, and TypeScript 6.0.3; TypeScript stays within the version range supported by the strict type-aware lint tooling.
 
-Set `SETUP_TOKEN` (24+ characters) and `BACKUP_PASSPHRASE` (16+ characters) in your shell. The server deliberately refuses to start without them. `.env` is used by Docker Compose; it is not automatically read by the Rust executable.
+Optionally set `SETUP_TOKEN` (24+ characters) and `BACKUP_PASSPHRASE` (16+ characters) in your shell. Otherwise a fresh installation generates private persistent `/data/setup-token` and `/data/backup-passphrase` files with mode `0600`; the setup token appears in the first-start logs. The backup passphrase is shown only in the token-protected setup wizard. An initialized installation never silently replaces missing secret files. `.env` is used by Docker Compose; it is not automatically read by the Rust executable.
 
 ```sh
 # Terminal 1: backend. This task sets PUBLIC_URL=http://localhost:5173.
@@ -105,8 +105,8 @@ Local and mounted retention runs after a successful write. Drive retention runs 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PUBLIC_URL` | `http://localhost:8080` | Exact browser origin and OIDC issuer; use HTTPS in deployment. |
-| `SETUP_TOKEN` | required | Protects first-time setup and restore. Minimum 24 characters. |
-| `BACKUP_PASSPHRASE` | required | Encrypts newly created backups. Minimum 16 characters. Keep it offline. |
+| `SETUP_TOKEN` | generated on fresh installation | Optional override protecting setup and restore. Minimum 24 characters; otherwise persisted privately in `/data/setup-token`. |
+| `BACKUP_PASSPHRASE` | generated on fresh installation | Optional override encrypting new backups. Minimum 16 characters; otherwise persisted privately in `/data/backup-passphrase`. Save a separate recovery copy. |
 | `DATA_DIR` | `data` (`/data` in Docker) | State, S3 receiver files, and recovery files. |
 | `WEB_DIR` | `web/dist` (`/web` in Docker) | Compiled frontend. |
 | `LISTEN_ADDR` | `0.0.0.0:8080` | Web/API listener. |
@@ -114,6 +114,10 @@ Local and mounted retention runs after a successful write. Drive retention runs 
 | `MOUNTED_BACKUP_DIR` | unset | Existing directory for NFS/SMB/local copies. |
 
 ## Recovery and limits
+
+The wizard Review step reveals the current backup passphrase so you can copy it or download a plain-text recovery note. Checking the saved box hides it and requires a matching re-entry before creation or restore. Both endpoints validate the confirmation on the server. To reveal it again, uncheck the box. During restore this is the replacement server's passphrase for **future** backups; the uploaded backup still needs its original passphrase.
+
+Optionally download an age-encrypted recovery note using one or more native `age1` public keys or `ssh-ed25519`/`ssh-rsa` public keys. You can import supported public SSH keys from an explicitly selected GitHub username, review them, and download the note. The note contains the backup passphrase; the `.tcb` backup format and passphrase-based restore remain unchanged. Private keys never reach the server. Decrypt the note locally with `age -d -i /path/to/private-key talos-companion-recovery.txt.age`, then use the recovered passphrase to restore the backup. Keep a matching private key long-term, even if it is removed from GitHub. Hardware-backed SSH keys are unsupported. The note and the actual backup must both be retained.
 
 Recovery files use the **version 2** binary envelope (`TCBACKUP` followed by byte `2`) and a standard passphrase-encrypted [age](https://age-encryption.org/v1) stream containing a tar archive. Each file gets independent encryption material. The scrypt work factor is fixed at `log_n=16` (about 64 MiB of KDF memory); restore rejects higher work factors. Payload encryption authenticates bounded 64 KiB chunks. The previous version 1 format is deliberately unsupported: recreate any old recovery files before using this version.
 

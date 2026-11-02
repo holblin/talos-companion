@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createHash, createPublicKey, verify } from "node:crypto";
+import {
+  createHash,
+  createPublicKey,
+  verify,
+  generateKeyPairSync,
+} from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { server, stop, request, login, s3, passphrase } from "./helpers.mjs";
 
@@ -22,6 +27,7 @@ test(
         name: "Homelab Admin",
         email: "admin@example.com",
         password: "a very secure password",
+        backup_passphrase_confirmation: passphrase,
       };
       assert.equal(
         (await request(a, "/api/setup", { body: account })).status,
@@ -46,6 +52,74 @@ test(
       ).json();
       assert.equal(deployment.public_url, `http://127.0.0.1:${a}`);
       assert.equal(deployment.settings.retention.recovery_keep_last, 7);
+      assert.equal(deployment.backup_passphrase, passphrase);
+      assert.equal(
+        (
+          await request(a, "/api/setup", {
+            setup: true,
+            body: {
+              ...account,
+              backup_passphrase_confirmation: "wrong saved value",
+            },
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await request(a, "/api/setup", {
+            setup: true,
+            body: { ...account, backup_passphrase_confirmation: undefined },
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await request(a, "/api/setup/recovery-key", {
+            body: { recipients: "AGE-SECRET-KEY-do-not-upload" },
+          })
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await request(a, "/api/setup/recovery-key", {
+            setup: true,
+            body: { recipients: "AGE-SECRET-KEY-do-not-upload" },
+          })
+        ).status,
+        400,
+      );
+      const generatedKey = generateKeyPairSync("ed25519")
+        .publicKey.export({ type: "spki", format: "der" })
+        .subarray(-32);
+      const keyType = Buffer.from("ssh-ed25519");
+      const wireLength = (value) => {
+        const bytes = Buffer.alloc(4);
+        bytes.writeUInt32BE(value);
+        return bytes;
+      };
+      const publicRecipient = `ssh-ed25519 ${Buffer.concat([wireLength(keyType.length), keyType, wireLength(generatedKey.length), generatedKey]).toString("base64")}`;
+      const protectedNote = await request(a, "/api/setup/recovery-key", {
+        setup: true,
+        body: { recipients: publicRecipient },
+      });
+      assert.equal(protectedNote.status, 200);
+      const note = await protectedNote.json();
+      assert.ok(
+        note.encrypted_file.startsWith("-----BEGIN AGE ENCRYPTED FILE-----"),
+      );
+      assert.ok(!note.encrypted_file.includes(passphrase));
+      assert.equal(
+        (
+          await request(a, "/api/setup/github-keys", {
+            setup: true,
+            body: { username: "https://evil.example/keys" },
+          })
+        ).status,
+        400,
+      );
       const initialSettings = {
         retention: { recovery_keep_last: 9, snapshot_keep_last: 12 },
         schedule: {
@@ -87,6 +161,20 @@ test(
         400,
       );
       let cookie = await login(a);
+      assert.equal(
+        (await request(a, "/api/setup/check", { body: {}, setup: true }))
+          .status,
+        400,
+      );
+      assert.equal(
+        (
+          await request(a, "/api/setup/recovery-key", {
+            setup: true,
+            body: { recipients: publicRecipient },
+          })
+        ).status,
+        400,
+      );
       const initial = await (await request(a, "/api/me", { cookie })).json();
       assert.equal(
         (
@@ -492,6 +580,22 @@ test(
         return request(b, "/api/restore", { setup: true, body: form });
       };
       assert.equal((await restore("wrong passphrase")).status, 400);
+      const wrongConfirmation = new FormData();
+      wrongConfirmation.append("file", new Blob([bytes]), name);
+      wrongConfirmation.append("passphrase", passphrase);
+      wrongConfirmation.append(
+        "backup_passphrase_confirmation",
+        "not-the-saved-passphrase",
+      );
+      assert.equal(
+        (
+          await request(b, "/api/restore", {
+            setup: true,
+            body: wrongConfirmation,
+          })
+        ).status,
+        400,
+      );
       assert.equal(
         (await (await request(b, "/api/status")).json()).initialized,
         false,

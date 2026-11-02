@@ -332,6 +332,7 @@ pub async fn restore(
         .map_err(|_| bad("Another backup or restore is already running"))?;
     let mut file = None;
     let mut pass = None;
+    let mut confirmation = None;
     let mut override_account = None;
     while let Some(mut field) = multipart
         .next_field()
@@ -362,6 +363,12 @@ pub async fn restore(
                 drop(output);
                 file = Some(tmp);
             }
+            "backup_passphrase_confirmation" => {
+                if confirmation.is_some() {
+                    return Err(bad("Duplicate backup passphrase confirmation"));
+                }
+                confirmation = Some(text_field(field).await?);
+            }
             "passphrase" => {
                 if pass.is_some() {
                     return Err(bad("Duplicate passphrase"));
@@ -381,6 +388,7 @@ pub async fn restore(
         }
     }
     let upload = file.ok_or_else(|| bad("Choose a backup file"))?;
+    crate::recovery::confirm(&app, confirmation.as_deref())?;
     let pass = pass.ok_or_else(|| bad("Provide the original backup passphrase"))?;
     let data = app.data.clone();
     let (temp, mut s, _serial) = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {

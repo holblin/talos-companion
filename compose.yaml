@@ -10,8 +10,8 @@ services:
       - "${S3_PORT:-9000}:9000"
     environment:
       PUBLIC_URL: "${PUBLIC_URL:?Set PUBLIC_URL in .env}"
-      SETUP_TOKEN: "${SETUP_TOKEN:?Set SETUP_TOKEN in .env}"
-      BACKUP_PASSPHRASE: "${BACKUP_PASSPHRASE:?Set BACKUP_PASSPHRASE in .env}"
+      SETUP_TOKEN: "${SETUP_TOKEN:-}"
+      BACKUP_PASSPHRASE: "${BACKUP_PASSPHRASE:-}"
       MOUNTED_BACKUP_DIR: /destinations/network
       RUST_LOG: talos_companion=info
     volumes:

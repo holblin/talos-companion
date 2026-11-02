@@ -111,6 +111,7 @@ pub struct Setup {
     #[serde(flatten)]
     pub account: Account,
     pub settings: Option<crate::settings::Settings>,
+    pub backup_passphrase_confirmation: Option<String>,
 }
 pub async fn setup_check(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     setup_auth(&app, &headers)?;
@@ -118,7 +119,7 @@ pub async fn setup_check(State(app): State<App>, headers: HeaderMap) -> Result<J
         return Err(bad("Already initialized"));
     }
     Ok(Json(
-        json!({"public_url":app.public_url,"mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"settings":app.settings.borrow().clone()}),
+        json!({"public_url":app.public_url,"mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"settings":app.settings.borrow().clone(),"backup_passphrase":app.backup_passphrase}),
     ))
 }
 pub async fn setup(
@@ -132,6 +133,7 @@ pub async fn setup(
     if guard.is_some() {
         return Err(bad("Already initialized"));
     }
+    crate::recovery::confirm(&app, input.backup_passphrase_confirmation.as_deref())?;
     let mut account = input.account;
     account.admin = true;
     let u = make_user(account)?;
