@@ -13,7 +13,7 @@ A small, self-hosted Rust + React application for Talos Omni identity and recove
 - Receiver: authenticated S3 API, including multipart uploads, backed by the Rust `s3s`/`s3s-fs` libraries. Omni’s bucket is created automatically.
 - Recovery: encrypted snapshots include accounts, password hashes, signing keys, client credentials, Google tokens, uploaded Omni recovery material, and all received S3 data and metadata.
 - Destinations: persistent local storage, authenticated browser download, Google Drive, and host-mounted NFS/SMB shares. Every remote transfer retains a local copy.
-- Scheduling: daily by default, configurable with environment variables.
+- Scheduling: daily by default, configurable in the administrator UI and persisted configuration file.
 
 This is an initial implementation. The S3 backend uses the upstream experimental filesystem provider. Automated tests exercise signed S3 requests and multipart uploads; validate against your own Omni deployment before depending on it for recovery. Upload Omni encryption keys/configuration through the recovery-material vault to include them in snapshots. Companion does not automatically snapshot Omni’s own database or collect its encryption keys. See [Omni setup and recovery](docs/omni.md).
 
@@ -36,6 +36,8 @@ The image runs as an unprivileged numeric user with a read-only root filesystem.
 
 See [Unraid instructions](docs/unraid.md), [Omni configuration](docs/omni.md), and [Google Drive setup](docs/google-drive.md).
 
+See [Docker Hub publishing and Unraid template preparation](docs/publishing.md) for the private release workflow, registry-only Compose file, and template-only bundle. Registry upload is opt-in; template files have not been made public or submitted to Community Apps.
+
 ## Development with mise
 
 Install [mise](https://mise.jdx.dev/), then:
@@ -46,7 +48,7 @@ mise install
 mise run web:install
 ```
 
-Tool versions live in `mise.toml`; download metadata lives in `mise.lock`. Rust and npm dependencies have their own committed lockfiles. The frontend pins React 19.3.1, Vite 8.3.5, and TypeScript 7.0.2, the stable registry versions checked when this project was created.
+Tool versions live in `mise.toml`; download metadata lives in `mise.lock`. Rust and npm dependencies have their own committed lockfiles. The frontend pins React 19.3.1, Vite 8.3.5, and TypeScript 6.0.3; TypeScript stays within the version range supported by the strict type-aware lint tooling.
 
 Set `SETUP_TOKEN` (24+ characters) and `BACKUP_PASSPHRASE` (16+ characters) in your shell. The server deliberately refuses to start without them. `.env` is used by Docker Compose; it is not automatically read by the Rust executable.
 

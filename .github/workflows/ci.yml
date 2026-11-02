@@ -2,9 +2,17 @@ name: Verify
 on:
   push:
   pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
+  unraid-template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Generate and validate template-only repository contents
+        shell: pwsh
+        run: ./scripts/prepare-unraid.ps1 -DockerHubNamespace holblin -TemplateRepository holblin/talos-companion-unraid -OutputDirectory dist/community-apps
   application:
     runs-on: ubuntu-latest
     steps:
@@ -38,3 +46,13 @@ jobs:
           curl -fsS http://localhost:8080/ | grep 'Talos Companion'
           docker exec companion /talos-companion --healthcheck
           docker rm -f companion
+      - name: Package the verified image for the private release workflow
+        if: github.event_name == 'workflow_dispatch'
+        run: gzip -c /tmp/companion-image.tar > /tmp/companion-image.tar.gz
+      - uses: actions/upload-artifact@v7.0.2
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: verified-linux-amd64-image
+          path: /tmp/companion-image.tar.gz
+          retention-days: 1
+          compression-level: 0

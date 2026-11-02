@@ -2,6 +2,8 @@
 
 Unraid uses Linux amd64, which is the image’s build target. Build the image with Docker Compose on Unraid, or build on another Linux amd64 Docker host and transfer it with `docker save` / `docker load`. No container image has been published to a registry by this project.
 
+The repository now includes a private build/publish workflow and a template-only bundle generator. See [publishing instructions](publishing.md) for Docker Hub credentials, registry-only Compose installation, and the deferred Community Apps submission. Public template distribution is not enabled.
+
 ## Persistent paths and ports
 
 | Container path/port | Unraid mapping |

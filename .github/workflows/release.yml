@@ -1,0 +1,87 @@
+name: Prepare or publish Docker Hub image
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Image version, without v (for example 0.1.0 or 0.1.0-beta.1)
+        required: true
+        default: '0.1.0'
+        type: string
+      publish:
+        description: Push the verified image to the existing Docker Hub repository
+        required: true
+        default: false
+        type: boolean
+permissions:
+  contents: read
+concurrency:
+  group: docker-hub-release
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate release settings
+        env:
+          VERSION: ${{ inputs.version }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          PUBLISH: ${{ inputs.publish }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]] || { echo 'Invalid image version'; exit 1; }
+          [[ "$DOCKERHUB_USERNAME" =~ ^[a-z0-9][a-z0-9_-]{2,29}$ ]] || { echo 'Set the DOCKERHUB_USERNAME repository variable'; exit 1; }
+          if [[ "$PUBLISH" == true && -z "$DOCKERHUB_TOKEN" ]]; then
+            echo 'Add a Docker Hub write token as the DOCKERHUB_TOKEN Actions secret before publishing.'
+            exit 1
+          fi
+  verify:
+    needs: preflight
+    uses: ./.github/workflows/ci.yml
+  template:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prepare template-only repository contents
+        shell: pwsh
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+        run: ./scripts/prepare-unraid.ps1 -DockerHubNamespace $env:DOCKERHUB_USERNAME -TemplateRepository 'holblin/talos-companion-unraid' -OutputDirectory dist/community-apps
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: unraid-template-repository
+          path: dist/community-apps/
+          retention-days: 30
+  publish:
+    if: inputs.publish
+    needs: [verify, template]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: verified-linux-amd64-image
+          path: /tmp/image
+      - name: Load exactly the image that passed verification
+        run: docker load --input /tmp/image/companion-image.tar.gz
+      - name: Sign in to Docker Hub
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+      - name: Publish version and commit tags
+        run: |
+          image="docker.io/$DOCKERHUB_USERNAME/talos-companion"
+          for tag in "$VERSION" "sha-$GITHUB_SHA"; do
+            docker tag talos-companion:ci "$image:$tag"
+            docker push "$image:$tag"
+          done
+          if [[ "$VERSION" != *-* ]]; then
+            docker tag talos-companion:ci "$image:latest"
+            docker push "$image:latest"
+          fi
+          printf 'Published `%s:%s` (Linux amd64, one filesystem layer).\n' "$image" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+      - name: Sign out
+        if: always()
+        run: docker logout

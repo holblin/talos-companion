@@ -1,0 +1,18 @@
+services:
+  companion:
+    image: ${TALOS_COMPANION_IMAGE:-holblin/talos-companion:latest}
+    container_name: talos-companion
+    restart: unless-stopped
+    user: "${PUID:-99}:${PGID:-100}"
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+      - "${S3_PORT:-9000}:9000"
+    environment:
+      PUBLIC_URL: "${PUBLIC_URL:?Set PUBLIC_URL in .env}"
+      SETUP_TOKEN: "${SETUP_TOKEN:?Set SETUP_TOKEN in .env}"
+      BACKUP_PASSPHRASE: "${BACKUP_PASSPHRASE:?Set BACKUP_PASSPHRASE in .env}"
+    volumes:
+      - "${DATA_PATH:-./data}:/data"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]

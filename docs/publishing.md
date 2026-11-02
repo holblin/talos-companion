@@ -1,0 +1,113 @@
+# Docker Hub and Unraid distribution
+
+Application source remains private. Nothing in this setup changes repository visibility,
+publishes the Unraid template repository, or grants an open-source license to the application.
+
+## Current state
+
+- Image destination configured: `holblin/talos-companion`.
+- `.github/workflows/release.yml` can build, test, and package the image without uploading it.
+- Publishing is an explicit manual workflow choice, off by default. Ordinary commits never push images.
+- `scripts/prepare-unraid.ps1` generates a separate template-only repository in `dist/community-apps`.
+- The proposed future public repository is `holblin/talos-companion-unraid`; it has not been created or published.
+- Generated files remain private. Registry upload needs Docker Hub credentials; catalog submission needs your approval and Unraid account.
+
+## One-time Docker Hub setup
+
+1. Sign in to [Docker Hub](https://hub.docker.com/) as `holblin` and create repository
+   `talos-companion`. Choose its visibility explicitly before uploading anything.
+   A private repository works for your own authenticated Unraid server. A future
+   Community Apps listing should use an image users can pull publicly.
+2. Create a Docker Hub personal access token with read/write image permissions and an expiration.
+   Do not grant delete permission. Do not paste it into chat or commit it to this repository.
+3. Save it as repository Actions secret `DOCKERHUB_TOKEN` at
+   [GitHub Actions secrets](https://github.com/holblin/talos-companion/settings/secrets/actions).
+   The repository Actions variable `DOCKERHUB_USERNAME` is `holblin`.
+4. Optionally paste `deploy/dockerhub-description.md` into the Docker Hub repository description.
+
+Docker's [GitHub Actions guide](https://docs.docker.com/build/ci/github-actions/)
+documents the token and username configuration. Configure image visibility on Docker Hub:
+an image push must not be used to guess or change the namespace's default privacy setting.
+
+## Build and publish
+
+Open [Prepare or publish Docker Hub image](https://github.com/holblin/talos-companion/actions/workflows/release.yml)
+and choose **Run workflow**. Use the desired source branch/ref and a version such as
+`0.1.0` or `0.1.0-beta.1`.
+
+- Leave **publish** unchecked to test and download the private artifacts only.
+- Check **publish** only after the Docker Hub repository and Actions secret exist.
+
+Both modes run frontend formatting, strict type-aware linting, TypeScript checking,
+Rust formatting, Clippy, unit tests, HTTP/S3 recovery tests, and the 320 MiB streaming test.
+The container build verifies exactly one filesystem layer and confirms that the layer
+contains only the static Rust binary and compiled frontend. It also runs a container smoke test.
+
+The publishing job loads the same verified image archive, rather than rebuilding it.
+Published tags are the version and `sha-<full Git commit>`. Stable versions also update
+`latest`; prereleases do not. Do not reuse released version numbers. Linux amd64 is
+the supported image architecture. Image archives expire from GitHub artifacts after one day;
+template bundles expire after 30 days. Keep needed release artifacts separately.
+
+After an upload, verify the image from a clean host:
+
+```sh
+docker pull holblin/talos-companion:0.1.0
+docker image inspect holblin/talos-companion:0.1.0 --format '{{len .RootFS.Layers}}'
+# Must print 1
+```
+
+`deploy/compose.hub.yaml` runs the registry image without source access or a local build.
+Use it only after the selected image tag exists. Retain `.env` and persistent appdata privately.
+
+## Prepare the Unraid template repository
+
+The private release workflow creates artifact `unraid-template-repository`. To generate
+the same files locally using PowerShell 7:
+
+```powershell
+./scripts/prepare-unraid.ps1 -DockerHubNamespace holblin `
+  -TemplateRepository holblin/talos-companion-unraid `
+  -OutputDirectory dist/community-apps
+```
+
+The output contains exactly:
+
+```text
+README.md
+LICENSE
+ca_profile.xml
+icon.svg
+templates/talos-companion.xml
+```
+
+The MIT license is staged for these template files only. It does not apply to the private
+application source or application image. The generated public URLs are intended destinations,
+not live URLs until a template-only repository is approved and created.
+
+For a private manual installation, after the image exists, copy the generated XML to
+`/boot/config/plugins/dockerMan/templates-user/my-talos-companion.xml` on your Unraid server,
+then open **Docker → Add Container** and choose the template. If the image is private,
+authenticate Docker on that server before pulling it. No catalog submission is needed
+for this manual installation.
+
+## Community Apps listing — deferred
+
+The [official submission requirements](https://ca.unraid.net/submit/help) call for a public
+active repository, an OSI-approved license, `ca_profile.xml`, valid templates, and a Validate/Scan pass.
+The generated bundle supplies the files while leaving the application's source private.
+
+When public distribution is approved:
+
+1. Publish an image that Unraid users can pull, and test installation and recovery on an actual Unraid server.
+2. Create public repository `holblin/talos-companion-unraid`, with Issues enabled.
+   Upload only the five generated template files. Never upload the application checkout,
+   `.env`, local test data, keys, or backup files.
+3. Confirm the icon, `TemplateURL`, support link, and image URL resolve publicly.
+4. Sign in at [Community Apps submissions](https://ca.unraid.net/submit), then Validate
+   and Scan the template repository. Review and submit the listing through your Unraid account.
+   Submission includes agreement to Unraid's terms, so the account owner should complete that final step.
+5. Address moderator feedback and keep the template and image tags updated together.
+
+This project has no access to your Unraid server and cannot claim an actual server installation
+or Community Apps acceptance until those checks have been performed.
