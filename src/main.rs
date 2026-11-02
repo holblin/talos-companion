@@ -25,8 +25,9 @@ async fn overview(State(app): State<App>, headers: HeaderMap) -> Result<Json<Val
     auth::admin(&app, &headers).await?;
     let guard = app.store.read().await;
     let s = guard.as_ref().ok_or_else(denied)?;
+    let settings = app.settings.borrow().clone();
     Ok(Json(
-        json!({"issuer":app.public_url,"client_id":s.client_id,"client_secret":s.client_secret,"redirect_uri":s.redirect_uri,"s3_access_key":s.s3_access_key,"s3_secret_key":s.s3_secret_key,"bucket":"omni","mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"drive":{"client_id":s.drive.client_id,"folder_id":s.drive.folder_id,"connected":!s.drive.refresh_token.is_empty()},"streaming_backups":true,"retention":app.settings.borrow().retention,"settings":app.settings.borrow().clone()}),
+        json!({"issuer":app.public_url,"client_id":s.client_id,"client_secret":s.client_secret,"redirect_uri":s.redirect_uri,"s3_access_key":s.s3_access_key,"s3_secret_key":s.s3_secret_key,"bucket":"omni","mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"drive":{"client_id":s.drive.client_id,"folder_id":s.drive.folder_id,"connected":!s.drive.refresh_token.is_empty()},"streaming_backups":true,"retention":settings.retention,"settings":settings}),
     ))
 }
 async fn secure_headers(req: axum::extract::Request, next: Next) -> Response {
