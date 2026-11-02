@@ -31,6 +31,9 @@ fn archive(
         let encrypted = backup_format::encrypt(output, pass)?;
         let mut tar = tar::Builder::new(encrypted);
         tar.follow_symlinks(false);
+        // Restore deliberately accepts regular files and directories only. On Unix,
+        // tar otherwise emits GNU sparse entries for holes in etcd/database files.
+        tar.sparse(false);
         let bytes = serde_json::to_vec(state)?;
         let mut header = tar::Header::new_gnu();
         header.set_size(bytes.len() as u64);
