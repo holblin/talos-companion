@@ -1,8 +1,20 @@
 # Deploy on Unraid
 
-The Linux amd64 image is published on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion). Use `holblin/talos-companion:0.1.0` for a pinned version, or `holblin/talos-companion:latest` for the current stable release. `deploy/compose.hub.yaml` runs the registry image without a local build. Source builds using the main `compose.yaml` remain available.
+The Linux amd64 image is published on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion). Use `holblin/talos-companion:0.1.1` for a pinned version, or `holblin/talos-companion:latest` for the current stable release. `deploy/compose.hub.yaml` runs the registry image without a local build. Source builds using the main `compose.yaml` remain available.
 
 The repository includes a private build/publish workflow and a template-only bundle generator. See [publishing instructions](publishing.md) for registry-only Compose installation and the deferred Community Apps submission. Public template distribution is not enabled. The generated template can already be installed manually on your own Unraid server.
+
+## Installed LAN instance
+
+Version `0.1.1` was installed on Tower on 2026-11-01 using the pinned Docker Hub tag.
+Web/API/OIDC is `http://192.168.100.13:18480`; the Omni S3 receiver uses port `19000`
+after initialization. Appdata is `/mnt/user/appdata/talos-companion`. Unraid reports
+the container healthy and autostart is enabled. It runs as `99:100` with a read-only
+root filesystem, all capabilities dropped, and no-new-privileges enabled.
+
+Startup secrets are generated privately in appdata. Complete the wizard yourself,
+using the setup token from first-start container logs. Administrator creation,
+Omni integration, and external backup destinations remain installation-specific setup.
 
 ## Persistent paths and ports
 

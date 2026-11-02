@@ -19,7 +19,7 @@ This is an initial implementation. The S3 backend uses the upstream experimental
 
 ## Run on Unraid
 
-The image is available on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion): `holblin/talos-companion:0.1.0` or `holblin/talos-companion:latest`. Use `deploy/compose.hub.yaml` to run it without a source build. The generated Unraid template is ready for manual installation; Community Apps publication remains deferred. See [Unraid instructions](docs/unraid.md).
+The image is available on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion): `holblin/talos-companion:0.1.1` or `holblin/talos-companion:latest`. Use `deploy/compose.hub.yaml` to run it without a source build. The generated Unraid template is ready for manual installation; Community Apps publication remains deferred. See [Unraid instructions](docs/unraid.md).
 
 To build from this private source repository instead:
 

@@ -5,9 +5,10 @@ publishes the Unraid template repository, or grants an open-source license to th
 
 ## Current state
 
-- Public image published: [`holblin/talos-companion:0.1.0`](https://hub.docker.com/r/holblin/talos-companion/tags), also tagged `latest` and `sha-66ec26b5ecac236effc5d73937b6dfc9e0b9cd0b`.
-- The first release digest is `sha256:c7d653fbef035575e11a7425a26fb2ce32d270b04a63e90d891d665a57b8fec8`. All three tags resolve to that same image. Registry verification confirms Linux amd64, one filesystem layer, UID `99:100`, and the Rust entrypoint. The compressed layer is approximately 7.2 MiB.
-- [The first publishing run](https://github.com/holblin/talos-companion/actions/runs/41387951309) passed all application, container, and template checks before upload. Docker Hub credentials are saved as an encrypted GitHub Actions secret, not in repository files.
+- Current public image: [`holblin/talos-companion:0.1.1`](https://hub.docker.com/r/holblin/talos-companion/tags), also tagged `latest` and `sha-7d7f21cf93e935a16fa66279b46173856d45495a`.
+- Its digest is `sha256:090aab703e25aaa3ee4c5695103644d65d827a9199f5ee86232b9d4cbc7eb7a0`. All three current tags resolve to that image. Registry verification confirms Linux amd64, one filesystem layer, UID `99:100`, and the Rust entrypoint. The compressed layer is 7,646,178 bytes.
+- [The 0.1.1 publishing run](https://github.com/holblin/talos-companion/actions/runs/41390853502) passed strict application checks, the 320 MiB streaming recovery test, automatic startup-secret permission checks, and container/template checks before upload. Docker Hub credentials remain an encrypted GitHub Actions secret.
+- Version 0.1.0 remains available at digest `sha256:c7d653fbef035575e11a7425a26fb2ce32d270b04a63e90d891d665a57b8fec8`.
 - `.github/workflows/release.yml` can build, test, and package the image without uploading it.
 - Publishing is an explicit manual workflow choice, off by default. Ordinary commits never push images.
 - `scripts/prepare-unraid.ps1` generates a separate template-only repository in `dist/community-apps`.

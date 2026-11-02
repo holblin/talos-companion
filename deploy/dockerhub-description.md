@@ -13,8 +13,12 @@ a static Rust executable and compiled frontend files, with no shell or base OS.
 
 Map persistent storage to `/data` with ownership `99:100`. Expose web port `8080` through
 your HTTPS reverse proxy, and make S3 port `9000` reachable from Omni.
-Set `PUBLIC_URL` to the exact browser origin, `SETUP_TOKEN` to 24+ random characters,
-and `BACKUP_PASSPHRASE` to a separate 16+ character secret stored outside this server.
+Set `PUBLIC_URL` to the exact browser origin. Leave `SETUP_TOKEN` and `BACKUP_PASSPHRASE`
+unset to generate persistent private startup secrets, or supply explicit overrides.
+Find the generated setup token in first-start container logs or `/data/setup-token`.
+The wizard shows the backup passphrase, then hides it and requires exact re-entry after
+you confirm saving it outside the server. Optional age/SSH public keys, including GitHub
+public keys, can encrypt a downloadable recovery note; private keys stay on your device.
 The first launch wizard guides account creation or restore. Backup policies are managed
 in Settings and saved in `/data/config.json`.
 
