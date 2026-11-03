@@ -4,6 +4,10 @@ web/node_modules
 web/dist
 data
 .env
+.env.*
+*.key
+*.asc
+*.age
 *.tcb
 *.pem
 *.log

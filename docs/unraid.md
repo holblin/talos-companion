@@ -2,19 +2,14 @@
 
 The Linux amd64 image is published on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion). Use `holblin/talos-companion:0.1.1` for a pinned version, or `holblin/talos-companion:latest` for the current stable release. `deploy/compose.hub.yaml` runs the registry image without a local build. Source builds using the main `compose.yaml` remain available.
 
-The repository includes a private build/publish workflow and a template-only bundle generator. See [publishing instructions](publishing.md) for registry-only Compose installation and the deferred Community Apps submission. Public template distribution is not enabled. The generated template can already be installed manually on your own Unraid server.
+The repository includes a build/publish workflow and a template-only bundle generator. Public templates for Companion and Omni are available in [talos-companion-unraid](https://github.com/holblin/talos-companion-unraid). See [publishing instructions](publishing.md) for registry-only Compose installation and Community Apps catalog review, which is separate from public template availability.
 
-## Installed LAN instance
+## Omni template
 
-Version `0.1.1` was installed on Tower on 2026-11-01 using the pinned Docker Hub tag.
-Web/API/OIDC is `http://192.168.100.13:18480`; the Omni S3 receiver uses port `19000`
-after initialization. Appdata is `/mnt/user/appdata/talos-companion`. Unraid reports
-the container healthy and autostart is enabled. It runs as `99:100` with a read-only
-root filesystem, all capabilities dropped, and no-new-privileges enabled.
-
-Startup secrets are generated privately in appdata. Complete the wizard yourself,
-using the setup token from first-start container logs. Administrator creation,
-Omni integration, and external backup destinations remain installation-specific setup.
+Use the separate [Omni installation guide](../deploy/unraid/omni-install.md) and
+[Omni template](../deploy/unraid/omni.xml) for a new Omni deployment. It pins the official
+Omni v1.13.2 image and uses private file-based configuration. It does not change an
+existing Omni container. Omni has separate licensing, EULA, TLS and networking prerequisites.
 
 ## Persistent paths and ports
 

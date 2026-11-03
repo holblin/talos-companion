@@ -1,0 +1,64 @@
+# Omni v1.13.2. Copy to your private config/omni.yaml and replace every REPLACE_ value.
+# Never commit the populated file. Read omni-install.md before starting.
+account:
+  id: REPLACE_WITH_PERMANENT_UUID
+  name: my-omni
+
+services:
+  api:
+    endpoint: 0.0.0.0:8443
+    advertisedURL: https://omni.example.com/
+    certFile: /config/tls/fullchain.pem
+    keyFile: /config/tls/privkey.pem
+  kubernetesProxy:
+    endpoint: 0.0.0.0:8100
+    advertisedURL: https://omni.example.com:8100/
+    certFile: /config/tls/fullchain.pem
+    keyFile: /config/tls/privkey.pem
+  machineAPI:
+    endpoint: 0.0.0.0:8090
+    advertisedURL: https://omni.example.com:8090/
+    certFile: /config/tls/fullchain.pem
+    keyFile: /config/tls/privkey.pem
+  siderolink:
+    wireGuard:
+      endpoint: 0.0.0.0:50180
+      # Use the literal reachable host IP, not a DNS name.
+      advertisedEndpoint: 192.0.2.10:50180
+    eventSinkPort: 8091
+    logServerPort: 8092
+    joinTokensMode: strict
+  metrics:
+    endpoint: 127.0.0.1:2122
+  workloadProxy:
+    enabled: false
+
+auth:
+  initialUsers:
+    - admin@example.com
+  oidc:
+    enabled: true
+    providerURL: https://companion.example.com
+    clientID: REPLACE_WITH_COMPANION_CLIENT_ID
+    clientSecret: REPLACE_WITH_COMPANION_CLIENT_SECRET
+    scopes: [openid, email, profile]
+    autoCreateUsers: false
+
+storage:
+  default:
+    kind: etcd
+    etcd:
+      embedded: true
+      embeddedDBPath: /data/etcd
+      privateKeySource: file:///config/omni.asc
+  sqlite:
+    path: /data/secondary-storage/sqlite.db
+
+etcdBackup:
+  s3Enabled: true
+
+# Review https://siderolabs.com/eula/ yourself. Omni requires acceptance on first start.
+# After you accept, uncomment these fields and enter your own name and email.
+# eulaAccept:
+#   name: YOUR_FULL_NAME
+#   email: YOUR_EMAIL

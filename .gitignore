@@ -5,6 +5,16 @@
 /dist/
 /.env
 /.mise.local.toml
+/.env.*
+!/.env.example
+*.key
+*.asc
+*.age
+*.tcb.part
+omni.yaml
+omni.json
+setup-token
+backup-passphrase
 *.tcb
 *.pem
 *.log

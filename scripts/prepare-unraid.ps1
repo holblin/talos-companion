@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $outputPath = [System.IO.Path]::GetFullPath($OutputDirectory)
-$allowedPaths = @('README.md', 'LICENSE', 'ca_profile.xml', 'icon.svg', 'templates/talos-companion.xml')
+$allowedPaths = @('README.md', 'LICENSE', 'ca_profile.xml', 'icon.svg', 'templates/talos-companion.xml', 'templates/omni.xml', 'omni-config.example.yaml', 'omni-install.md')
 # Refuse a checkout or contaminated bundle rather than including unrelated files in an artifact.
 if (Test-Path -LiteralPath $outputPath) {
     foreach ($file in Get-ChildItem -LiteralPath $outputPath -Recurse -File -Force) {
@@ -15,7 +15,7 @@ if (Test-Path -LiteralPath $outputPath) {
         if ($relative -notin $allowedPaths) { throw "Unexpected file in bundle destination: $relative" }
     }
 }
-# Never clean a directory. This generator writes only the five listed files.
+# Never clean a directory. This generator writes only the listed files.
 $templatePath = Join-Path $outputPath 'templates'
 New-Item -ItemType Directory -Force -Path $templatePath | Out-Null
 $publicBase = "https://github.com/$TemplateRepository"
@@ -41,8 +41,16 @@ $mountedSetting = $template.Container.Config | Where-Object Target -eq 'MOUNTED_
 $mountedSetting.Default = ''
 $mountedSetting.InnerText = ''
 $template.Save((Join-Path $templatePath 'talos-companion.xml'))
+[xml]$omniTemplate = Get-Content -LiteralPath (Join-Path $projectRoot 'deploy/unraid/omni.xml') -Raw
+$omniTemplate.Container.Support = "$publicBase/issues"
+$omniTemplate.Container.TemplateURL = "$rawBase/templates/omni.xml"
+$omniTemplate.Container.Icon = "$rawBase/icon.svg"
+$omniTemplate.Save((Join-Path $templatePath 'omni.xml'))
+foreach ($file in @('omni-config.example.yaml', 'omni-install.md')) {
+    Copy-Item -LiteralPath (Join-Path $projectRoot "deploy/unraid/$file") -Destination (Join-Path $outputPath $file)
+}
 $profile = [xml]'<CommunityApplications><Profile/><Icon/><WebPage/></CommunityApplications>'
-$profile.CommunityApplications.Profile = 'Talos Companion: self-hosted identity, account management, and encrypted recovery for Talos Omni. This repository distributes installation templates and documentation only. The application source is maintained separately. Report installation and application problems through this repository''s issue tracker.'
+$profile.CommunityApplications.Profile = 'Unofficial Unraid templates for Talos Companion and Sidero Labs Omni. Includes installation guides and a placeholder-only Omni configuration example. Report template problems through this repository''s issue tracker.'
 $profile.CommunityApplications.Icon = "$rawBase/icon.svg"
 $profile.CommunityApplications.WebPage = $publicBase
 $profile.Save((Join-Path $outputPath 'ca_profile.xml'))
@@ -72,12 +80,34 @@ SOFTWARE.
 '@
 Set-Content -LiteralPath (Join-Path $outputPath 'LICENSE') -Value $license -Encoding utf8NoBOM
 $readme = @"
-# Talos Companion
+# Talos Companion and Omni — Unraid templates
 
-Installation templates for the independent Talos Omni identity and recovery companion.
+Installation templates for Talos Companion and Sidero Labs Omni.
 This repository contains no Rust/React application source, credentials, or user backups.
-The MIT license applies only to the template, icon, and documentation in this repository.
-It does not grant rights to the separately distributed application image or its source.
+The template, icon, and documentation use MIT. Talos Companion's source is also MIT:
+https://github.com/holblin/talos-companion . Omni has its own upstream license and EULA;
+the template's MIT license does not change those terms.
+
+## Omni template
+
+See [the Omni installation guide](omni-install.md) and
+[example configuration](omni-config.example.yaml). The template pins the official
+``ghcr.io/siderolabs/omni:v1.13.2`` image. Prepare configuration, TLS, encryption keys,
+identity and your own EULA acceptance before starting. Do not replace an existing Omni
+container or reuse its database without following the upstream migration procedure.
+This repository does not install, stop, or change your current Omni deployment.
+
+## Manual template installation
+
+Public template URLs:
+
+- $rawBase/templates/talos-companion.xml
+- $rawBase/templates/omni.xml
+
+Copy the desired XML into ``/boot/config/plugins/dockerMan/templates-user/`` as
+``my-talos-companion.xml`` or ``my-omni-siderolabs.xml``, then open Docker > Add Container.
+Community Apps catalog inclusion is a separate review; a public repository alone does
+not mean the templates already appear in its catalog.
 
 ## Image
 
@@ -150,4 +180,16 @@ foreach ($name in @('SETUP_TOKEN', 'BACKUP_PASSPHRASE')) {
         throw 'A secret placeholder must exist and remain empty in the distributable template'
     }
 }
-Write-Output "Prepared private template-only repository contents at $outputPath"
+[xml]$checkedOmni = Get-Content -LiteralPath (Join-Path $templatePath 'omni.xml') -Raw
+if ($checkedOmni.Container.Repository -ne 'ghcr.io/siderolabs/omni:v1.13.2' -or
+    $checkedOmni.Container.Network -ne 'host' -or $checkedOmni.Container.Privileged -ne 'false' -or
+    $checkedOmni.Container.PostArgs -ne '--config-path=/config/omni.yaml' -or
+    $checkedOmni.Container.ExtraParams -notmatch '--device=/dev/net/tun' -or
+    @($checkedOmni.Container.Config | Where-Object { $_.Type -eq 'Variable' -or $_.Type -eq 'Port' }).Count -ne 0) {
+    throw 'Omni template must use the pinned official image, file-based configuration and upstream networking'
+}
+$privateConfig = $checkedOmni.Container.Config | Where-Object Target -eq '/config'
+if ($privateConfig.Mode -ne 'ro' -or @($checkedOmni.Container.Config | Where-Object Target -eq '/data').Count -ne 1) {
+    throw 'Omni template must persist data and mount private configuration read-only'
+}
+Write-Output "Prepared distributable template-only repository contents at $outputPath"

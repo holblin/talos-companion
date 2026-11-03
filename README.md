@@ -21,9 +21,13 @@ This is an initial implementation. The S3 backend uses the upstream experimental
 
 The image is available on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion): `holblin/talos-companion:0.1.1` or `holblin/talos-companion:latest`. Use `deploy/compose.hub.yaml` to run it without a source build. The generated Unraid template is ready for manual installation; Community Apps publication remains deferred. See [Unraid instructions](docs/unraid.md).
 
-To build from this private source repository instead:
+The application source, templates and documentation use the [MIT license](LICENSE).
+Public Unraid templates for both Companion and Omni are available in
+[talos-companion-unraid](https://github.com/holblin/talos-companion-unraid).
 
-1. Clone this private repository onto your build host.
+To build from source instead:
+
+1. Clone this repository onto your build host.
 2. Copy `.env.example` to `.env` and set your public URL. Leave the secret overrides empty to generate private persistent secrets automatically, or supply your own independent random values.
 3. Pre-create the data and destination directories with ownership matching `PUID:PGID` (default `99:100`). For a local trial on Linux:
 
@@ -40,7 +44,7 @@ The image runs as an unprivileged numeric user with a read-only root filesystem.
 
 See [Unraid instructions](docs/unraid.md), [Omni configuration](docs/omni.md), and [Google Drive setup](docs/google-drive.md).
 
-See [Docker Hub publishing and Unraid template preparation](docs/publishing.md) for the private release workflow, registry-only Compose file, and template-only bundle. Registry upload is opt-in; template files have not been made public or submitted to Community Apps.
+See [Docker Hub publishing and Unraid template preparation](docs/publishing.md) for the release workflow, registry-only Compose file, and public template bundle. Registry upload is opt-in. Community Apps catalog review is separate from public template availability.
 
 ## Development with mise
 

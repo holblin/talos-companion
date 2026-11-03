@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>omni-siderolabs</Name>
+  <Repository>ghcr.io/siderolabs/omni:v1.13.2</Repository>
+  <Registry>https://github.com/siderolabs/omni/pkgs/container/omni</Registry>
+  <Network>host</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/holblin/talos-companion-unraid/issues</Support>
+  <Project>https://github.com/siderolabs/omni</Project>
+  <Overview>Unofficial Unraid template for Sidero Labs Omni v1.13.2. Before starting, prepare omni.yaml, TLS certificates, a GPG encryption key, a permanent account UUID, and OIDC authentication. Read the included Omni installation guide. Uses host networking, NET_ADMIN and /dev/net/tun for SideroLink; privileged mode is not needed. Host ports must be free. Existing Omni data requires the upstream migration procedure. Omni is separately licensed by Sidero Labs; review its license and EULA yourself.</Overview>
+  <Category>Network:Management</Category>
+  <WebUI>https://omni.example.com/</WebUI>
+  <ExtraParams>--cap-add=NET_ADMIN --device=/dev/net/tun --security-opt=no-new-privileges:true</ExtraParams>
+  <PostArgs>--config-path=/config/omni.yaml</PostArgs>
+  <TemplateURL>https://raw.githubusercontent.com/holblin/talos-companion-unraid/main/templates/omni.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/holblin/talos-companion-unraid/main/icon.svg</Icon>
+  <Config Name="Omni persistent data" Target="/data" Default="/mnt/user/appdata/omni-siderolabs/data" Mode="rw" Description="Dedicated persistent etcd and SQLite data. Do not point at an existing deployment without following upstream migration instructions." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/omni-siderolabs/data</Config>
+  <Config Name="Omni private configuration" Target="/config" Default="/mnt/user/appdata/omni-siderolabs/config" Mode="ro" Description="Pre-create omni.yaml, omni.asc, tls/fullchain.pem and tls/privkey.pem here. Copy and customize the published example. Keep this directory private." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/omni-siderolabs/config</Config>
+</Container>

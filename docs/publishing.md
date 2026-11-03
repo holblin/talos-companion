@@ -1,7 +1,8 @@
 # Docker Hub and Unraid distribution
 
-Application source remains private. Nothing in this setup changes repository visibility,
-publishes the Unraid template repository, or grants an open-source license to the application.
+Application source and the independently authored template bundle are public under MIT.
+Omni itself retains its own upstream license and EULA. Publication followed a full-history,
+tracked-file and Actions-log credential audit; see [the audit record](security-audit.md).
 
 ## Current state
 
@@ -12,8 +13,8 @@ publishes the Unraid template repository, or grants an open-source license to th
 - `.github/workflows/release.yml` can build, test, and package the image without uploading it.
 - Publishing is an explicit manual workflow choice, off by default. Ordinary commits never push images.
 - `scripts/prepare-unraid.ps1` generates a separate template-only repository in `dist/community-apps`.
-- The proposed future public repository is `holblin/talos-companion-unraid`; it has not been created or published.
-- Generated template files remain private. Future registry uploads use the saved Docker Hub secret; catalog submission still needs your approval and Unraid account.
+- Public templates: [holblin/talos-companion-unraid](https://github.com/holblin/talos-companion-unraid), with Companion and Omni XML, an Omni example configuration and installation guides.
+- Future registry uploads use the saved Docker Hub secret. Public repository availability does not automatically add templates to the Community Apps catalog; its submission/review is separate.
 
 ## One-time Docker Hub setup
 
@@ -38,7 +39,7 @@ Open [Prepare or publish Docker Hub image](https://github.com/holblin/talos-comp
 and choose **Run workflow**. Use the desired source branch/ref and a version such as
 `0.1.0` or `0.1.0-beta.1`.
 
-- Leave **publish** unchecked to test and download the private artifacts only.
+- Leave **publish** unchecked to test and download build artifacts without uploading an image.
 - Check **publish** only after the Docker Hub repository and Actions secret exist.
 
 Both modes run frontend formatting, strict type-aware linting, TypeScript checking,
@@ -65,7 +66,7 @@ Use it only after the selected image tag exists. Retain `.env` and persistent ap
 
 ## Prepare the Unraid template repository
 
-The private release workflow creates artifact `unraid-template-repository`. To generate
+The release workflow creates artifact `unraid-template-repository`. To generate
 the same files locally using PowerShell 7:
 
 ```powershell
@@ -82,11 +83,13 @@ LICENSE
 ca_profile.xml
 icon.svg
 templates/talos-companion.xml
+templates/omni.xml
+omni-config.example.yaml
+omni-install.md
 ```
 
-The MIT license is staged for these template files only. It does not apply to the private
-application source or application image. The generated public URLs are intended destinations,
-not live URLs until a template-only repository is approved and created.
+The application and independently authored template files use MIT. Omni's own upstream
+license and EULA remain separate. Public raw XML URLs resolve from the template repository.
 
 For a private manual installation, after the image exists, copy the generated XML to
 `/boot/config/plugins/dockerMan/templates-user/my-talos-companion.xml` on your Unraid server,
@@ -98,13 +101,13 @@ for this manual installation.
 
 The [official submission requirements](https://ca.unraid.net/submit/help) call for a public
 active repository, an OSI-approved license, `ca_profile.xml`, valid templates, and a Validate/Scan pass.
-The generated bundle supplies the files while leaving the application's source private.
+The generated bundle supplies the template files separately from the application source.
 
-When public distribution is approved:
+Public distribution and catalog review are separate:
 
 1. Publish an image that Unraid users can pull, and test installation and recovery on an actual Unraid server.
-2. Create public repository `holblin/talos-companion-unraid`, with Issues enabled.
-   Upload only the five generated template files. Never upload the application checkout,
+2. Maintain public repository `holblin/talos-companion-unraid`, with Issues enabled.
+   Upload only the eight generated template files. Never upload the application checkout,
    `.env`, local test data, keys, or backup files.
 3. Confirm the icon, `TemplateURL`, support link, and image URL resolve publicly.
 4. Sign in at [Community Apps submissions](https://ca.unraid.net/submit), then Validate
@@ -112,5 +115,6 @@ When public distribution is approved:
    Submission includes agreement to Unraid's terms, so the account owner should complete that final step.
 5. Address moderator feedback and keep the template and image tags updated together.
 
-This project has no access to your Unraid server and cannot claim an actual server installation
-or Community Apps acceptance until those checks have been performed.
+Companion 0.1.1 has been installed and reported healthy on an Unraid server. The Omni
+template is validated against upstream configuration but has not been live-deployed.
+Community Apps catalog acceptance has not been requested or claimed.

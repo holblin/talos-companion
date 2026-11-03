@@ -32,5 +32,7 @@ supported S3 backups and verify recovery before depending on the companion.
 Version and `sha-<commit>` tags identify published builds; `latest` tracks stable releases.
 Use a pinned version or digest for controlled upgrades. Back up appdata before upgrading.
 
-This is not an official Sidero Labs product. The application source is maintained privately;
-availability of the image does not imply an open-source application license.
+This is not an official Sidero Labs product. Application source and Unraid templates use MIT:
+https://github.com/holblin/talos-companion
+https://github.com/holblin/talos-companion-unraid
+Omni itself retains its own upstream license and EULA.
