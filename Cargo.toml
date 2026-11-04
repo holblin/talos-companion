@@ -1,6 +1,6 @@
 [package]
 name = "talos-companion"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.98"
 publish = false
@@ -30,6 +30,7 @@ s3s = "0.17.0"
 s3s-fs = "0.17.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml_ng = "0.10"
 sha2 = "0.10"
 subtle = "2"
 tar = "0.4"

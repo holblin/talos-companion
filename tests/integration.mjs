@@ -161,6 +161,18 @@ test(
         400,
       );
       let cookie = await login(a);
+      const integration = {profile:"lan",companion_url:"https://192.0.2.10:18443",omni_url:"https://192.0.2.10:19443",s3_endpoint:"https://192.0.2.10:19444"};
+      assert.equal((await request(a,"/api/omni/plan",{body:{integration}})).status,401);
+      const omniPlanResponse = await request(a,"/api/omni/plan",{cookie,body:{integration,primary_config:"account:\n  id: preserve-me\nauth:\n  auth0:\n    enabled: true\netcdBackup:\n  localPath: /keep/original\n"}});
+      assert.equal(omniPlanResponse.status,200,await omniPlanResponse.clone().text());
+      const omniPlan = await omniPlanResponse.json();
+      assert.equal(omniPlan.callback,"https://192.0.2.10:19443/oidc/consume");
+      assert.ok(omniPlan.changes.includes("auth.auth0.enabled"));
+      assert.ok(omniPlan.changes.includes("etcdBackup.localPath"));
+      assert.ok(!omniPlan.overlay.includes("preserve-me"));
+      assert.equal((await request(a,"/api/omni/plan",{cookie,body:{integration:{...integration,companion_url:"http://insecure.test"}}})).status,400);
+      assert.equal((await request(a,"/api/omni/plan",{cookie,body:{integration,primary_config:"auth: {}\nauth: {}\n"}})).status,400);
+      assert.equal((await request(a,"/api/omni/apply",{cookie,body:{integration,revision:"stale"}})).status,400);
       assert.equal(
         (await request(a, "/api/setup/check", { body: {}, setup: true }))
           .status,

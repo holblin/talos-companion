@@ -162,6 +162,7 @@ pub async fn setup(
         s3_access_key: secret(),
         s3_secret_key: secret(),
         drive: Drive::default(),
+        integration: Default::default(),
     };
     settings.persist(&app.data)?;
     if let Err(e) = app.persist(&store) {

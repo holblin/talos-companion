@@ -255,6 +255,7 @@ mod tests {
             s3_access_key: String::new(),
             s3_secret_key: String::new(),
             drive: Drive::default(),
+            integration: Default::default(),
         };
         let mut q = Authorize {
             client_id: "omni".into(),

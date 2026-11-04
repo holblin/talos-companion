@@ -6,6 +6,7 @@ mod backup_format;
 mod drive;
 mod model;
 mod oidc;
+mod omni;
 mod receiver;
 mod recovery;
 mod retention;
@@ -65,6 +66,12 @@ fn router(app: App) -> Router {
         .route("/api/overview", get(overview))
         .route("/api/settings", get(settings::get).post(settings::update))
         .route("/api/oidc", post(oidc::configure))
+        .route("/api/omni", get(omni::status))
+        .route("/api/omni/plan", post(omni::preview))
+        .route("/api/omni/apply", post(omni::apply))
+        .route("/api/omni/check", post(omni::check))
+        .route("/api/omni/ca", get(omni::ca))
+        .route("/api/omni/talos-ca", get(omni::talos_ca))
         .route("/api/backups", get(backup::list).post(backup::make))
         .route("/api/backups/{name}", get(backup::download))
         .route(
@@ -104,6 +111,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
     let app = App::load().await?;
+    if std::env::args().any(|a| a == "--reset-admin-password") {
+        return recovery::reset_admin(&app).await;
+    }
     let receiver_app = app.clone();
     // A failed receiver stops the application so that Docker can restart it instead of reporting a healthy but incomplete service.
     let receiver = receiver::run(receiver_app);
@@ -140,6 +150,7 @@ mod tests {
     async fn setup_token_and_csrf_required() {
         let dir = tempfile::tempdir().unwrap();
         let app = App {
+            _process_lock: std::sync::Arc::new(tempfile::tempfile().unwrap()),
             store: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
             memory: std::sync::Arc::new(tokio::sync::Mutex::new(Memory {
                 sessions: Default::default(),

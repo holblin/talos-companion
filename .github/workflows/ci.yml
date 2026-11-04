@@ -21,6 +21,8 @@ jobs:
       - name: Generate and validate template-only repository contents
         shell: pwsh
         run: ./scripts/prepare-unraid.ps1 -DockerHubNamespace holblin -TemplateRepository holblin/talos-companion-unraid -OutputDirectory dist/community-apps
+      - name: Check owner provisioning shell
+        run: bash -n scripts/home-setup.sh
   application:
     runs-on: ubuntu-latest
     steps:

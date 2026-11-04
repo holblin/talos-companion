@@ -148,6 +148,8 @@ pub struct Store {
     pub s3_access_key: String,
     pub s3_secret_key: String,
     pub drive: Drive,
+    #[serde(default)]
+    pub integration: crate::omni::Integration,
 }
 pub struct Session {
     pub user_id: String,
@@ -168,6 +170,7 @@ pub struct Memory {
 }
 #[derive(Clone)]
 pub struct App {
+    pub _process_lock: Arc<std::fs::File>,
     pub store: Arc<RwLock<Option<Store>>>,
     pub memory: Arc<Mutex<Memory>>,
     pub io: Arc<RwLock<()>>,
@@ -186,12 +189,23 @@ impl App {
         std::fs::create_dir_all(data.join("receiver"))?;
         std::fs::create_dir_all(data.join("backups"))?;
         std::fs::create_dir_all(data.join("vault"))?;
+        let process_lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(data.join(".instance.lock"))?;
+        process_lock.try_lock().map_err(|_| anyhow::anyhow!("This data directory is already in use. Stop Companion before running offline recovery."))?;
         let store = match std::fs::read(data.join("state.json")) {
             Ok(b) => Some(serde_json::from_slice::<Store>(&b)?),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => return Err(e.into()),
         };
-        let public_url = std::env::var("PUBLIC_URL")
+        let public_url = store
+            .as_ref()
+            .map(|s| s.integration.companion_url.clone())
+            .filter(|s| !s.is_empty())
+            .or_else(|| std::env::var("PUBLIC_URL").ok())
             .unwrap_or("http://localhost:8080".into())
             .trim_end_matches('/')
             .to_owned();
@@ -231,6 +245,7 @@ impl App {
             );
         }
         Ok(Self {
+            _process_lock: Arc::new(process_lock),
             store: Arc::new(RwLock::new(store)),
             memory: Arc::new(Mutex::new(Memory {
                 sessions: HashMap::new(),

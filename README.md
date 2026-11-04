@@ -14,6 +14,8 @@ A small, self-hosted Rust + React application for Talos Omni identity and recove
 - Recovery: encrypted snapshots include accounts, password hashes, signing keys, client credentials, Google tokens, uploaded Omni recovery material, and all received S3 data and metadata.
 - Destinations: persistent local storage, authenticated browser download, Google Drive, and host-mounted NFS/SMB shares. Every remote transfer retains a local copy.
 - Scheduling: daily by default, configurable in the administrator UI and persisted configuration file.
+- Omni setup and repair: LAN/private-CA, Cloudflare DNS/ACME and Tailscale profiles, scoped configuration previews/overlays, HTTPS reachability checks, and an owner-run provisioning/migration helper. See the [home setup tutorial](docs/home-setup.md).
+- Owner recovery: an explicit offline password-reset command generates a temporary administrator password without changing identity or backups.
 
 This is an initial implementation. The S3 backend uses the upstream experimental filesystem provider. Automated tests exercise signed S3 requests and multipart uploads; validate against your own Omni deployment before depending on it for recovery. Upload Omni encryption keys/configuration through the recovery-material vault to include them in snapshots. Companion does not automatically snapshot Omni’s own database or collect its encryption keys. See [Omni setup and recovery](docs/omni.md).
 

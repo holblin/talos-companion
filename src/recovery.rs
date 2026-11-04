@@ -7,6 +7,30 @@ use serde_json::{Value, json};
 use std::io::Write;
 use subtle::ConstantTimeEq;
 
+pub async fn reset_admin(app: &App) -> anyhow::Result<()> {
+    let mut guard = app.store.write().await;
+    let mut store = guard.clone().ok_or_else(|| {
+        anyhow::anyhow!("Complete first-run setup before recovering an administrator")
+    })?;
+    let user = store
+        .users
+        .iter_mut()
+        .find(|u| u.admin)
+        .ok_or_else(|| anyhow::anyhow!("No administrator exists"))?;
+    let password = secret();
+    user.password_hash = hash_password(&password)
+        .map_err(|_| anyhow::anyhow!("Could not hash recovery password"))?;
+    let email = user.email.clone();
+    app.persist(&store)
+        .map_err(|_| anyhow::anyhow!("Could not persist recovered administrator"))?;
+    *guard = Some(store);
+    // Explicit owner-only offline command output. Never emitted by a normal server start.
+    println!(
+        "Administrator recovered: {email}\nNew temporary password: {password}\nSign in after starting Companion normally, then change this password. Keep this command's output private."
+    );
+    Ok(())
+}
+
 pub fn confirm(app: &App, supplied: Option<&str>) -> Result<()> {
     if !supplied.is_some_and(|s| bool::from(s.as_bytes().ct_eq(app.backup_passphrase.as_bytes()))) {
         return Err(bad(

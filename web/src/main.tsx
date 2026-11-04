@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import "./style.css";
 import { api } from "./api";
 import SetupWizard from "./SetupWizard";
+import OmniSetup from "./OmniSetup";
 
 type User = { id: string; email: string; name: string; admin: boolean };
 type Backup = { name: string; bytes: number };
@@ -296,6 +297,28 @@ function App() {
                 </button>
               </form>
             </fieldset>
+            <details>
+              <summary>Forgot the administrator password?</summary>
+              <p className="hint">
+                The server owner can recover access without losing accounts,
+                identity or backups. Stop Companion, run its image once with{" "}
+                <code>--reset-admin-password</code> using the same data volume,
+                then start it normally. The explicit recovery command prints a
+                generated temporary password to its output (or the one-off
+                container log). Change it after signing in.
+              </p>
+              <p className="hint">
+                Recovery refuses to run while another Companion process owns the
+                data directory. It is not available as an anonymous web reset.
+              </p>
+              <a
+                href="https://github.com/holblin/talos-companion/blob/main/docs/home-setup.md#recover-a-forgotten-administrator-password"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Recovery instructions ↗
+              </a>
+            </details>
           </div>
         </main>
       </div>
@@ -629,6 +652,7 @@ function App() {
             )}
             {user.admin && view === "Identity" && overview && (
               <>
+                <OmniSetup />
                 <div className="two-cols">
                   <Card
                     eyebrow="OPENID CONNECT"
