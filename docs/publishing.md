@@ -6,9 +6,9 @@ tracked-file and Actions-log credential audit; see [the audit record](security-a
 
 ## Current state
 
-- Current public image: [`holblin/talos-companion:0.1.1`](https://hub.docker.com/r/holblin/talos-companion/tags), also tagged `latest` and `sha-7d7f21cf93e935a16fa66279b46173856d45495a`.
-- Its digest is `sha256:090aab703e25aaa3ee4c5695103644d65d827a9199f5ee86232b9d4cbc7eb7a0`. All three current tags resolve to that image. Registry verification confirms Linux amd64, one filesystem layer, UID `99:100`, and the Rust entrypoint. The compressed layer is 7,646,178 bytes.
-- [The 0.1.1 publishing run](https://github.com/holblin/talos-companion/actions/runs/41390853502) passed strict application checks, the 320 MiB streaming recovery test, automatic startup-secret permission checks, and container/template checks before upload. Docker Hub credentials remain an encrypted GitHub Actions secret.
+- Current public image: [`holblin/talos-companion:0.2.0`](https://hub.docker.com/r/holblin/talos-companion/tags), also tagged `latest` and `sha-f90d5493f774206e291d4b528e596234cc6160bb`.
+- Its digest is `sha256:760a3ea81b71df784268059426b59f00566f3d5ef9f9e013d1f9775ea4268e1f`. All three current tags resolve to that image. Registry verification confirms Linux amd64, one filesystem layer, UID `99:100`, and the Rust entrypoint. The compressed layer is 7,845,329 bytes.
+- [The 0.2.0 publishing run](https://github.com/holblin/talos-companion/actions/runs/41766110072) passed strict application checks, owner recovery tests, the 320 MiB streaming recovery test, secret scanning, automatic startup-secret permission checks, and container/template checks before upload. Docker Hub credentials remain an encrypted GitHub Actions secret.
 - Version 0.1.0 remains available at digest `sha256:c7d653fbef035575e11a7425a26fb2ce32d270b04a63e90d891d665a57b8fec8`.
 - `.github/workflows/release.yml` can build, test, and package the image without uploading it.
 - Publishing is an explicit manual workflow choice, off by default. Ordinary commits never push images.
