@@ -61,6 +61,7 @@ fn router(app: App) -> Router {
         .route("/api/logout", post(auth::logout))
         .route("/api/me", get(auth::me))
         .route("/api/password", post(auth::password))
+        .route("/api/password/recover", post(recovery::recover_password))
         .route("/api/users", get(auth::users).post(auth::add))
         .route("/api/users/{id}", delete(auth::remove))
         .route("/api/overview", get(overview))
@@ -101,6 +102,14 @@ fn router(app: App) -> Router {
 }
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if std::env::args().any(|a| a == "--reset-admin-password") {
+        anyhow::bail!(
+            "Direct password reset was removed. Use --generate-password-reset-code, then choose a password on the sign-in page."
+        );
+    }
+    if std::env::args().any(|a| a == "--generate-password-reset-code") {
+        return recovery::generate_password_recovery();
+    }
     if std::env::args().any(|a| a == "--healthcheck") {
         return healthcheck();
     }
@@ -111,9 +120,6 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
     let app = App::load().await?;
-    if std::env::args().any(|a| a == "--reset-admin-password") {
-        return recovery::reset_admin(&app).await;
-    }
     let receiver_app = app.clone();
     // A failed receiver stops the application so that Docker can restart it instead of reporting a healthy but incomplete service.
     let receiver = receiver::run(receiver_app);

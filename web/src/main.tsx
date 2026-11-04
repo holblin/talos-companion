@@ -301,16 +301,69 @@ function App() {
               <summary>Forgot the administrator password?</summary>
               <p className="hint">
                 The server owner can recover access without losing accounts,
-                identity or backups. Stop Companion, run its image once with{" "}
-                <code>--reset-admin-password</code> using the same data volume,
-                then start it normally. The explicit recovery command prints a
-                generated temporary password to its output (or the one-off
-                container log). Change it after signing in.
+                identity or backups. In Unraid’s terminal, run:
               </p>
+              <pre className="recovery-command">
+                <code>
+                  docker exec talos-companion /talos-companion
+                  --generate-password-reset-code
+                </code>
+              </pre>
               <p className="hint">
-                Recovery refuses to run while another Companion process owns the
-                data directory. It is not available as an anonymous web reset.
+                This prints a single-use recovery code, valid for 15 minutes.
+                Your current password keeps working until you finish below. The
+                code cannot sign in to Companion or Omni. Keep the terminal
+                output private. Only someone with server access can generate it.
               </p>
+              <fieldset disabled={busy}>
+                <form
+                  onSubmit={(e) => {
+                    const form = e.currentTarget;
+                    const data = fields(e);
+                    void work(async () => {
+                      if (data["password"] !== data["confirmation"])
+                        throw new Error(
+                          "New password confirmation does not match.",
+                        );
+                      await api("/api/password/recover", data);
+                      form.reset();
+                      setNotice(
+                        "Password updated. Your recovery code has been used. Sign in with your new password.",
+                      );
+                    });
+                  }}
+                >
+                  <Input
+                    label="Administrator email"
+                    name="email"
+                    type="email"
+                    autoComplete="username"
+                  />
+                  <Input
+                    label="Recovery code from server"
+                    name="code"
+                    type="password"
+                    autoComplete="off"
+                  />
+                  <Input
+                    label="New password"
+                    name="password"
+                    type="password"
+                    minLength={12}
+                    autoComplete="new-password"
+                  />
+                  <Input
+                    label="Confirm new password"
+                    name="confirmation"
+                    type="password"
+                    minLength={12}
+                    autoComplete="new-password"
+                  />
+                  <button className="primary wide">
+                    Reset password using recovery code
+                  </button>
+                </form>
+              </fieldset>
               <a
                 href="https://github.com/holblin/talos-companion/blob/main/docs/home-setup.md#recover-a-forgotten-administrator-password"
                 target="_blank"

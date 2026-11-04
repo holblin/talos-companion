@@ -1,7 +1,7 @@
 # Omni + Companion at home
 
 This guide covers a **new, separate Omni instance**, an existing-instance repair workflow,
-and migration between LAN, Cloudflare DNS and Tailscale access. Requires Companion 0.2.0
+and migration between LAN, Cloudflare DNS and Tailscale access. Requires Companion 0.2.1
 and uses official Omni v1.13.2. Screenshots use isolated demonstration data; never publish
 screenshots of real credentials or private configuration.
 
@@ -216,26 +216,33 @@ Companion recovery bundle and an independent Omni database/encryption-key backup
 
 ![Owner recovery instructions on the sign-in screen](assets/home-recovery.png)
 
-There is no anonymous web reset. A server owner with access to the persistent volume can
-run this explicit, offline command. It generates a new 64-character password for the first
-administrator, preserves identity/users/backups, and prints the new password only to the
-recovery command's output (or its one-off container log). Normal restarts never print it.
+The sign-in page has **Forgot the administrator password?** with a recovery form.
+The server owner first generates a reset-only code using Companion 0.2.1 or later:
 
 ```sh
-docker stop talos-companion
-docker run --rm --user 99:100 --read-only --cap-drop ALL \
-  --security-opt no-new-privileges:true \
-  -v /mnt/user/appdata/talos-companion:/data \
-  holblin/talos-companion:0.2.0 --reset-admin-password
-docker start talos-companion
+docker exec talos-companion /talos-companion --generate-password-reset-code
 ```
 
-If the installation uses explicit SETUP_TOKEN/BACKUP_PASSPHRASE overrides, provide its
-original overrides privately to the recovery process. Never substitute a new backup
-passphrase. An initialized installation refuses missing generated secret files.
-Companion 0.2.0 locks its data directory so another 0.2.0 process cannot recover it while
-running. Stop older versions explicitly too. Sign in with the generated password and
-change it in Settings. Keep terminal/log output private.
+No stop or restart is needed. The command prints a random code only to its explicit
+terminal output; normal server logs never print it. The current password and sessions
+keep working until the recovery form is successfully submitted. The code cannot sign
+in to Companion or Omni and is not your backup passphrase.
+
+Open Companion's sign-in page, expand **Forgot the administrator password?**, and enter
+the administrator email, recovery code, new password and confirmation. After success,
+sign in with the new password. Keep code and password private.
+
+The code expires after 15 minutes, permits at most five failed verification attempts,
+and is consumed by one successful reset. Generating another code replaces the previous
+one. Expiry/attempt limits survive restarts. Only its hash is stored, in a private file
+outside recovery archives. A normal password change also invalidates pending codes.
+Successful recovery revokes that administrator's Companion sessions and pending OIDC
+codes; already issued Omni sessions follow Omni's own expiration rules. Identity keys,
+backup passphrase, other users and infrastructure data are preserved.
+
+The old `--reset-admin-password` command is deliberately refused. If the server is still
+on an older image, update its Unraid Repository to `holblin/talos-companion:0.2.1`, apply,
+then refresh the sign-in page. Do not generate a reset code until you are ready to use it.
 
 ## Verify before relying on the deployment
 
