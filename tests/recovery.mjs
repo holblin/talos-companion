@@ -32,7 +32,12 @@ test('owner-issued codes preserve passwords, expire, rotate and work once', {tim
     await stop(child);child=undefined;running=await server(18430,data);child=running.child;
     assert.equal((await reset(limited)).status,401);
     const final=generate();const active=await login(18430,'recovery@example.test','initial recovery test password');
+    const inFlightLogin=request(18430,'/api/login',{body:{email:'recovery@example.test',password:'initial recovery test password'}});
     assert.equal((await reset(final)).status,200);
+    const staleLogin=await inFlightLogin;
+    if(staleLogin.ok){
+      assert.equal((await request(18430,'/api/me',{cookie:staleLogin.headers.get('set-cookie').split(';')[0]})).status,401);
+    }else assert.equal(staleLogin.status,401);
     assert.equal((await request(18430,'/api/me',{cookie:active})).status,401);
     assert.equal((await request(18430,'/api/me',{cookie})).status,401);
     assert.equal((await reset(final)).status,401);
