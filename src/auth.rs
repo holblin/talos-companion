@@ -217,6 +217,21 @@ pub async fn login(
     let u = u
         .filter(|_| valid)
         .ok_or_else(|| Error(StatusCode::UNAUTHORIZED, "Invalid email or password".into()))?;
+    // A recovery/password change may complete while Argon2 is running. Hold the
+    // current store through session creation so an old password cannot create a
+    // fresh session after recovery has revoked existing sessions.
+    let guard = app.store.read().await;
+    if !guard.as_ref().is_some_and(|store| {
+        store
+            .users
+            .iter()
+            .any(|current| current.id == u.id && current.password_hash == u.password_hash)
+    }) {
+        return Err(Error(
+            StatusCode::UNAUTHORIZED,
+            "Invalid email or password".into(),
+        ));
+    }
     let token = secret();
     let mut m = app.memory.lock().await;
     m.sessions.retain(|_, s| s.expires > now());
@@ -228,6 +243,7 @@ pub async fn login(
         },
     );
     drop(m);
+    drop(guard);
     let secure = if app.public_url.starts_with("https:") {
         "; Secure"
     } else {
