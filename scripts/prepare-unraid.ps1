@@ -119,6 +119,12 @@ Version and ``sha-<commit>`` tags are available for published versions.
 
 ## Install on Unraid
 
+For a fresh Omni plus Companion with LAN, Cloudflare DNS or Tailscale certificates,
+follow the [illustrated home setup and migration guide](https://github.com/holblin/talos-companion/blob/main/docs/home-setup.md).
+It includes existing-instance configuration checks, scoped repairs and owner password recovery.
+The optional Omni managed configuration path must point only to the helper's dedicated
+overlay directory, never Omni's database or encryption keys.
+
 1. Create ``/mnt/user/appdata/talos-companion`` with ownership ``99:100`` and mode ``700``.
 2. Install this template through Community Apps after the listing is approved, or copy
    ``templates/talos-companion.xml`` to
