@@ -673,6 +673,29 @@ td code {
   display: block;
   margin: 17px 0;
 }
+.omni-setup a,
+.onboarding details a {
+  color: #c5dc9b;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.omni-setup textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid #354138;
+  border-radius: 8px;
+  color: #e3e8e4;
+  background: #101715;
+  font-family: ui-monospace, monospace;
+  resize: vertical;
+}
+.omni-setup .recovery-box {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid #44563d;
+  border-radius: 10px;
+}
 .field > span {
   display: block;
   font-size: 11px;

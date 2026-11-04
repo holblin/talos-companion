@@ -53,6 +53,7 @@ chmod 700 "$BASE/managed"
 if [[ $PROFILE == lan ]]; then
   COMPANION_HOST=$HOST_IP; OMNI_HOST=$HOST_IP
   if [[ ! -f $CERTS/root-ca.key ]]; then
+    [[ ! -f $CERTS/root-ca.crt && ! -d $BASE/data/etcd/member ]] || die 'LAN CA key is missing. Restore the original key; do not silently replace an existing trust authority.'
     openssl req -x509 -newkey rsa:3072 -nodes -sha256 -days 3650 -subj '/CN=Talos Companion Home LAN Root' \
       -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign' \
       -keyout "$CERTS/root-ca.key" -out "$CERTS/root-ca.crt" 2>/dev/null
