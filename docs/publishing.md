@@ -115,6 +115,6 @@ Public distribution and catalog review are separate:
    Submission includes agreement to Unraid's terms, so the account owner should complete that final step.
 5. Address moderator feedback and keep the template and image tags updated together.
 
-Companion 0.2.1 was installed and reported healthy on Unraid. Version 0.2.2 has passed CI, including log-delivered recovery tests; its live Unraid upgrade is pending owner-session access. The Omni
+Companion 0.2.2 has been installed and reported healthy on Unraid. Its saved template pins the published 0.2.2 image, and the log-recovery request button has been verified on the live sign-in page. Recovery semantics are covered by isolated integration tests. The Omni
 template is validated against upstream configuration but has not been live-deployed.
 Community Apps catalog acceptance has not been requested or claimed.
