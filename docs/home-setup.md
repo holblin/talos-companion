@@ -214,7 +214,7 @@ Companion recovery bundle and an independent Omni database/encryption-key backup
 
 ## Recover a forgotten administrator password
 
-![Owner recovery instructions on the sign-in screen](assets/home-recovery.png)
+
 
 Companion 0.2.2 adds a command-free recovery flow:
 
