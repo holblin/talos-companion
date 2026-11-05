@@ -6,9 +6,9 @@ tracked-file and Actions-log credential audit; see [the audit record](security-a
 
 ## Current state
 
-- Current public image: [`holblin/talos-companion:0.2.1`](https://hub.docker.com/r/holblin/talos-companion/tags), also tagged `latest` and `sha-efc267b1cfc59cc6371d2ebefd1024069375222f`.
-- Its digest is `sha256:e7b2229b98794a60f5ae9172ba7e51377a3d51c1341c9572f3c3c758ed719735`. All three current tags resolve to that image. Registry verification confirms Linux amd64, one filesystem layer, UID `99:100`, and the Rust entrypoint. The compressed layer is 7,888,603 bytes.
-- [The 0.2.1 publishing run](https://github.com/holblin/talos-companion/actions/runs/41775341162) passed strict application checks, owner recovery tests, the 320 MiB streaming recovery test, secret scanning, automatic startup-secret permission checks, and container/template checks before upload. Docker Hub credentials remain an encrypted GitHub Actions secret.
+- Current public image: [`holblin/talos-companion:0.2.2`](https://hub.docker.com/r/holblin/talos-companion/tags), also tagged `latest` and `sha-4f297c99bf955cb894b405d5c42e94dd1e9d037d`.
+- Its digest is `sha256:eedb0d14a86eeaf3cadaa7ab47ecce3117532c9f44ec9d03e84f0b46b6757898`. All three current tags resolve to that image. Registry verification confirms Linux amd64, one filesystem layer, UID `99:100`, and the Rust entrypoint. The compressed layer is 7,894,301 bytes.
+- [The 0.2.2 publishing run](https://github.com/holblin/talos-companion/actions/runs/41950924879) passed strict application checks, owner recovery tests, the 320 MiB streaming recovery test, secret scanning, automatic startup-secret permission checks, and container/template checks before upload. Docker Hub credentials remain an encrypted GitHub Actions secret.
 - Version 0.1.0 remains available at digest `sha256:c7d653fbef035575e11a7425a26fb2ce32d270b04a63e90d891d665a57b8fec8`.
 - `.github/workflows/release.yml` can build, test, and package the image without uploading it.
 - Publishing is an explicit manual workflow choice, off by default. Ordinary commits never push images.
@@ -115,6 +115,6 @@ Public distribution and catalog review are separate:
    Submission includes agreement to Unraid's terms, so the account owner should complete that final step.
 5. Address moderator feedback and keep the template and image tags updated together.
 
-Companion 0.2.1 has been installed and reported healthy on an Unraid server. The Omni
+Companion 0.2.1 was installed and reported healthy on Unraid. Version 0.2.2 has passed CI, including log-delivered recovery tests; its live Unraid upgrade is pending owner-session access. The Omni
 template is validated against upstream configuration but has not been live-deployed.
 Community Apps catalog acceptance has not been requested or claimed.

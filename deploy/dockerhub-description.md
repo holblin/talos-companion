@@ -6,6 +6,7 @@ a static Rust executable and compiled frontend files, with no shell or base OS.
 
 - Guided first-time account creation or encrypted recovery with optional administrator credential replacement.
 - OpenID Connect sign-in provider and account management.
+- Command-free password recovery: request a one-time, 15-minute code on the sign-in page and read it in private server logs. Log readers can recover the administrator account.
 - Authenticated S3 receiver for Omni backups, plus a credential and recovery-material vault.
 - Encrypted recovery files, configurable scheduling and retention, local storage, browser downloads,
   Google Drive, and host-mounted NFS/SMB destinations.

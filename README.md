@@ -15,13 +15,13 @@ A small, self-hosted Rust + React application for Talos Omni identity and recove
 - Destinations: persistent local storage, authenticated browser download, Google Drive, and host-mounted NFS/SMB shares. Every remote transfer retains a local copy.
 - Scheduling: daily by default, configurable in the administrator UI and persisted configuration file.
 - Omni setup and repair: LAN/private-CA, Cloudflare DNS/ACME and Tailscale profiles, scoped configuration previews/overlays, HTTPS reachability checks, and an owner-run provisioning/migration helper. See the [home setup tutorial](docs/home-setup.md).
-- Owner recovery: an explicit offline password-reset command generates a temporary administrator password without changing identity or backups.
+- Owner recovery: request a single-use, 15-minute code from the sign-in page, read it in private server logs, and choose a new password. No command or restart is needed. Access to logs is recovery authority. See the [recovery guide](docs/home-setup.md#recover-a-forgotten-administrator-password).
 
 This is an initial implementation. The S3 backend uses the upstream experimental filesystem provider. Automated tests exercise signed S3 requests and multipart uploads; validate against your own Omni deployment before depending on it for recovery. Upload Omni encryption keys/configuration through the recovery-material vault to include them in snapshots. Companion does not automatically snapshot Omni’s own database or collect its encryption keys. See [Omni setup and recovery](docs/omni.md).
 
 ## Run on Unraid
 
-The image is available on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion): `holblin/talos-companion:0.2.1` or `holblin/talos-companion:latest`. Use `deploy/compose.hub.yaml` to run it without a source build. The generated Unraid template is ready for manual installation; Community Apps publication remains deferred. See [Unraid instructions](docs/unraid.md).
+The image is available on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion): `holblin/talos-companion:0.2.2` or `holblin/talos-companion:latest`. Use `deploy/compose.hub.yaml` to run it without a source build. The generated Unraid template is ready for manual installation; Community Apps publication remains deferred. See [Unraid instructions](docs/unraid.md).
 
 The application source, templates and documentation use the [MIT license](LICENSE).
 Public Unraid templates for both Companion and Omni are available in
