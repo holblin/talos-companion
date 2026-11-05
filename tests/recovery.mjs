@@ -50,3 +50,53 @@ test('owner-issued codes preserve passwords, expire, rotate and work once', {tim
     assert.equal((await reset(pending)).status,401);
   }finally{if(child)await stop(child);await rm(data,{recursive:true,force:true});}
 });
+
+test('browser requests emit one private log code per window and never return it over HTTP', {timeout:120000}, async()=>{
+  const data=await mkdtemp(join(tmpdir(),'companion-log-recovery-'));
+  let child;
+  const port=18432;
+  const record=join(data,'password-recovery.json');
+  const ask=(options={})=>request(port,'/api/password/recovery-code',{body:{},...options});
+  const reset=(code)=>request(port,'/api/password/recover',{body:{email:'logs@example.test',code,password:'new log recovery password',confirmation:'new log recovery password'}});
+  const codes=(logs)=>[...logs.matchAll(/Password recovery code: ([a-f0-9]{64})/g)].map(match=>match[1]);
+  const waitForCode=async(running)=>{for(let i=0;i<40;i++){const found=codes(running.logs());if(found.length)return found.at(-1);await new Promise(resolve=>setTimeout(resolve,25));}assert.fail('No recovery log entry');};
+  try{
+    let running=await server(port,data);child=running.child;
+    assert.equal(codes(running.logs()).length,0);
+    assert.equal((await ask()).status,400);
+    assert.equal((await request(port,'/api/setup',{setup:true,body:{name:'Logs Test',email:'logs@example.test',password:'initial log recovery password',backup_passphrase_confirmation:passphrase}})).status,200);
+    const original=await readFile(join(data,'state.json'),'utf8');
+    const cookie=await login(port,'logs@example.test','initial log recovery password');
+    assert.equal((await fetch(`http://127.0.0.1:${port}/api/password/recovery-code`,{method:'POST'})).status,400);
+    assert.equal((await ask({origin:'https://untrusted.example.test'})).status,400);
+    assert.equal(codes(running.logs()).length,0);
+    const started=Math.floor(Date.now()/1000);
+    const first=await ask();assert.equal(first.status,200);const responseText=await first.text();const response=JSON.parse(responseText);
+    const code=await waitForCode(running);
+    assert.deepEqual(Object.keys(response),['expires_at']);assert.ok(!responseText.includes(code));
+    assert.ok(response.expires_at>=started+900 && response.expires_at<=Math.floor(Date.now()/1000)+900);
+    assert.equal(await readFile(join(data,'state.json'),'utf8'),original);
+    const stored=await readFile(record,'utf8');assert.ok(!stored.includes(code));
+    assert.equal((await request(port,'/api/login',{body:{email:'logs@example.test',password:code}})).status,401);
+    const repeat=await ask();assert.equal(repeat.status,200);assert.deepEqual(await repeat.json(),response);
+    assert.equal(await readFile(record,'utf8'),stored);assert.equal(codes(running.logs()).length,1);
+    await stop(child);child=undefined;running=await server(port,data);child=running.child;
+    assert.deepEqual(await (await ask()).json(),response);assert.equal(codes(running.logs()).length,0);
+    for(let i=0;i<5;i++)assert.equal((await reset('0'.repeat(64))).status,401);
+    assert.equal((await ask()).status,429);assert.equal(codes(running.logs()).length,0);
+    assert.equal((await reset(code)).status,401);
+    const expired=JSON.parse(await readFile(record,'utf8'));expired.expires=1;await writeFile(record,JSON.stringify(expired));
+    const next=await ask();assert.equal(next.status,200);const nextText=await next.text();const replacement=await waitForCode(running);
+    assert.notEqual(replacement,code);assert.ok(!nextText.includes(replacement));
+    assert.equal((await reset(code)).status,401);
+    assert.equal((await reset(replacement)).status,200);
+    assert.equal((await reset(replacement)).status,401);
+    assert.equal((await request(port,'/api/me',{cookie})).status,401);
+    await login(port,'logs@example.test','new log recovery password');
+    assert.equal(codes(running.logs()).length,1);
+    await stop(child);child=undefined;running=await server(port,data);child=running.child;
+    assert.equal(codes(running.logs()).length,0);
+    const third=await ask();assert.equal(third.status,200);const thirdCode=await waitForCode(running);
+    assert.notEqual(thirdCode,replacement);
+  }finally{if(child)await stop(child);await rm(data,{recursive:true,force:true});}
+});

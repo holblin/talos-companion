@@ -62,6 +62,10 @@ fn router(app: App) -> Router {
         .route("/api/me", get(auth::me))
         .route("/api/password", post(auth::password))
         .route("/api/password/recover", post(recovery::recover_password))
+        .route(
+            "/api/password/recovery-code",
+            post(recovery::request_password_recovery),
+        )
         .route("/api/users", get(auth::users).post(auth::add))
         .route("/api/users/{id}", delete(auth::remove))
         .route("/api/overview", get(overview))

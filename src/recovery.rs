@@ -16,6 +16,8 @@ struct PasswordRecovery {
     code_digest: String,
     expires: u64,
     attempts: u8,
+    #[serde(default)]
+    logged: bool,
 }
 fn digest(value: &str) -> String {
     hex::encode(Sha256::digest(value.as_bytes()))
@@ -39,6 +41,67 @@ fn save_recovery(data: &Path, recovery: &PasswordRecovery) -> anyhow::Result<()>
     file.persist(data.join("password-recovery.json"))?;
     Ok(())
 }
+fn issue_password_recovery(
+    data: &Path,
+    user: &User,
+    logged: bool,
+) -> anyhow::Result<(String, u64)> {
+    let code = secret();
+    let expires = now() + 900;
+    save_recovery(
+        data,
+        &PasswordRecovery {
+            user_id: user.id.clone(),
+            credential_digest: digest(&user.password_hash),
+            code_digest: digest(&code),
+            expires,
+            attempts: 0,
+            logged,
+        },
+    )?;
+    Ok((code, expires))
+}
+
+/// The browser can request delivery to owner-controlled logs, never to the response.
+/// Repeated requests reuse the current window, including across server restarts.
+pub async fn request_password_recovery(
+    State(app): State<App>,
+    headers: HeaderMap,
+) -> Result<Json<Value>> {
+    auth::csrf(&app, &headers)?;
+    let guard = app.store.read().await;
+    let user = guard
+        .as_ref()
+        .and_then(|store| store.users.iter().find(|u| u.admin))
+        .ok_or_else(|| bad("Finish first-run setup before recovering an administrator"))?;
+    let _lock = recovery_lock(&app.data)?;
+    let previous = match std::fs::read(app.data.join("password-recovery.json")) {
+        Ok(bytes) => {
+            Some(serde_json::from_slice::<PasswordRecovery>(&bytes).map_err(anyhow::Error::from)?)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(anyhow::Error::from(error).into()),
+    };
+    if let Some(previous) = previous
+        && previous.logged
+        && previous.expires > now()
+        && previous.user_id == user.id
+        && previous.credential_digest == digest(&user.password_hash)
+    {
+        if previous.attempts >= 5 {
+            return Err(crate::model::Error(axum::http::StatusCode::TOO_MANY_REQUESTS,
+                "Recovery verification limit reached. Wait for the current 15-minute window to expire, then request a new code.".into()));
+        }
+        return Ok(Json(json!({"expires_at":previous.expires})));
+    }
+    let (code, expires) = issue_password_recovery(&app.data, user, true)?;
+    // Intentional owner-requested delivery. Do not return the code over HTTP or
+    // log it on startup, retries, validation failures or successful consumption.
+    println!(
+        "Password recovery code: {code} | expires_unix={expires} | single use; valid for 15 minutes from issue. Anyone with this code and the administrator email can reset the password. Keep this log private."
+    );
+    Ok(Json(json!({"expires_at":expires})))
+}
 /// Owner-only CLI: works while the server runs and never changes a password.
 pub fn generate_password_recovery() -> anyhow::Result<()> {
     let data = std::path::PathBuf::from(std::env::var("DATA_DIR").unwrap_or("data".into()));
@@ -49,17 +112,7 @@ pub fn generate_password_recovery() -> anyhow::Result<()> {
         .iter()
         .find(|u| u.admin)
         .ok_or_else(|| anyhow::anyhow!("No administrator exists"))?;
-    let code = secret();
-    save_recovery(
-        &data,
-        &PasswordRecovery {
-            user_id: user.id.clone(),
-            credential_digest: digest(&user.password_hash),
-            code_digest: digest(&code),
-            expires: now() + 900,
-            attempts: 0,
-        },
-    )?;
+    let (code, _) = issue_password_recovery(&data, user, false)?;
     println!(
         "Password recovery code: {code}\nValid for 15 minutes and one successful reset. Open Forgot the administrator password? on the sign-in page and enter this code with your new password. Your current password is unchanged. Keep this output private. Generating another code invalidates this one."
     );

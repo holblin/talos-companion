@@ -150,6 +150,7 @@ function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [recoveryExpires, setRecoveryExpires] = useState<number | null>(null);
   async function work(fn: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -301,19 +302,45 @@ function App() {
               <summary>Forgot the administrator password?</summary>
               <p className="hint">
                 The server owner can recover access without losing accounts,
-                identity or backups. In Unraid’s terminal, run:
+                identity or backups. Request a code here, then read it in
+                Companion’s server logs. No command or restart is needed.
               </p>
-              <pre className="recovery-command">
-                <code>
-                  docker exec talos-companion /talos-companion
-                  --generate-password-reset-code
-                </code>
-              </pre>
+              <button
+                className="primary wide"
+                disabled={busy}
+                onClick={() => {
+                  void work(async () => {
+                    const result = await api<{ expires_at: number }>(
+                      "/api/password/recovery-code",
+                      {},
+                    );
+                    setRecoveryExpires(result.expires_at);
+                  });
+                }}
+              >
+                Print recovery code to server logs
+              </button>
+              {recoveryExpires !== null && (
+                <div className="message" role="status">
+                  Look for “Password recovery code:” in Companion’s server logs.
+                  This code expires at{" "}
+                  {new Date(recoveryExpires * 1000).toLocaleString()}. Repeated
+                  requests keep the same active code; it is printed only once.
+                </div>
+              )}
               <p className="hint">
-                This prints a single-use recovery code, valid for 15 minutes.
+                On Unraid, open Docker → talos-companion → Logs. For other
+                installations, use the service’s logs or terminal output. Find
+                the latest “Password recovery code:” entry. It is valid for 15
+                minutes and one successful reset, with at most five failed
+                verification attempts. Repeated requests do not replace an
+                active log code or extend its expiry, even after a restart.
+              </p>
+              <p className="hint">
                 Your current password keeps working until you finish below. The
-                code cannot sign in to Companion or Omni. Keep the terminal
-                output private. Only someone with server access can generate it.
+                code cannot sign in to Companion or Omni. Anyone who can read
+                these logs can recover the administrator account. Keep logs
+                private and exclude recovery entries from shared log exports.
               </p>
               <fieldset disabled={busy}>
                 <form
@@ -327,6 +354,7 @@ function App() {
                         );
                       await api("/api/password/recover", data);
                       form.reset();
+                      setRecoveryExpires(null);
                       setNotice(
                         "Password updated. Your recovery code has been used. Sign in with your new password.",
                       );

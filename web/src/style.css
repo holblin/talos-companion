@@ -1138,10 +1138,3 @@ dd {
     flex-wrap: wrap;
   }
 }
-.recovery-command {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  padding: 12px;
-  border: 1px solid #3b4842;
-  border-radius: 8px;
-}

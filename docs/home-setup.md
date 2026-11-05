@@ -1,7 +1,7 @@
 # Omni + Companion at home
 
 This guide covers a **new, separate Omni instance**, an existing-instance repair workflow,
-and migration between LAN, Cloudflare DNS and Tailscale access. Requires Companion 0.2.1
+and migration between LAN, Cloudflare DNS and Tailscale access. Requires Companion 0.2.2
 and uses official Omni v1.13.2. Screenshots use isolated demonstration data; never publish
 screenshots of real credentials or private configuration.
 
@@ -216,33 +216,46 @@ Companion recovery bundle and an independent Omni database/encryption-key backup
 
 ![Owner recovery instructions on the sign-in screen](assets/home-recovery.png)
 
-The sign-in page has **Forgot the administrator password?** with a recovery form.
-The server owner first generates a reset-only code using Companion 0.2.1 or later:
+Companion 0.2.2 adds a command-free recovery flow:
 
-```sh
-docker exec talos-companion /talos-companion --generate-password-reset-code
-```
+1. Open the sign-in page and expand **Forgot the administrator password?**.
+2. Click **Print recovery code to server logs**. The page shows the expiry time.
+3. Read Companion's logs and find the latest **Password recovery code:** entry.
+   On Unraid, open **Docker > talos-companion > Logs** (the log icon also opens it).
+   With systemd use the service's journal; a directly run binary prints to its terminal.
+4. Enter your administrator email, code, new password and confirmation in the recovery
+   form, then sign in with the new password.
 
-No stop or restart is needed. The command prints a random code only to its explicit
-terminal output; normal server logs never print it. The current password and sessions
-keep working until the recovery form is successfully submitted. The code cannot sign
-in to Companion or Omni and is not your backup passphrase.
+No command or restart is needed. Your current password and sessions keep working until
+the form is successfully submitted. The code cannot sign in to Companion or Omni and
+is not the backup passphrase. Only the expiry time is returned to the browser; the
+secret itself is delivered exclusively to server stdout/logs.
 
-Open Companion's sign-in page, expand **Forgot the administrator password?**, and enter
-the administrator email, recovery code, new password and confirmation. After success,
-sign in with the new password. Keep code and password private.
+**Log access is recovery authority.** Anyone who can read these logs and knows the
+administrator email can reset that account. Keep service/container logs private,
+restrict any centralized log readers, and remove recovery entries from shared exports.
+The code is not emitted on normal startup. It is intentionally logged only on request.
 
-The code expires after 15 minutes, permits at most five failed verification attempts,
-and is consumed by one successful reset. Generating another code replaces the previous
-one. Expiry/attempt limits survive restarts. Only its hash is stored, in a private file
-outside recovery archives. A normal password change also invalidates pending codes.
+A code expires 15 minutes after issuance, allows at most five failed verification
+attempts, and works once. Repeated log requests reuse the existing active code without
+reprinting it or extending its expiry, including across restarts. Exhausting five
+attempts does not permit an anonymous requester to rotate the code: wait for the window
+to expire, then request a new one. If the previous log entry is unavailable, also wait
+for the shown expiry before requesting again. The server keeps only a private hash
+record outside recovery archives; retained logs can still contain the plaintext code.
+
 Successful recovery revokes that administrator's Companion sessions and pending OIDC
-codes; already issued Omni sessions follow Omni's own expiration rules. Identity keys,
-backup passphrase, other users and infrastructure data are preserved.
+codes; already issued Omni sessions follow Omni's own expiration rules. A normal
+password change invalidates pending recovery codes. Identity keys, backup passphrase,
+other users and infrastructure data are preserved.
 
-The old `--reset-admin-password` command is deliberately refused. If the server is still
-on an older image, update its Unraid Repository to `holblin/talos-companion:0.2.1`, apply,
-then refresh the sign-in page. Do not generate a reset code until you are ready to use it.
+Advanced owner fallback: running the binary with `--generate-password-reset-code` still
+prints a new code to that command's own output. It replaces previous codes; requesting
+a server-log code can replace a privately issued command code. This is optional and
+independent of the deployment platform. The old `--reset-admin-password` is refused.
+
+If you cannot see the new button, update to 0.2.2 or later and refresh the sign-in page.
+The Unraid repository is `holblin/talos-companion:0.2.2` for a pinned image.
 
 ## Verify before relying on the deployment
 
