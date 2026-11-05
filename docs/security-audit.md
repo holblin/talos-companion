@@ -27,6 +27,13 @@ Gitleaks is now pinned through mise. `mise run secrets:check` scans all Git hist
 CI checks out full history and runs this task. Ignore rules also cover local environment
 overrides, age/GPG/private-key files and generated startup secrets.
 
+Since 0.2.2, an explicit request from the password-recovery form writes a single-use,
+15-minute reset code to private server logs. Log access is therefore recovery authority.
+The HTTP response includes only expiry, and the private recovery record stores only
+the code hash. These intentionally sensitive log entries must never be published or
+attached to issues. Repeated requests do not reprint an active log code or renew its
+expiry. Normal startup does not emit recovery codes.
+
 This is a credential-exposure review, not a penetration test or a guarantee that every
 possible secret format can be detected. Do not commit populated Omni configuration,
 `.env` files, credentials, production logs or backups. Report a suspected credential
