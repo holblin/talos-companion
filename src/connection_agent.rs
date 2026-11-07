@@ -101,7 +101,118 @@ async fn cloudflare_domain(cert: &Path) -> anyhow::Result<String> {
     );
     Ok(name)
 }
+fn cloudflare_alias(mut configuration: Value, host: &str) -> anyhow::Result<Value> {
+    let ingress = configuration["ingress"]
+        .as_array_mut()
+        .ok_or_else(|| anyhow::anyhow!("Missing Cloudflare ingress configuration"))?;
+    if let Some(rule) = ingress.iter().find(|rule| rule["hostname"] == host) {
+        anyhow::ensure!(
+            rule["service"] == "http://127.0.0.1:18081",
+            "This hostname already routes to another service"
+        );
+    } else {
+        ingress.insert(
+            0,
+            json!({"hostname":host,"service":"http://127.0.0.1:18081"}),
+        );
+    }
+    Ok(configuration)
+}
 impl Agent {
+    async fn rename_cloudflare(
+        &self,
+        request: &ConnectionRequest,
+    ) -> anyhow::Result<(Integration, Child)> {
+        let host = provider_hostname(&request.companion_url)?;
+        let cert = self.state.join(".cloudflared/cert.pem");
+        let zone = cloudflare_domain(&cert).await?;
+        anyhow::ensure!(
+            host.ends_with(&format!(".{zone}")),
+            "Choose a subdomain of the domain approved in Cloudflare"
+        );
+        let mut integration: Integration = read_json(&provider_path(&Profile::Cloudflare))?;
+        let config = self.state.join("cloudflare.json");
+        let previous: Value = read_json(&config)?;
+        let updated = cloudflare_alias(previous.clone(), &host)?;
+        let staged = self.state.join("cloudflare-next.json");
+        write_json(&staged, &updated)?;
+        self.status(
+            request,
+            "configuring",
+            "Updating Cloudflare DNS and tunnel routes. Existing hostnames remain available.",
+            None,
+            None,
+        )?;
+        self.output(
+            "/usr/local/bin/cloudflared",
+            &[
+                "tunnel",
+                "--config",
+                &staged.to_string_lossy(),
+                "ingress",
+                "validate",
+            ],
+        )
+        .await?;
+        let id = updated["tunnel"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Missing tunnel ID"))?;
+        self.output("/usr/local/bin/cloudflared", &["tunnel", "--origincert", &cert.to_string_lossy(), "route", "dns", id, &host])
+            .await.map_err(|_| anyhow::anyhow!("Could not create Cloudflare DNS for {host}. Check provider permissions and conflicting DNS records, then retry."))?;
+        write_json(&config, &updated)?;
+        let child = match self.spawn_cloudflare(&config) {
+            Ok(child) => child,
+            Err(error) => {
+                write_json(&config, &previous)?;
+                return Err(error);
+            }
+        };
+        integration.companion_url = format!("https://{host}");
+        Ok((integration, child))
+    }
+    async fn rename_tailscale(&self, request: &ConnectionRequest) -> anyhow::Result<Integration> {
+        let host = provider_hostname(&request.companion_url)?;
+        let previous: Integration = read_json(&provider_path(&Profile::Tailscale))?;
+        let old = provider_hostname(&previous.companion_url)?;
+        let name = tailscale_name(&old, &host)?;
+        let api = crate::tailscale::LocalApi::new(&self.state.join("tailscale.sock"))?;
+        let status = api.status().await?;
+        anyhow::ensure!(
+            status["BackendState"] == "Running"
+                && status["Self"]["DNSName"]
+                    .as_str()
+                    .unwrap_or("")
+                    .trim_end_matches('.')
+                    == old,
+            "Tailscale identity changed; reconnect the provider before renaming"
+        );
+        self.status(
+            request,
+            "configuring",
+            "Renaming the Tailscale device and updating its HTTPS services…",
+            None,
+            None,
+        )?;
+        api.set_hostname(&name).await?;
+        let result = async {
+            let mut matched = false;
+            for _ in 0..15 {
+                let status = api.status().await?;
+                if status["Self"]["DNSName"].as_str().unwrap_or("").trim_end_matches('.') == host { matched = true; break; }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            anyhow::ensure!(matched, "Tailscale did not assign the requested hostname. Check for a duplicate or an admin-console name override.");
+            api.serve(&host).await?;
+            Ok(Integration { profile: Profile::Tailscale, companion_url: format!("https://{host}"), omni_url: format!("https://{host}:8443"), s3_endpoint: format!("https://{host}:10000") })
+        }.await;
+        if result.is_err() {
+            let old_name = old.split('.').next().unwrap_or("talos-companion");
+            api.set_hostname(old_name).await
+                .map_err(|_| anyhow::anyhow!("Tailscale rename failed and the previous hostname could not be restored. Reconnect Tailscale to recover."))?;
+            api.serve(&old).await?;
+        }
+        result
+    }
     fn socket_arg(&self) -> String {
         format!("--socket={}", self.state.join("tailscale.sock").display())
     }
@@ -287,7 +398,7 @@ impl Agent {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing tunnel ID"))?;
         let hostnames = [
-            format!("companion.{domain}"),
+            format!("talos-companion.{domain}"),
             format!("omni.{domain}"),
             format!("s3.{domain}"),
         ];
@@ -364,7 +475,13 @@ impl Agent {
         })
         .await
         .map_err(|_| anyhow::anyhow!("Tailscale daemon did not become ready"))?;
-        api.start().await?;
+        let saved = read_json::<Integration>(&provider_path(&Profile::Tailscale)).ok();
+        let name = saved
+            .as_ref()
+            .and_then(|i| provider_hostname(&i.companion_url).ok())
+            .and_then(|h| h.split('.').next().map(str::to_owned))
+            .unwrap_or_else(|| "talos-companion".into());
+        api.start(&name).await?;
         let mut login_requested = false;
         let status = loop {
             let status = api.status().await?;
@@ -658,14 +775,24 @@ pub async fn run() -> anyhow::Result<()> {
                     );
                     match request.profile {
                         Profile::Cloudflare => {
-                            let (integration, child) = agent.cloudflare(&request).await?;
+                            let (integration, child) = if request.companion_url.is_empty() {
+                                agent.cloudflare(&request).await?
+                            } else {
+                                agent.rename_cloudflare(&request).await?
+                            };
                             if let Some(mut old) = tunnel.take() {
                                 let _ = old.kill().await;
                             }
                             tunnel = Some(child);
                             Ok(integration)
                         }
-                        Profile::Tailscale => agent.tailscale(&request).await,
+                        Profile::Tailscale => {
+                            if request.companion_url.is_empty() {
+                                agent.tailscale(&request).await
+                            } else {
+                                agent.rename_tailscale(&request).await
+                            }
+                        }
                         Profile::Lan => {
                             anyhow::bail!("LAN does not require provider authorization")
                         }
@@ -769,6 +896,25 @@ mod tests {
         }
     }
 
+    #[test]
+    fn hostname_edits_preserve_existing_cloudflare_services_and_are_retryable() {
+        let original = serde_json::json!({"tunnel":"test", "ingress":[
+            {"hostname":"old.example.test","service":"http://127.0.0.1:18081"},
+            {"hostname":"omni.example.test","service":"http://127.0.0.1:18082"},
+            {"service":"http_status:404"}
+        ]});
+        let updated = super::cloudflare_alias(original.clone(), "new.example.test").unwrap();
+        assert_eq!(
+            &updated["ingress"].as_array().unwrap()[1..],
+            original["ingress"].as_array().unwrap()
+        );
+        assert_eq!(updated["ingress"][0]["hostname"], "new.example.test");
+        assert_eq!(
+            super::cloudflare_alias(updated.clone(), "new.example.test").unwrap(),
+            updated
+        );
+        assert!(super::cloudflare_alias(original, "omni.example.test").is_err());
+    }
     #[test]
     fn cloudflare_selected_zone_is_decoded_without_exposing_credentials() {
         let encoded = base64::engine::general_purpose::STANDARD.encode(

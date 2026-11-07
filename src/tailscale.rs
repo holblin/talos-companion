@@ -88,7 +88,22 @@ impl LocalApi {
         .await
     }
 
-    pub async fn start(&self) -> anyhow::Result<()> {
+    pub async fn set_hostname(&self, name: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            crate::connections::domain(&format!("{name}.ts.net")) && !name.contains('.'),
+            "Invalid Tailscale device name"
+        );
+        self.request(
+            Method::PATCH,
+            "prefs",
+            Some(&json!({"Hostname":name,"HostnameSet":true})),
+            None,
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn start(&self, hostname: &str) -> anyhow::Result<()> {
         self.request(Method::POST, "start", Some(&json!({})), None)
             .await?;
         // Mask only the preferences this application owns; preserve the saved identity.
@@ -97,7 +112,7 @@ impl LocalApi {
             "prefs",
             Some(&json!({
                 "WantRunning": true, "WantRunningSet": true,
-                "Hostname": "talos-companion", "HostnameSet": true,
+                "Hostname": hostname, "HostnameSet": true,
                 "CorpDNS": false, "CorpDNSSet": true,
                 "RouteAll": false, "RouteAllSet": true
             })),
@@ -195,7 +210,7 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, router).await.unwrap();
         });
-        api.start().await.unwrap();
+        api.start("talos-companion").await.unwrap();
         api.login().await.unwrap();
         assert_eq!(api.status().await.unwrap()["BackendState"], "Running");
         assert_eq!(api.enable_https().await.unwrap()["Complete"], true);

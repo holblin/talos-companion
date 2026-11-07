@@ -222,6 +222,86 @@ export default function SetupFlow({
   const [plan, setPlan] = useState<Plan | null>(null);
   const [accepted, setAccepted] = useState(false);
   const { busy, notice, setNotice, work } = useTask({ toastErrors: true });
+  const updateController = useRef<AbortController | null>(null);
+  useEffect(() => () => updateController.current?.abort(), []);
+  async function saveAccess() {
+    let endpoints = settings;
+    if (
+      settings.profile !== "lan" &&
+      settings.companion_url !==
+        (initial.companion_url || job?.integration?.companion_url)
+    ) {
+      const controller = new AbortController();
+      const cancelled = () => controller.signal.aborted;
+      if (
+        settings.profile === "tailscale" &&
+        window.location.hostname ===
+          new URL(initial.companion_url || settings.companion_url).hostname
+      ) {
+        throw new Error(
+          "Open Companion through Local HTTPS or Cloudflare before renaming Tailscale, so this page stays connected during the update.",
+        );
+      }
+      updateController.current = controller;
+      setAutoCheck(null);
+      setCompanionVerified(false);
+      setNotice(`Updating ${provider} configuration…`);
+      const { id } = await api<{ id: string }>("/api/omni/connection", {
+        profile: settings.profile,
+        companion_url: settings.companion_url.trim(),
+      });
+      const deadline = Date.now() + 600_000;
+      let configured = false;
+      while (Date.now() < deadline) {
+        if (cancelled()) return;
+        const current = await api<Connection>("/api/omni/connection");
+        if (cancelled()) return;
+        const update = current.connection;
+        if (update?.id === id) {
+          if (["failed", "expired"].includes(update.state))
+            throw new Error(update.message);
+          if (update.state === "connected" && update.integration) {
+            endpoints = update.integration;
+            setSettings(endpoints);
+            configured = true;
+            break;
+          }
+          setNotice(update.message || `Updating ${provider} configuration…`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      if (!configured)
+        throw new Error(
+          "Provider update timed out. Check the connection and try saving again.",
+        );
+      setNotice(
+        "Provider updated. Waiting for HTTPS and verifying this Companion…",
+      );
+      for (let attempt = 0; ; attempt++) {
+        if (cancelled()) return;
+        try {
+          await api("/api/companion/check", {
+            profile: endpoints.profile,
+            companion_url: endpoints.companion_url,
+          });
+          if (cancelled()) return;
+          break;
+        } catch (error) {
+          if (attempt === 11) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+      }
+    }
+    await api("/api/companion/access", {
+      profile: endpoints.profile,
+      companion_url: endpoints.companion_url,
+    });
+    await queryClient.invalidateQueries({ queryKey: ["companion-access"] });
+    ToastQueue.positive(
+      "Companion access saved. Your other methods and Omni issuer are unchanged.",
+    );
+    onDone();
+  }
   function change(name: keyof Integration, value: string) {
     setSettings((previous) => ({ ...(previous ?? settings), [name]: value }));
     setPlan(null);
@@ -407,8 +487,8 @@ export default function SetupFlow({
           </p>
           <p className={documentClass("p")}>
             We verify HTTPS, this installation’s identity, OpenID discovery and
-            signing keys. Saving this method keeps every other access method and
-            the active Omni issuer unchanged.
+            signing keys when you save. Saving this method keeps every other
+            access method and the active Omni issuer unchanged.
           </p>
           <Button
             variant="secondary"
@@ -451,6 +531,14 @@ export default function SetupFlow({
             <TextField
               label="Companion HTTPS address"
               value={settings.companion_url}
+              isDisabled={busy}
+              description={
+                settings.profile === "lan"
+                  ? "Choose Save access method to verify and save this address. It must already route to this Companion."
+                  : settings.profile === "cloudflare"
+                    ? "Saving updates Cloudflare DNS and tunnel routes, then verifies HTTPS. Choose a subdomain of your approved domain. Existing routes remain available."
+                    : "Saving renames this Tailscale device and updates Companion, Omni and backup addresses. Use Local HTTPS or Cloudflare for this change so the page stays connected. Change only the device name within your current tailnet. If Omni uses this device as its issuer, select another verified access method first."
+              }
               onChange={(value) => {
                 setAutoCheck(null);
                 setCheckingCompanion(false);
@@ -462,6 +550,7 @@ export default function SetupFlow({
           </details>
           <Button
             variant="secondary"
+            isDisabled={busy}
             onPress={() => {
               setStep(2);
             }}
@@ -470,24 +559,18 @@ export default function SetupFlow({
           </Button>
           <Button
             variant="accent"
-            isDisabled={busy || checkingCompanion || !companionVerified}
+            isDisabled={
+              busy ||
+              checkingCompanion ||
+              !settings.companion_url.trim().startsWith("https://")
+            }
             onPress={() => {
               void work(async () => {
-                await api("/api/companion/access", {
-                  profile: settings.profile,
-                  companion_url: settings.companion_url,
-                });
-                await queryClient.invalidateQueries({
-                  queryKey: ["companion-access"],
-                });
-                ToastQueue.positive(
-                  "Companion access saved. Your other methods and Omni issuer are unchanged.",
-                );
-                onDone();
+                await saveAccess();
               });
             }}
           >
-            Save access method
+            {busy ? "Verifying and saving…" : "Save access method"}
           </Button>
         </>
       )}

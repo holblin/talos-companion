@@ -96,7 +96,14 @@ test('Companion gets trusted HTTPS and activates its issuer before any Omni addr
     await new Promise(resolve => accessProxy.listen(0, '127.0.0.1', resolve));
     const proxyEndpoint = { profile: 'cloudflare', companion_url: `https://127.0.0.1:${accessProxy.address().port}` };
     try {
-      assert.equal((await request(port, '/api/companion/access', { cookie, body: proxyEndpoint })).status, 200);
+      for (const profile of ['cloudflare', 'tailscale']) {
+        const updated = await request(port, '/api/companion/access', { cookie, body: { ...proxyEndpoint, profile } });
+        assert.equal(updated.status, 200);
+        const { integration } = await updated.json();
+        assert.equal(integration.companion_url, proxyEndpoint.companion_url);
+        assert.equal(integration.omni_url, profile === 'cloudflare' ? refreshedProvider.omni_url : '');
+        assert.equal(integration.s3_endpoint, profile === 'cloudflare' ? refreshedProvider.s3_endpoint : endpoint.companion_url, 'editing Companion URL preserves the backup endpoint');
+      }
       validProxy = false;
       assert.equal((await request(port, '/api/companion/access', { cookie, body: proxyEndpoint })).status, 400);
       const afterFailure = await (await request(port, '/api/companion/access', { cookie })).json();
@@ -112,7 +119,13 @@ test('Companion gets trusted HTTPS and activates its issuer before any Omni addr
     assert.equal((await (await request(port, '/api/companion/access', { cookie })).json()).accesses.length, 3);
     await stop(child); ({ child } = await server(port, data));
     cookie = await login(port);
-    assert.equal((await (await request(port, '/api/companion/access', { cookie })).json()).accesses.length, 3, 'access methods survive restart');
+    const restartedAccesses = (await (await request(port, '/api/companion/access', { cookie })).json()).accesses;
+    assert.equal(restartedAccesses.length, 3, 'access methods survive restart');
+    for (const profile of ['cloudflare', 'tailscale']) {
+      const integration = restartedAccesses.find(a => a.integration.profile === profile).integration;
+      assert.equal(integration.companion_url, proxyEndpoint.companion_url, 'edited access URLs survive restart');
+      assert.equal(integration.s3_endpoint, profile === 'cloudflare' ? refreshedProvider.s3_endpoint : endpoint.companion_url);
+    }
     assert.equal(JSON.parse((await trusted(port, ca, '/.well-known/openid-configuration')).body).issuer, endpoint.companion_url);
     assert.equal((await request(port, '/api/companion/check', { cookie, body: endpoint, origin: `http://127.0.0.1:${port}` })).status, 200, 'bootstrap origin remains accepted after restart');
   } finally { if (child) await stop(child); await rm(data, { recursive: true, force: true }); }

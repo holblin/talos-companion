@@ -18,6 +18,8 @@ pub struct ConnectionRequest {
     pub id: String,
     pub profile: Profile,
     pub domain: String,
+    #[serde(default)]
+    pub companion_url: String,
     pub expires_at: u64,
 }
 
@@ -222,6 +224,37 @@ pub struct Start {
     profile: Profile,
     #[serde(default)]
     domain: String,
+    #[serde(default)]
+    companion_url: String,
+}
+pub fn provider_hostname(value: &str) -> anyhow::Result<String> {
+    let url = url::Url::parse(value.trim())?;
+    let host = url.host_str().unwrap_or("");
+    anyhow::ensure!(
+        url.scheme() == "https"
+            && url.port().is_none()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.path() == "/"
+            && url.query().is_none()
+            && url.fragment().is_none()
+            && domain(host),
+        "Use an HTTPS hostname without a port, path, query or credentials"
+    );
+    Ok(host.to_owned())
+}
+
+pub fn tailscale_name(current: &str, requested: &str) -> anyhow::Result<String> {
+    let (name, suffix) = requested.split_once('.').unwrap_or_default();
+    let (_, current_suffix) = current.split_once('.').unwrap_or_default();
+    anyhow::ensure!(
+        domain(requested)
+            && current.ends_with(".ts.net")
+            && suffix == current_suffix
+            && !name.is_empty(),
+        "Change only the device name within the current Tailscale tailnet"
+    );
+    Ok(name.to_owned())
 }
 pub fn domain(value: &str) -> bool {
     value.len() <= 253
@@ -268,6 +301,31 @@ pub async fn start(
         ));
     }
     let dir = control_dir().ok_or_else(|| bad("Connector control directory is not configured"))?;
+    if !input.companion_url.is_empty() {
+        let host = provider_hostname(&input.companion_url).map_err(|e| bad(&e.to_string()))?;
+        let current: Integration = read_json(&provider_path(&input.profile))
+            .map_err(|_| bad("Connect this provider before updating its hostname"))?;
+        if input.profile == Profile::Tailscale {
+            let old = provider_hostname(&current.companion_url).map_err(|e| bad(&e.to_string()))?;
+            tailscale_name(&old, &host).map_err(|e| bad(&e.to_string()))?;
+            if old != host && app.issuer() == current.companion_url {
+                return Err(bad(
+                    "Select another verified Companion access method for Omni before renaming its active Tailscale device",
+                ));
+            }
+            if old != host
+                && headers
+                    .get("origin")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|value| url::Url::parse(value).ok())
+                    .is_some_and(|origin| origin.host_str() == Some(old.as_str()))
+            {
+                return Err(bad(
+                    "Open Companion through Local HTTPS or Cloudflare before renaming Tailscale, so this page stays connected during the update",
+                ));
+            }
+        }
+    }
     if pending(&dir)
         .is_some_and(|s| matches!(s.state.as_str(), "starting" | "authorizing" | "configuring"))
     {
@@ -279,6 +337,7 @@ pub async fn start(
         id: uuid::Uuid::new_v4().to_string(),
         profile: input.profile,
         domain: input.domain.to_ascii_lowercase(),
+        companion_url: input.companion_url.trim().to_owned(),
         expires_at: now() + 600,
     };
     write_json(&dir.join("request.json"), &request)?;
@@ -407,6 +466,29 @@ pub async fn finish(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn provider_edits_accept_only_https_origins_and_same_tailnet_names() {
+        assert_eq!(
+            provider_hostname("https://new.example.test/").unwrap(),
+            "new.example.test"
+        );
+        for url in [
+            "http://new.example.test",
+            "https://new.example.test:8443",
+            "https://user@new.example.test",
+            "https://new.example.test/path",
+            "https://new.example.test?q=1",
+            "https://new.example.test/#x",
+        ] {
+            assert!(provider_hostname(url).is_err(), "{url}");
+        }
+        assert_eq!(
+            tailscale_name("old.tail.ts.net", "new.tail.ts.net").unwrap(),
+            "new"
+        );
+        assert!(tailscale_name("old.tail.ts.net", "new.other.ts.net").is_err());
+        assert!(tailscale_name("old.tail.ts.net", "new.tail.ts.net.attacker.test").is_err());
+    }
     use super::*;
     #[test]
     fn wizard_accepts_an_ordinary_hostname_or_pasted_omni_page() {
@@ -444,6 +526,7 @@ mod tests {
                 id: "new".into(),
                 profile: Profile::Tailscale,
                 domain: String::new(),
+                companion_url: String::new(),
                 expires_at: now() + 60,
             },
         )

@@ -279,15 +279,16 @@ pub async fn save_access(
     .ok()
     .or_else(|| connections::read_json(&connections::private_dir().join("active.json")).ok())
     .filter(|i| i.profile == input.profile && i.companion_url == origin);
+    // Editing Companion access must not discard the provider's other service endpoints.
     let existing = saved
         .accesses
         .iter()
-        .find(|a| a.integration.profile == input.profile && a.integration.companion_url == origin)
+        .find(|a| a.integration.profile == input.profile)
         .map(|a| a.integration.clone());
     let legacy = saved
         .integration
         .clone()
-        .filter(|i| i.profile == input.profile && i.companion_url == origin);
+        .filter(|i| i.profile == input.profile);
     let mut integration = provider
         .or(existing)
         .or(legacy)

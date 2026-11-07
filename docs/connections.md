@@ -30,7 +30,19 @@ Choose **Add Local HTTPS**, **Add Tailscale** or **Add Cloudflare**:
    remain available. This step does not activate or migrate the Omni issuer.
 
 Use **Manage** to verify an existing method or return to its setup, and **Check**
-to repeat its live verification. Methods from older configurations appear as
+to repeat its live verification. To update a saved Companion URL, open **Manage**,
+expand **Advanced settings**, edit **Companion HTTPS address**, and choose **Save
+access method**. For Cloudflare, saving creates DNS for a subdomain of the approved
+zone and adds its route to the existing tunnel, preserving old hostnames and the
+Omni and backup endpoints. Conflicting DNS records are not overwritten.
+For Tailscale, saving renames the device within its current tailnet and updates
+all three HTTPS endpoints. The old Tailscale hostname stops working. If it is
+Omni’s active issuer, select another verified access method for Omni first.
+Make the change through Local HTTPS or Cloudflare so the page stays connected.
+Saving waits for provider configuration and HTTPS verification before recording
+verified access. If propagation takes longer, retry saving; completed provider
+changes are retained. Local HTTPS URL edits still require existing routing.
+Methods from older configurations appear as
 **Needs verification** until successfully checked. The old /identity page remains
 an alias for Omni configuration; new links use /access and /omni-configuration.
 
@@ -84,7 +96,7 @@ without appdata, recreate access methods and reinstall any regenerated local CA.
 ## Provider connections
 
 Cloudflare uses official cloudflared browser authorization, creates a tunnel and
-DNS routes for companion.DOMAIN, omni.DOMAIN and s3.DOMAIN, and runs the tunnel.
+DNS routes for talos-companion.DOMAIN, omni.DOMAIN and s3.DOMAIN, and runs the tunnel.
 Choose **Continue with Cloudflare**, open its sign-in page, select a domain already
 managed by Cloudflare and approve it. Return to Companion; it detects the approved
 domain, creates the addresses and automatically checks Companion HTTPS before you

@@ -70,6 +70,24 @@ test('guided connections require admin/CSRF, bind jobs, and check receiver ident
     assert.equal((await request(port,'/api/omni/connection',{cookie,method:'DELETE'})).status,200);
     assert.equal((await(await request(port,'/api/omni/connection',{cookie})).json()).connection.state,'expired');
     assert.equal((await connect({profile:'tailscale'})).status,200,'canceled authorization can be restarted');
+    await request(port,'/api/omni/connection',{cookie,method:'DELETE'});
+    await info();
+    assert.equal((await connect({profile:'cloudflare',companion_url:'https://new.example.test'})).status,400,'renaming requires an existing provider connection');
+    const providerDirectory=join(data,'connections','private');
+    await mkdir(providerDirectory,{recursive:true});
+    await writeFile(join(providerDirectory,'tailscale-active.json'),JSON.stringify({profile:'tailscale',companion_url:'https://old.tail.ts.net',omni_url:'https://old.tail.ts.net:8443',s3_endpoint:'https://old.tail.ts.net:10000'}));
+    const renameSettings=JSON.parse(await readFile(savedPath,'utf8'));
+    renameSettings.accesses=[{integration:{profile:'tailscale',companion_url:'https://old.tail.ts.net',omni_url:'',s3_endpoint:''},verified_at:100}];
+    await writeFile(savedPath,JSON.stringify(renameSettings));
+    const disconnectedRename=await request(port,'/api/omni/connection',{cookie,origin:'https://old.tail.ts.net',body:{profile:'tailscale',companion_url:'https://new.tail.ts.net'}});
+    assert.equal(disconnectedRename.status,400);
+    assert.match((await disconnectedRename.json()).error,/stays connected/,'renaming from the old hostname must not strand the setup page');
+    for (const companion_url of ['https://new.other.ts.net','https://new.tail.ts.net:8443','https://new.tail.ts.net/path','http://new.tail.ts.net']) {
+      assert.equal((await connect({profile:'tailscale',companion_url})).status,400,'unsupported hostname changes are rejected before provider mutation');
+    }
+    assert.equal((await connect({profile:'tailscale',companion_url:'https://new.tail.ts.net'})).status,200);
+    const rename=JSON.parse(await readFile(join(control,'request.json'),'utf8'));
+    assert.equal(rename.companion_url,'https://new.tail.ts.net','provider hostname edits are handed to the connection agent');
     assert.ok(!running.logs().includes('test-only'));
   } finally {if(child)await stop(child);await new Promise(resolve=>impostor.close(resolve));await rm(data,{recursive:true,force:true});}
 });

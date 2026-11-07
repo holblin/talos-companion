@@ -40,7 +40,9 @@ let accesses: AccessMethod[],
   issuer: string,
   job: Job | null,
   posted: { path: string; body: unknown }[],
-  rejectActivation: boolean;
+  rejectActivation: boolean,
+  rejectSave: boolean,
+  rejectProvider: boolean;
 let client: QueryClient;
 let providers: Integration["profile"][];
 beforeEach(() => {
@@ -53,6 +55,8 @@ beforeEach(() => {
   job = null;
   posted = [];
   rejectActivation = false;
+  rejectSave = false;
+  rejectProvider = false;
   vi.stubGlobal(
     "fetch",
     vi.fn((path: string, init?: RequestInit) => {
@@ -65,9 +69,23 @@ beforeEach(() => {
         status = 200;
       if (path === "/api/companion/access") {
         if (init?.method === "POST") {
-          const integration =
+          const base =
             [local, cloud, tailscale].find((i) => i.profile === body.profile) ??
             local;
+          const integration = {
+            ...base,
+            companion_url: body.companion_url ?? base.companion_url,
+          };
+          if (rejectSave) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  error: "The new address could not be verified",
+                }),
+                { status: 400 },
+              ),
+            );
+          }
           accesses = [
             ...accesses.filter((a) => a.integration.profile !== body.profile),
             { integration, verified_at: 100 },
@@ -94,6 +112,22 @@ beforeEach(() => {
         }
       } else if (path === "/api/omni/connection") {
         if (init?.method === "POST") {
+          if (body.companion_url) {
+            const base = body.profile === "tailscale" ? tailscale : cloud;
+            job = {
+              id: "rename-1",
+              profile: base.profile,
+              state: rejectProvider ? "failed" : "connected",
+              message: rejectProvider
+                ? "Provider rejected the requested hostname"
+                : "Updated",
+              auth_url: null,
+              integration: { ...base, companion_url: body.companion_url },
+            };
+            return Promise.resolve(
+              new Response(JSON.stringify({ id: job.id })),
+            );
+          }
           job = {
             id: "job-1",
             profile: body.profile ?? "cloudflare",
@@ -137,6 +171,87 @@ beforeEach(() => {
       );
     }),
   );
+});
+it.each([
+  [cloud, "Cloudflare"],
+  [tailscale, "Tailscale"],
+] as const)(
+  "verifies and saves an edited %s URL from Advanced settings",
+  async (integration, name) => {
+    accesses = [
+      { integration, verified_at: 100 },
+      { integration: local, verified_at: 100 },
+    ];
+    issuer = local.companion_url;
+    const events = userEvent.setup();
+    mount();
+    await events.click(
+      await screen.findByRole("button", { name: `Manage ${name}` }),
+    );
+    await events.click(screen.getByText("Advanced settings"));
+    const input = screen.getByRole("textbox", {
+      name: "Companion HTTPS address",
+    });
+    await events.clear(input);
+    const save = screen.getByRole("button", { name: "Save access method" });
+    expect(save.hasAttribute("disabled")).toBe(true);
+    const url =
+      integration.profile === "tailscale"
+        ? "https://new-companion.example.ts.net"
+        : "https://new-companion.example.test";
+    await events.type(input, url);
+    expect(save.hasAttribute("disabled")).toBe(false);
+    rejectSave = true;
+    await events.click(save);
+    await screen.findByText("The new address could not be verified");
+    expect((input as HTMLInputElement).value).toBe(url);
+    expect(accesses[0]?.integration).toEqual(integration);
+    rejectSave = false;
+    await events.click(
+      screen.getByRole("button", { name: "Save access method" }),
+    );
+    await screen.findByRole("button", { name: `Manage ${name}` });
+    expect(
+      accesses.find((a) => a.integration.profile === integration.profile)
+        ?.integration,
+    ).toEqual({ ...integration, companion_url: url });
+    expect(issuer).toBe(local.companion_url);
+    expect(
+      posted.some(
+        (p) =>
+          p.path === "/api/omni/connection" &&
+          (p.body as Partial<Integration>).companion_url === url,
+      ),
+    ).toBe(true);
+    expect(
+      posted.filter((p) => p.path === "/api/companion/access").at(-1)?.body,
+    ).toEqual({ profile: integration.profile, companion_url: url });
+    expect(posted.some((p) => p.path === "/api/companion/activate")).toBe(
+      false,
+    );
+  },
+);
+it("keeps the edited hostname available for retry when provider configuration fails", async () => {
+  accesses = [{ integration: cloud, verified_at: 100 }];
+  rejectProvider = true;
+  const events = userEvent.setup();
+  mount();
+  await events.click(
+    await screen.findByRole("button", { name: "Manage Cloudflare" }),
+  );
+  await events.click(screen.getByText("Advanced settings"));
+  const input = screen.getByRole("textbox", {
+    name: "Companion HTTPS address",
+  });
+  await events.clear(input);
+  await events.type(input, "https://new.example.test");
+  await events.click(
+    screen.getByRole("button", { name: "Save access method" }),
+  );
+  await screen.findByText("Provider rejected the requested hostname");
+  expect((input as HTMLInputElement).value).toBe("https://new.example.test");
+  expect(posted.some((p) => p.path === "/api/companion/access")).toBe(false);
+  expect(accesses[0]?.integration).toEqual(cloud);
 });
 function mount(component = <CompanionAccess />) {
   return render(
