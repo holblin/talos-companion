@@ -953,6 +953,19 @@ export default function App() {
             )}
             {user.admin && view === "Backups" && (
               <>
+                {overview && (
+                  <BackupDestinations
+                    overview={overview}
+                    createBackup={createBackup}
+                    refresh={refresh}
+                  />
+                )}
+                <Disclosure>
+                  <DisclosureTitle>
+                    Backup schedule and retention
+                  </DisclosureTitle>
+                  <DisclosurePanel>{backupSettings}</DisclosurePanel>
+                </Disclosure>
                 <Card title="Your recovery files">
                   {backupsQuery.data !== undefined && (
                     <RecoveryFiles backups={backups} />
@@ -973,21 +986,6 @@ export default function App() {
                     </p>
                   )}
                 </Card>
-                <Disclosure>
-                  <DisclosureTitle>
-                    Backup destinations and schedule
-                  </DisclosureTitle>
-                  <DisclosurePanel>
-                    {overview && (
-                      <BackupDestinations
-                        overview={overview}
-                        createBackup={createBackup}
-                        refresh={refresh}
-                      />
-                    )}
-                    {backupSettings}
-                  </DisclosurePanel>
-                </Disclosure>
                 <Disclosure>
                   <DisclosureTitle>
                     Omni credentials and recovery material

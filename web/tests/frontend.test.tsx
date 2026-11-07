@@ -179,6 +179,27 @@ describe("Spectrum frontend workflows", () => {
     expect(document.activeElement).toBe(
       screen.getByRole("heading", { name: "A way back, always." }),
     );
+    const destinations = screen.getByRole("region", {
+      name: "Backup destinations",
+    });
+    expect(
+      within(destinations).getByRole("heading", { name: "Local storage" }),
+    ).toBeTruthy();
+    expect(
+      within(destinations).getByRole("button", { name: "Set up Google Drive" }),
+    ).toBeTruthy();
+    expect(
+      within(destinations).getByRole("button", { name: "Set up NFS / SMB" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Save backup settings" }),
+    ).toBeNull();
+    await events.click(
+      screen.getByRole("button", { name: "Backup schedule and retention" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Save backup settings" }),
+    ).toBeTruthy();
     await events.click(screen.getByRole("link", { name: "Overview" }));
     await events.click(
       screen.getByRole("button", { name: "Connect Google Drive" }),

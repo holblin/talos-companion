@@ -8,7 +8,7 @@ import {
 } from "@react-spectrum/s2";
 import Input from "./Field";
 import { api } from "./api";
-import { classes, documentClass } from "./layout";
+import { classes, documentClass, layout } from "./layout";
 import { useTask } from "./useTask";
 
 type Drive = { client_id: string; folder_id: string; connected: boolean };
@@ -220,100 +220,132 @@ export default function BackupDestinations({
   const [editing, setEditing] = useState<"drive" | "mounted" | null>(null);
   const [checkedPath, setCheckedPath] = useState<string | null>(null);
   const setupHeading = useRef<HTMLHeadingElement>(null);
-  const setupTrigger = useRef<HTMLElement | null>(null);
+  const setupTriggers = useRef<
+    Partial<Record<"drive" | "mounted", { focus(): void } | null>>
+  >({});
+  const previousEditing = useRef<"drive" | "mounted" | null>(null);
   const wasEditing = useRef(false);
   useEffect(() => {
     if (editing) setupHeading.current?.focus();
-    else if (wasEditing.current) setupTrigger.current?.focus();
+    else if (wasEditing.current && previousEditing.current)
+      setupTriggers.current[previousEditing.current]?.focus();
+    if (editing) previousEditing.current = editing;
     wasEditing.current = editing !== null;
   }, [editing]);
   const { busy, error, work } = useTask();
   const verified = !!overview.mounted && checkedPath === overview.mounted;
   return (
-    <>
-      <div className={classes("three-cols")}>
-        <section className={classes("card")} aria-label="Local storage">
-          <h2 className={documentClass("h2")}>Local storage</h2>
+    <section aria-label="Backup destinations">
+      {!editing && (
+        <>
+          <h2 className={documentClass("h2")}>Backup destinations</h2>
           <p className={documentClass("p")}>
-            Save an encrypted recovery file in the persistent data directory.
-            Download it whenever you need it.
+            Choose where to keep your encrypted recovery files. Configure Google
+            Drive or a network share for an additional copy. A local copy is
+            always kept too.
           </p>
-          <StatusLight variant="neutral">Local archive destination</StatusLight>
-          <Button
-            variant="secondary"
-            onPress={() => void createBackup("local")}
-          >
-            Create local backup →
-          </Button>
-        </section>
-        <section className={classes("card")} aria-label="Google Drive">
-          <h2 className={documentClass("h2")}>Google Drive</h2>
-          <p className={documentClass("p")}>
-            Send an encrypted copy to Google Drive. A local copy is always kept
-            too.
-          </p>
-          <StatusLight
-            variant={overview.drive.connected ? "positive" : "neutral"}
-          >
-            {overview.drive.connected
-              ? "Connected"
-              : overview.drive.client_id
-                ? "Awaiting Google sign-in"
-                : "Set up to get started"}
-          </StatusLight>
-          <Button
-            variant={overview.drive.connected ? "secondary" : "accent"}
-            onPress={(event) => {
-              if (event.target instanceof HTMLElement)
-                setupTrigger.current = event.target;
-              setEditing(editing === "drive" ? null : "drive");
-            }}
-          >
-            {overview.drive.connected
-              ? "Manage Google Drive"
-              : "Set up Google Drive"}
-          </Button>
-          {overview.drive.connected && (
-            <Button
-              variant="secondary"
-              onPress={() => void createBackup("drive")}
+          <div className={classes("three-cols")}>
+            <section
+              className={classes("card destination-card")}
+              aria-label="Local storage"
             >
-              Back up to Drive →
-            </Button>
-          )}
-        </section>
-        <section className={classes("card")} aria-label="NFS / SMB">
-          <h2 className={documentClass("h2")}>NFS / SMB</h2>
-          <p className={documentClass("p")}>
-            Save an encrypted copy on your NAS or network share.
-          </p>
-          <StatusLight variant={verified ? "positive" : "neutral"}>
-            {verified
-              ? "Write check passed"
-              : overview.mounted
-                ? "Configured · check access"
-                : "Set up to get started"}
-          </StatusLight>
-          <Button
-            variant={overview.mounted ? "secondary" : "accent"}
-            onPress={(event) => {
-              if (event.target instanceof HTMLElement)
-                setupTrigger.current = event.target;
-              setEditing(editing === "mounted" ? null : "mounted");
-            }}
-          >
-            {overview.mounted ? "Manage NFS / SMB" : "Set up NFS / SMB"}
-          </Button>
-          {overview.mounted && (
-            <Button
-              variant="secondary"
-              onPress={() => void createBackup("mounted")}
+              <h3 className={documentClass("h3", layout.destinationTitle)}>
+                Local storage
+              </h3>
+              <p className={documentClass("p", layout.destinationDescription)}>
+                Save an encrypted recovery file in the persistent data
+                directory. Download it whenever you need it. No setup needed.
+              </p>
+              <StatusLight variant="positive">Ready to back up</StatusLight>
+              <Button
+                variant="secondary"
+                onPress={() => void createBackup("local")}
+              >
+                Create local backup →
+              </Button>
+            </section>
+            <section
+              className={classes("card destination-card")}
+              aria-label="Google Drive"
             >
-              Back up to share →
-            </Button>
-          )}
-        </section>
-      </div>
+              <h3 className={documentClass("h3", layout.destinationTitle)}>
+                Google Drive
+              </h3>
+              <p className={documentClass("p", layout.destinationDescription)}>
+                Send an encrypted copy to Google Drive. A local copy is always
+                kept too.
+              </p>
+              <StatusLight
+                variant={overview.drive.connected ? "positive" : "neutral"}
+              >
+                {overview.drive.connected
+                  ? "Connected"
+                  : overview.drive.client_id
+                    ? "Awaiting Google sign-in"
+                    : "Not configured"}
+              </StatusLight>
+              <Button
+                ref={(element) => {
+                  setupTriggers.current.drive = element;
+                }}
+                variant={overview.drive.connected ? "secondary" : "accent"}
+                onPress={() => {
+                  setEditing("drive");
+                }}
+              >
+                {overview.drive.connected
+                  ? "Manage Google Drive"
+                  : "Set up Google Drive"}
+              </Button>
+              {overview.drive.connected && (
+                <Button
+                  variant="secondary"
+                  onPress={() => void createBackup("drive")}
+                >
+                  Back up to Drive →
+                </Button>
+              )}
+            </section>
+            <section
+              className={classes("card destination-card")}
+              aria-label="NFS / SMB"
+            >
+              <h3 className={documentClass("h3", layout.destinationTitle)}>
+                NFS / SMB
+              </h3>
+              <p className={documentClass("p", layout.destinationDescription)}>
+                Save an encrypted copy on your NAS or network share.
+              </p>
+              <StatusLight variant={verified ? "positive" : "neutral"}>
+                {verified
+                  ? "Write check passed"
+                  : overview.mounted
+                    ? "Configured · check access"
+                    : "Not configured"}
+              </StatusLight>
+              <Button
+                ref={(element) => {
+                  setupTriggers.current.mounted = element;
+                }}
+                variant={overview.mounted ? "secondary" : "accent"}
+                onPress={() => {
+                  setEditing("mounted");
+                }}
+              >
+                {overview.mounted ? "Manage NFS / SMB" : "Set up NFS / SMB"}
+              </Button>
+              {overview.mounted && (
+                <Button
+                  variant="secondary"
+                  onPress={() => void createBackup("mounted")}
+                >
+                  Back up to share →
+                </Button>
+              )}
+            </section>
+          </div>
+        </>
+      )}
       {editing && (
         <section
           className={classes("card")}
@@ -321,9 +353,6 @@ export default function BackupDestinations({
             editing === "drive" ? "Google Drive setup" : "Network share setup"
           }
         >
-          <h2 className={documentClass("h2")} ref={setupHeading} tabIndex={-1}>
-            {editing === "drive" ? "Connect Google Drive" : "Connect NFS / SMB"}
-          </h2>
           <Button
             variant="secondary"
             isDisabled={busy}
@@ -331,8 +360,15 @@ export default function BackupDestinations({
               setEditing(null);
             }}
           >
-            Close setup
+            Back to backup destinations
           </Button>
+          <h2
+            className={documentClass("h2", layout.setupHeading)}
+            ref={setupHeading}
+            tabIndex={-1}
+          >
+            {editing === "drive" ? "Connect Google Drive" : "Connect NFS / SMB"}
+          </h2>
           {editing === "drive" ? (
             <GoogleDriveSetup issuer={overview.issuer} drive={overview.drive} />
           ) : (
@@ -404,7 +440,8 @@ export default function BackupDestinations({
               {verified && (
                 <p className={documentClass("p")} role="status">
                   Share write check passed. You can back up now or choose NFS /
-                  SMB in Backup settings below.
+                  SMB in Scheduled destination under Backup schedule and
+                  retention.
                 </p>
               )}
               <Button
@@ -428,6 +465,6 @@ export default function BackupDestinations({
           )}
         </section>
       )}
-    </>
+    </section>
   );
 }

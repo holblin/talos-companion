@@ -101,8 +101,24 @@ it("returns keyboard focus to the setup trigger when the panel closes", async ()
   expect(document.activeElement).toBe(
     screen.getByRole("heading", { name: "Connect Google Drive" }),
   );
-  await events.click(screen.getByRole("button", { name: "Close setup" }));
-  expect(document.activeElement).toBe(trigger);
+  expect(screen.queryByRole("heading", { name: "Local storage" })).toBeNull();
+  await events.click(
+    screen.getByRole("button", { name: "Back to backup destinations" }),
+  );
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: "Set up Google Drive" }),
+  );
+  await events.click(screen.getByRole("button", { name: "Set up NFS / SMB" }));
+  expect(document.activeElement).toBe(
+    screen.getByRole("heading", { name: "Connect NFS / SMB" }),
+  );
+  expect(screen.queryByLabelText(/Google client secret/)).toBeNull();
+  await events.click(
+    screen.getByRole("button", { name: "Back to backup destinations" }),
+  );
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: "Set up NFS / SMB" }),
+  );
 });
 
 it("reconnects an existing Google application without overwriting its credentials", async () => {
@@ -163,7 +179,11 @@ it("reports a failed share check and supports a successful retry without claimin
   await events.click(
     screen.getByRole("button", { name: "Check share access" }),
   );
-  await screen.findByText("Write check passed");
+  await screen.findByText(/Share write check passed/);
+  await events.click(
+    screen.getByRole("button", { name: "Back to backup destinations" }),
+  );
+  expect(screen.getByText("Write check passed")).toBeTruthy();
   expect(refresh).toHaveBeenCalledOnce();
   expect(fetch).toHaveBeenLastCalledWith(
     "/api/backups/mounted/check",
