@@ -224,7 +224,9 @@ pub async fn run(
             );
         }
     }
-    if integration.profile == Profile::Tailscale && crate::connections::agent_info().is_some() {
+    if integration.profile == Profile::Tailscale
+        && crate::connections::provider_available(&Profile::Tailscale)
+    {
         builder = builder
             .proxy(reqwest::Proxy::all("socks5h://127.0.0.1:1055").map_err(anyhow::Error::from)?);
     }

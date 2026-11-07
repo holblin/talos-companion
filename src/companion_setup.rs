@@ -160,7 +160,7 @@ async fn verify(app: &App, input: &Endpoint) -> Result<String> {
             }
         }
     }
-    if input.profile == Profile::Tailscale && connections::agent_info().is_some() {
+    if input.profile == Profile::Tailscale && connections::provider_available(&Profile::Tailscale) {
         builder = builder
             .proxy(reqwest::Proxy::all("socks5h://127.0.0.1:1055").map_err(anyhow::Error::from)?);
     }

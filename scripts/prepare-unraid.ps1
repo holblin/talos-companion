@@ -113,8 +113,10 @@ not mean the templates already appear in its catalog.
 
 Docker Hub: https://hub.docker.com/r/$image
 
-Image: ``${image}:latest``. Linux amd64 only. The image has exactly one filesystem
-layer containing Companion, compiled frontend files, pinned Cloudflare/Tailscale clients and public CA certificates.
+Image: ``${image}:latest``. Linux amd64 only. The image has two filesystem layers:
+selected connectors/public CA certificates, then Companion and compiled frontend files.
+The default includes Cloudflare Tunnel and the Tailscale daemon, without the Tailscale CLI.
+Smaller releases use ``-cloudflare``, ``-tailscale`` or ``-minimal`` tag suffixes.
 Version and ``sha-<commit>`` tags are available for published versions.
 
 ## Install on Unraid

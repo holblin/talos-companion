@@ -56,13 +56,18 @@ jobs:
     if: inputs.publish
     needs: [verify, template]
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [both, cloudflare, tailscale, minimal]
     env:
       VERSION: ${{ inputs.version }}
       DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      VARIANT: ${{ matrix.variant }}
     steps:
       - uses: actions/download-artifact@v8.0.2
         with:
-          name: verified-linux-amd64-image
+          name: verified-linux-amd64-image-${{ matrix.variant }}
           path: /tmp/image
       - name: Load exactly the image that passed verification
         run: docker load --input /tmp/image/companion-image.tar.gz
@@ -73,15 +78,17 @@ jobs:
       - name: Publish version and commit tags
         run: |
           image="docker.io/$DOCKERHUB_USERNAME/talos-companion"
+          suffix="-$VARIANT"
+          if [[ "$VARIANT" == both ]]; then suffix=''; fi
           for tag in "$VERSION" "sha-$GITHUB_SHA"; do
-            docker tag talos-companion:ci "$image:$tag"
-            docker push "$image:$tag"
+            docker tag talos-companion:ci "$image:$tag$suffix"
+            docker push "$image:$tag$suffix"
           done
           if [[ "$VERSION" != *-* ]]; then
-            docker tag talos-companion:ci "$image:latest"
-            docker push "$image:latest"
+            docker tag talos-companion:ci "$image:latest$suffix"
+            docker push "$image:latest$suffix"
           fi
-          printf 'Published `%s:%s` (Linux amd64, one filesystem layer).\n' "$image" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Published `%s:%s%s` (Linux amd64, two filesystem layers).\n' "$image" "$VERSION" "$suffix" >> "$GITHUB_STEP_SUMMARY"
       - name: Sign out
         if: always()
         run: docker logout

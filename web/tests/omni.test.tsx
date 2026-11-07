@@ -42,7 +42,9 @@ let accesses: AccessMethod[],
   posted: { path: string; body: unknown }[],
   rejectActivation: boolean;
 let client: QueryClient;
+let providers: Integration["profile"][];
 beforeEach(() => {
+  providers = ["cloudflare", "tailscale"];
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -107,6 +109,7 @@ beforeEach(() => {
           value = {
             available: true,
             bundled: true,
+            providers,
             backend_origin: "",
             saved: null,
             connection: job,
@@ -204,6 +207,25 @@ it("saves local access after explicit trust and verification without changing th
     ),
   ).toBe(false);
 });
+it("explains an excluded connector and blocks authorization in smaller images", async () => {
+  providers = ["tailscale"];
+  const events = userEvent.setup();
+  mount();
+  await events.click(
+    await screen.findByRole("button", { name: "Add Cloudflare" }),
+  );
+  await screen.findByText(/Cloudflare is not included in this image/);
+  await events.click(
+    screen.getByRole("checkbox", { name: /Allow public access/ }),
+  );
+  expect(
+    screen
+      .getByRole("button", { name: "Continue with Cloudflare" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  expect(posted.some((p) => p.path === "/api/omni/connection")).toBe(false);
+});
+
 it("adds Cloudflare alongside existing methods without implicitly selecting it for Omni", async () => {
   accesses = [
     { integration: local, verified_at: 100 },

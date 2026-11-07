@@ -1,6 +1,18 @@
 # syntax=docker/dockerfile:1
+ARG CONNECTORS=both
 FROM tailscale/tailscale@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c AS tailscale
 FROM cloudflare/cloudflared@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba AS cloudflare
+
+# Keep this independent of application builds. Normalize metadata so unchanged
+# pinned connectors produce the same layer even on a fresh CI runner.
+FROM debian:trixie-slim AS connector-files
+COPY --from=cloudflare /etc/ssl/certs/ca-certificates.crt /common/etc/ssl/certs/ca-certificates.crt
+COPY --from=cloudflare /usr/local/bin/cloudflared /cloudflare/usr/local/bin/cloudflared
+COPY --from=tailscale /usr/local/bin/tailscaled /tailscale/usr/local/bin/tailscaled
+RUN printf 'companion:x:99:100:Companion:/data:/sbin/nologin\n' > /common/etc/passwd \
+    && printf 'users:x:100:\n' > /common/etc/group \
+    && find /common /cloudflare /tailscale -exec touch -h -d @0 {} +
+
 FROM debian:trixie-slim AS build
 ARG MISE_VERSION=2026.10.25
 ARG MISE_SHA256=3c4d4abd8950e722543aa2ffe58dd9ee84430fc03c8a94d318f64b279229d8ff
@@ -25,21 +37,29 @@ COPY src ./src
 COPY web ./web
 RUN mise run web:build \
     && mise exec -- cargo build --release --locked --target x86_64-unknown-linux-musl \
-    && mkdir -p /out/web /out/data /out/etc \
+    && mkdir -p /out/web /out/data \
     && chown 99:100 /out/data && chmod 700 /out/data \
-    && printf 'companion:x:99:100:Companion:/data:/sbin/nologin\n' > /out/etc/passwd \
-    && printf 'users:x:100:\n' > /out/etc/group \
     && install -m 755 target/x86_64-unknown-linux-musl/release/talos-companion /out/talos-companion \
     && cp -R web/dist/. /out/web/
 
-# Bundle official clients into the same flattened runtime. No extra container,
-# permissions, published ports, or state mount are required for browser setup.
-COPY --from=cloudflare /usr/local/bin/cloudflared /out/usr/local/bin/cloudflared
-COPY --from=cloudflare /etc/ssl/certs/ca-certificates.crt /out/etc/ssl/certs/ca-certificates.crt
-COPY --from=tailscale /usr/local/bin/tailscale /out/usr/local/bin/tailscale
-COPY --from=tailscale /usr/local/bin/tailscaled /out/usr/local/bin/tailscaled
+# Select a connector bundle at build time. The final COPY flattens this bundle
+# into one reusable layer, followed by a separate application layer.
+FROM scratch AS connectors-minimal
+COPY --from=connector-files /common/ /
+
+FROM connectors-minimal AS connectors-cloudflare
+COPY --from=connector-files /cloudflare/ /
+
+FROM connectors-minimal AS connectors-tailscale
+COPY --from=connector-files /tailscale/ /
+
+FROM connectors-cloudflare AS connectors-both
+COPY --from=connector-files /tailscale/ /
+
+FROM connectors-${CONNECTORS} AS connectors
 
 FROM scratch
+COPY --from=connectors / /
 COPY --from=build /out/ /
 ENV DATA_DIR=/data WEB_DIR=/web TMPDIR=/data LISTEN_ADDR=0.0.0.0:8080 S3_LISTEN_ADDR=0.0.0.0:9000 NO_AUTOUPDATE=true
 USER 99:100

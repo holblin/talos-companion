@@ -52,14 +52,14 @@ Create an administrator, or choose Restore on the initial screen. To restore, su
 
 Restore requires an uninitialized data directory. Keep the original data directory intact until recovery has been checked on a fresh instance. The container environment supplies the new public URL, setup token, and passphrase for future backups.
 
-## Verify the one-layer image
+## Verify the image layers
 
 ```sh
 docker image inspect talos-companion:local --format '{{len .RootFS.Layers}}'
-# 1
+# 2
 docker history talos-companion:local
 ```
 
-Only the `COPY` instruction changes the final root filesystem. The final image has no base OS layers. `USER`, ports, volume declarations, environment variables, entrypoint, and healthcheck are image configuration, not extra filesystem layers. The `/data` volume and Docker’s injected `/etc/hosts`, `/etc/hostname`, and resolver files are runtime mounts, not application image contents.
+Two `COPY` instructions create the final filesystem: certificates and selected connectors, followed by the app and frontend. The final image has no base OS layers. The default includes both Cloudflare Tunnel and the Tailscale daemon; `-cloudflare`, `-tailscale`, and `-minimal` tag suffixes select smaller variants after publication. `USER`, ports, volume declarations, environment variables, entrypoint, and healthcheck are image configuration, not extra filesystem layers. The `/data` volume and Docker’s injected `/etc/hosts`, `/etc/hostname`, and resolver files are runtime mounts, not application image contents.
 
 The healthcheck is implemented in the Rust binary, so it requires no shell or curl. The running image is read-only except for `/data` and the explicitly mounted destination.

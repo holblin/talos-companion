@@ -1,8 +1,13 @@
 # Talos Companion
 
 An independent, self-hosted identity and recovery companion for Talos Omni.
-Rust backend, React frontend, Linux amd64. The image contains one filesystem layer:
-a static Rust executable and compiled frontend files, with no shell or base OS.
+Rust backend, React frontend, Linux amd64. The image has two filesystem layers:
+certificates and selected connectors, followed by the static Rust executable and compiled
+frontend files, with no shell or base OS. Tailscale uses its daemon's private API without a CLI.
+
+`latest` includes Cloudflare Tunnel and Tailscale (default). Smaller variants are
+`latest-cloudflare`, `latest-tailscale`, and `latest-minimal` (neither connector).
+Version and commit tags use the same suffixes. All variants retain the same deployment settings.
 
 - Guided first-time account creation or encrypted recovery with optional administrator credential replacement.
 - OpenID Connect sign-in provider and account management.

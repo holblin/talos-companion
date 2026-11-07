@@ -32,6 +32,7 @@ type Status = {
 type Connection = {
   available: boolean;
   bundled: boolean;
+  providers: Profile[];
   backend_origin: string;
   saved: Integration | null;
   connection: null | {
@@ -188,6 +189,8 @@ export default function SetupFlow({
           : false,
   });
   const job = connection.data?.connection;
+  const providerIncluded =
+    connection.data?.providers.includes(settings.profile) ?? false;
   const appliedConnection = useRef("");
   const startedConnection = useRef("");
   useEffect(() => {
@@ -573,12 +576,14 @@ export default function SetupFlow({
               ? "Sign in to Cloudflare, choose the domain you want to use, then return here. We’ll detect your approved domain, create the tunnel and addresses, and check Companion HTTPS. Your domain must already be managed by Cloudflare."
               : "Sign in to Tailscale and approve this Companion device. We’ll configure private HTTPS access for you."}
           </p>
-          {!connection.data?.available && (
+          {(!connection.data?.available || !providerIncluded) && (
             <div role="status">
               <p className={documentClass("p")}>
-                {connection.data?.bundled
-                  ? "Preparing the built-in connection service…"
-                  : "Cloud connections are included in the Companion Docker image. Update Companion to enable them."}
+                {connection.data && !providerIncluded
+                  ? `${provider} is not included in this image. Use the default Companion image or the ${provider} variant to enable it.`
+                  : connection.data?.bundled
+                    ? "Preparing the built-in connection service…"
+                    : "Cloud connections are included in the Companion Docker image. Update Companion to enable them."}
               </p>
               <Button
                 variant="secondary"
@@ -645,7 +650,7 @@ export default function SetupFlow({
             )}
           {connecting && (
             <p className={documentClass("p")} role="status">
-              {job?.state === "configuring"
+              {job?.message
                 ? job.message
                 : job?.auth_url
                   ? "Approve the request in the sign-in page, then return here. We’ll continue automatically."
@@ -692,7 +697,11 @@ export default function SetupFlow({
           <Button
             variant="accent"
             isDisabled={
-              busy || connecting || !authorized || !connection.data?.available
+              busy ||
+              connecting ||
+              !authorized ||
+              !connection.data?.available ||
+              !providerIncluded
             }
             onPress={() => {
               void work(async () => {

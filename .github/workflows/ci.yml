@@ -36,14 +36,20 @@ jobs:
       - run: mise run test
   container:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [both, cloudflare, tailscale, minimal]
+    env:
+      VARIANT: ${{ matrix.variant }}
     steps:
       - uses: actions/checkout@v7
-      - run: docker build -t talos-companion:ci .
-      - name: Verify one layer and runtime contents
+      - run: docker build --build-arg CONNECTORS="$VARIANT" -t talos-companion:ci .
+      - name: Verify separate connector and application layers
         run: |
-          test "$(docker image inspect talos-companion:ci --format '{{len .RootFS.Layers}}')" = 1
+          test "$(docker image inspect talos-companion:ci --format '{{len .RootFS.Layers}}')" = 2
           docker save -o /tmp/companion-image.tar talos-companion:ci
-          python3 scripts/verify_image.py /tmp/companion-image.tar
+          python3 scripts/verify_image.py /tmp/companion-image.tar "$VARIANT"
       - name: Container smoke test
         run: |
           mkdir -p /tmp/companion-data
@@ -74,9 +80,14 @@ jobs:
           done
           docker rm -f companion-auto
       - name: Verify bundled connection service
+        if: matrix.variant != 'minimal'
         run: |
-          docker run --rm --entrypoint /usr/local/bin/cloudflared talos-companion:ci version
-          docker run --rm --entrypoint /usr/local/bin/tailscale talos-companion:ci version
+          if [[ "$VARIANT" == both || "$VARIANT" == cloudflare ]]; then
+            docker run --rm --entrypoint /usr/local/bin/cloudflared talos-companion:ci version
+          fi
+          if [[ "$VARIANT" == both || "$VARIANT" == tailscale ]]; then
+            docker run --rm --entrypoint /usr/local/bin/tailscaled talos-companion:ci --version
+          fi
           docker run -d --name connections-ci --network none --read-only --cap-drop ALL \
             --security-opt no-new-privileges talos-companion:ci
           sleep 5
@@ -87,10 +98,22 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: |
           gzip -c /tmp/companion-image.tar > /tmp/companion-image.tar.gz
+      - name: Verify pinned Tailscale LocalAPI contract without a tailnet
+        if: matrix.variant == 'both' || matrix.variant == 'tailscale'
+        run: |
+          mkdir -p /tmp/tailscale-api
+          sudo chown 99:100 /tmp/tailscale-api
+          docker run -d --name tailscale-api --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --entrypoint /usr/local/bin/tailscaled \
+            -v /tmp/tailscale-api:/data talos-companion:ci \
+            --tun=userspace-networking --state=/data/tailscaled.state \
+            --statedir=/data --socket=/data/tailscale.sock
+          sudo python3 scripts/verify_tailscale_api.py /tmp/tailscale-api/tailscale.sock
+          docker rm -f tailscale-api
       - uses: actions/upload-artifact@v7.0.2
         if: github.event_name == 'workflow_dispatch'
         with:
-          name: verified-linux-amd64-image
+          name: verified-linux-amd64-image-${{ matrix.variant }}
           path: /tmp/companion-image.tar.gz
           retention-days: 1
           compression-level: 0

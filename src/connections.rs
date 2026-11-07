@@ -82,14 +82,21 @@ pub fn private_directory(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 pub fn bundled() -> bool {
+    !bundled_providers().is_empty()
+}
+pub fn provider_bundled(profile: &Profile) -> bool {
     cfg!(target_os = "linux")
-        && [
-            "/usr/local/bin/cloudflared",
-            "/usr/local/bin/tailscale",
-            "/usr/local/bin/tailscaled",
-        ]
-        .iter()
-        .all(|p| Path::new(p).is_file())
+        && match profile {
+            Profile::Cloudflare => Path::new("/usr/local/bin/cloudflared").is_file(),
+            Profile::Tailscale => Path::new("/usr/local/bin/tailscaled").is_file(),
+            Profile::Lan => false,
+        }
+}
+pub fn bundled_providers() -> Vec<Profile> {
+    [Profile::Cloudflare, Profile::Tailscale]
+        .into_iter()
+        .filter(provider_bundled)
+        .collect()
 }
 pub async fn supervise() {
     if !bundled() {
@@ -146,6 +153,11 @@ pub fn agent_info() -> Option<Value> {
     let value: Value = read_json(&dir.join("agent.json")).ok()?;
     (value["updated_at"].as_u64()?.saturating_add(15) > now()).then_some(value)
 }
+pub fn provider_available(profile: &Profile) -> bool {
+    agent_info()
+        .and_then(|agent| agent["providers"].as_array().cloned())
+        .is_some_and(|providers| providers.contains(&json!(profile)))
+}
 fn pending(dir: &Path) -> Option<ConnectionStatus> {
     let request: ConnectionRequest = read_json(&dir.join("request.json")).ok()?;
     let mut status: ConnectionStatus = read_json(&dir.join("status.json")).unwrap_or_default();
@@ -189,7 +201,7 @@ pub async fn get(State(app): State<App>, headers: HeaderMap) -> Result<Json<Valu
             .unwrap_or_default();
     }
     Ok(Json(
-        json!({"available":agent.is_some(),"bundled":bundled(),"connection":status,"backend_origin":backend,"saved":settings().integration}),
+        json!({"available":agent.is_some(),"bundled":bundled(),"providers":agent.as_ref().and_then(|a|a.get("providers")).cloned().unwrap_or_else(||json!(bundled_providers())),"connection":status,"backend_origin":backend,"saved":settings().integration}),
     ))
 }
 pub async fn cancel(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
@@ -230,7 +242,8 @@ pub async fn start(
     auth::csrf(&app, &headers)?;
     auth::admin(&app, &headers).await?;
     let _serial = app.backup_lock.lock().await;
-    if agent_info().is_none() {
+    let agent = agent_info();
+    if agent.is_none() {
         return Err(bad(
             "The built-in connection service is starting. Try again shortly. Cloudflare and Tailscale require the current Companion Docker image.",
         ));
@@ -243,6 +256,15 @@ pub async fn start(
     {
         return Err(bad(
             "Choose Cloudflare or Tailscale. An optional domain override must be a domain such as example.com, without https:// or a path.",
+        ));
+    }
+    if !agent
+        .as_ref()
+        .and_then(|a| a["providers"].as_array())
+        .is_some_and(|providers| providers.contains(&json!(input.profile)))
+    {
+        return Err(bad(
+            "This image does not include the selected connector. Use the default image or the variant that includes this provider.",
         ));
     }
     let dir = control_dir().ok_or_else(|| bad("Connector control directory is not configured"))?;

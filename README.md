@@ -1,6 +1,6 @@
 # Talos Companion
 
-A small, self-hosted Rust + React application for Talos Omni identity and recovery. Deploy it on Unraid with one container. The final Docker image is built **from scratch, with exactly one filesystem layer containing only a static Rust executable and the compiled frontend**.
+A small, self-hosted Rust + React application for Talos Omni identity and recovery. Deploy it on Unraid with one container. The final Docker image is built **from scratch, with a connector/certificate layer and a separate static Rust executable/frontend layer**. Cloudflare Tunnel and the Tailscale daemon are included by default; smaller variants include either connector or neither. The Tailscale CLI is not bundled.
 
 ![Companion dashboard, using an isolated test account](docs/assets/dashboard.jpg)
 
@@ -79,7 +79,31 @@ mise run build      # Frontend + release executable
 mise run docker:build
 ```
 
-CI uses mise for the same checks and verifies the built image has exactly one layer. It also checks the scratch container can serve the frontend and run its own health probe.
+CI uses mise for the same checks and verifies both layers and the exact connector contents of all four variants. It also checks each scratch container can serve the frontend and run its own health probe.
+
+## Docker image variants
+
+| Tag | Included connectors | Local build argument |
+| --- | --- | --- |
+| `latest` (default) | Cloudflare Tunnel and Tailscale daemon | `CONNECTORS=both` |
+| `latest-cloudflare` | Cloudflare Tunnel | `CONNECTORS=cloudflare` |
+| `latest-tailscale` | Tailscale daemon | `CONNECTORS=tailscale` |
+| `latest-minimal` | None; use local HTTPS or your own reverse proxy | `CONNECTORS=minimal` |
+
+These tags are produced by the release workflow after verification. Version and commit tags
+use the same suffixes, for example `<version>-tailscale` and `sha-<commit>-minimal`.
+The default `docker build` and Compose configuration include both connectors.
+
+```sh
+docker build --build-arg CONNECTORS=tailscale -t talos-companion:tailscale .
+# For the registry Compose deployment, once the selected tag is published:
+TALOS_COMPANION_IMAGE=holblin/talos-companion:latest-cloudflare docker compose -f deploy/compose.hub.yaml up -d
+```
+
+All variants retain the same ports, user, mounts and healthcheck. The app reports which
+connectors are included and prevents starting an excluded connector. Tailscale is managed
+through its private Unix socket; saved identity and HTTPS routes remain in `/data`.
+Changing variants preserves appdata but stops any connector omitted from the new image.
 
 ## Frontend
 

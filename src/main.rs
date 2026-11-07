@@ -15,6 +15,7 @@ mod receiver;
 mod recovery;
 mod retention;
 mod settings;
+mod tailscale;
 mod vault;
 
 use axum::{

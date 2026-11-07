@@ -45,12 +45,16 @@ and choose **Run workflow**. Use the desired source branch/ref and a version suc
 
 Both modes run frontend formatting, strict type-aware linting, TypeScript checking,
 Rust formatting, Clippy, unit tests, HTTP/S3 recovery tests, and the 320 MiB streaming test.
-The container build verifies exactly one filesystem layer and confirms that the layer
-contains only the static Rust binary and compiled frontend. It also runs a container smoke test.
+The container matrix verifies all four connector variants, each with two filesystem layers:
+certificates/selected connectors, then the static Rust binary and compiled frontend.
+It rejects unexpected files (including the Tailscale CLI) and runs container smoke tests.
 
-The publishing job loads the same verified image archive, rather than rebuilding it.
+The publishing matrix loads each variant's verified image archive, rather than rebuilding it.
 Published tags are the version and `sha-<full Git commit>`. Stable versions also update
-`latest`; prereleases do not. Do not reuse released version numbers. Linux amd64 is
+`latest`; prereleases do not. Both connectors use the unsuffixed tags. Cloudflare-only,
+Tailscale-only and connector-free images append `-cloudflare`, `-tailscale` and `-minimal`
+to each tag. The corresponding Docker build arguments are `CONNECTORS=both` (default),
+`cloudflare`, `tailscale` and `minimal`. Do not reuse released version numbers. Linux amd64 is
 the supported image architecture. Image archives expire from GitHub artifacts after one day;
 template bundles expire after 30 days. Keep needed release artifacts separately.
 
@@ -59,7 +63,7 @@ After an upload, verify the image from a clean host:
 ```sh
 docker pull holblin/talos-companion:0.1.0
 docker image inspect holblin/talos-companion:0.1.0 --format '{{len .RootFS.Layers}}'
-# Must print 1
+# Newly built releases must print 2; historical releases retain their original layout.
 ```
 
 `deploy/compose.hub.yaml` runs the registry image without source access or a local build.

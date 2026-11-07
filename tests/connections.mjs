@@ -17,7 +17,7 @@ test('guided connections require admin/CSRF, bind jobs, and check receiver ident
   });
   await new Promise(resolve=>impostor.listen(0,'127.0.0.1',resolve));
   const fakeOrigin=`http://127.0.0.1:${impostor.address().port}`;
-  const info=()=>writeFile(join(control,'agent.json'),JSON.stringify({updated_at:Math.floor(Date.now()/1000),s3_origin:`http://127.0.0.1:${port+1}`,omni_origin:fakeOrigin}));
+  const info=(providers=['cloudflare','tailscale'])=>writeFile(join(control,'agent.json'),JSON.stringify({updated_at:Math.floor(Date.now()/1000),providers,s3_origin:`http://127.0.0.1:${port+1}`,omni_origin:fakeOrigin}));
   try {
     const running=await server(port,data,{CONNECTION_CONTROL_DIR:control,S3_PUBLIC_URL:`http://127.0.0.1:${port+1}`});child=running.child;
     assert.equal((await request(port,'/api/setup',{setup:true,body:{name:'Connections Test',email:'connections@example.test',password:'initial connections password',backup_passphrase_confirmation:passphrase}})).status,200);
@@ -25,6 +25,10 @@ test('guided connections require admin/CSRF, bind jobs, and check receiver ident
     const connect=(body)=>request(port,'/api/omni/connection',{cookie,body});
     assert.equal((await request(port,'/api/omni/connection')).status,401);
     assert.equal((await connect({profile:'tailscale'})).status,400);
+    await info();
+    await info(['cloudflare']);
+    assert.equal((await connect({profile:'tailscale'})).status,400,'excluded connectors are rejected even when the agent is healthy');
+    assert.deepEqual((await(await request(port,'/api/omni/connection',{cookie})).json()).providers,['cloudflare']);
     await info();
     assert.equal((await fetch(`http://127.0.0.1:${port}/api/omni/connection`,{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({profile:'tailscale'})})).status,400);
     assert.equal((await connect({profile:'cloudflare',domain:'https://example.test/path'})).status,400);

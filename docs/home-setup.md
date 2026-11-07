@@ -48,7 +48,7 @@ VPN/routed UDP path or explicitly configured upstream gRPC tunnel mode.
 | Metrics | 127.0.0.1:12122 |
 
 The existing HTTP Companion mapping 18480 and S3 mapping 19000 remain backend listeners.
-Do not forward them to untrusted networks. Companion's final image remains one layer;
+Do not forward them to untrusted networks. Companion's final image has separate connector and application layers;
 Caddy, Omni and one-off certificate/key tools are separate official images.
 
 ## Prepare a LAN installation

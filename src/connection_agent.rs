@@ -173,7 +173,7 @@ impl Agent {
         args: &[&str],
     ) -> anyhow::Result<()> {
         let mut command = self.command(binary);
-        // Both official clients print their authorization URL to stderr.
+        // cloudflared prints its authorization URL to stderr.
         command.args(args).stderr(Stdio::piped());
         let mut child = command.spawn()?;
         let stdout = child
@@ -348,30 +348,41 @@ impl Agent {
             .spawn()?)
     }
     async fn tailscale(&self, request: &ConnectionRequest) -> anyhow::Result<Integration> {
-        self.authorize(
-            request,
-            "/usr/local/bin/tailscale",
-            &[
-                &self.socket_arg(),
-                "up",
-                "--hostname=talos-companion",
-                "--accept-dns=false",
-                "--accept-routes=false",
-            ],
-        )
-        .await?;
-        let status: Value = serde_json::from_slice(
-            &self
-                .output(
-                    "/usr/local/bin/tailscale",
-                    &[&self.socket_arg(), "status", "--json"],
-                )
-                .await?,
-        )?;
-        anyhow::ensure!(
-            status["BackendState"] == "Running",
-            "Tailscale authorization is not complete"
-        );
+        let api = crate::tailscale::LocalApi::new(&self.state.join("tailscale.sock"))?;
+        self.tailscale_connect(request, &api).await
+    }
+    async fn tailscale_connect(
+        &self,
+        request: &ConnectionRequest,
+        api: &crate::tailscale::LocalApi,
+    ) -> anyhow::Result<Integration> {
+        // The agent can receive its first request before the daemon has opened its socket.
+        tokio::time::timeout(Duration::from_secs(15), async {
+            while api.status().await.is_err() {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+        })
+        .await
+        .map_err(|_| anyhow::anyhow!("Tailscale daemon did not become ready"))?;
+        api.start().await?;
+        let mut login_requested = false;
+        let status = loop {
+            let status = api.status().await?;
+            if status["BackendState"] == "Running" {
+                break status;
+            }
+            if status["BackendState"] == "NeedsLogin" && !login_requested {
+                api.login().await?;
+                login_requested = true;
+            }
+            let auth_url = status["AuthURL"].as_str().and_then(authorization_url);
+            self.status(request, "authorizing",
+                if status["BackendState"] == "NeedsMachineAuth" {
+                    "Approve this Companion device in the Tailscale admin console, then return here."
+                } else { "Sign in to Tailscale and approve this Companion device, then return here." },
+                auth_url, None)?;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        };
         let hostname = status["Self"]["DNSName"]
             .as_str()
             .unwrap_or("")
@@ -387,18 +398,26 @@ impl Agent {
             None,
             None,
         )?;
-        for (port, origin) in [
-            ("--https=443", "http://127.0.0.1:18081"),
-            ("--https=8443", "http://127.0.0.1:18082"),
-            ("--https=10000", "http://127.0.0.1:18083"),
-        ] {
-            self.authorize(
+        loop {
+            let feature = api.enable_https().await?;
+            if feature["Complete"] == true {
+                break;
+            }
+            let auth_url = feature["URL"].as_str().and_then(authorization_url);
+            anyhow::ensure!(
+                feature["ShouldWait"] == true && auth_url.is_some(),
+                "Enable HTTPS certificates in your Tailscale admin console, then retry"
+            );
+            self.status(
                 request,
-                "/usr/local/bin/tailscale",
-                &[&self.socket_arg(), "serve", "--bg", port, origin],
-            )
-            .await?;
+                "authorizing",
+                "Approve HTTPS in Tailscale, then return here.",
+                auth_url,
+                None,
+            )?;
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
+        api.serve(hostname).await?;
         Ok(Integration {
             profile: Profile::Tailscale,
             companion_url: format!("https://{hostname}"),
@@ -517,7 +536,7 @@ async fn heartbeat(agent: std::sync::Arc<Agent>) -> anyhow::Result<()> {
     loop {
         write_json(
             &agent.control.join("agent.json"),
-            &json!({"updated_at":now(),"s3_origin":agent.s3,"omni_origin":settings().omni_origin,"companion_origin":agent.companion}),
+            &json!({"updated_at":now(),"providers":bundled_providers(),"s3_origin":agent.s3,"omni_origin":settings().omni_origin,"companion_origin":agent.companion}),
         )?;
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
@@ -593,11 +612,15 @@ pub async fn run() -> anyhow::Result<()> {
         });
         relays.spawn(async move { axum::serve(listener, router).await });
     }
-    let mut daemon = agent.daemon_command().spawn()?;
+    let mut daemon = if provider_bundled(&Profile::Tailscale) {
+        Some(agent.daemon_command().spawn()?)
+    } else {
+        None
+    };
     // Heartbeat runs during browser authorization as well as while idle.
     let mut heartbeat = tokio::spawn(heartbeat(agent.clone()));
     let mut tunnel: Option<Child> = None;
-    if cloudflare_configured(&agent.state) {
+    if provider_bundled(&Profile::Cloudflare) && cloudflare_configured(&agent.state) {
         tunnel = Some(agent.spawn_cloudflare(&agent.state.join("cloudflare.json"))?);
     }
     let mut last = read_json::<ConnectionStatus>(&control.join("status.json"))
@@ -606,7 +629,9 @@ pub async fn run() -> anyhow::Result<()> {
         .map(|s| s.id)
         .unwrap_or_default();
     loop {
-        anyhow::ensure!(daemon.try_wait()?.is_none(), "Tailscale daemon stopped");
+        if let Some(child) = daemon.as_mut() {
+            anyhow::ensure!(child.try_wait()?.is_none(), "Tailscale daemon stopped");
+        }
         if let Some(child) = tunnel.as_mut()
             && child.try_wait()?.is_some()
         {
@@ -627,6 +652,10 @@ pub async fn run() -> anyhow::Result<()> {
             let operation = tokio::time::timeout(
                 Duration::from_secs(request.expires_at.saturating_sub(now())),
                 async {
+                    anyhow::ensure!(
+                        provider_bundled(&request.profile),
+                        "This image does not include the requested connector"
+                    );
                     match request.profile {
                         Profile::Cloudflare => {
                             let (integration, child) = agent.cloudflare(&request).await?;
@@ -672,6 +701,74 @@ pub async fn run() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn tailscale_browser_login_https_approval_and_existing_identity_use_localapi() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        for already_logged_in in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let agent = Agent {
+                state: dir.path().to_owned(),
+                control: dir.path().to_owned(),
+                companion: String::new(),
+                omni: String::new(),
+                s3: String::new(),
+            };
+            let request = ConnectionRequest {
+                id: "localapi-test".into(),
+                profile: Profile::Tailscale,
+                domain: String::new(),
+                expires_at: now() + 60,
+            };
+            let login_calls = Arc::new(AtomicUsize::new(0));
+            let feature_calls = Arc::new(AtomicUsize::new(0));
+            let login = login_calls.clone();
+            let feature = feature_calls.clone();
+            let control = dir.path().to_owned();
+            let router = axum::Router::new().fallback(move |req: axum::extract::Request| {
+                let login = login.clone(); let feature = feature.clone(); let control = control.clone();
+                async move {
+                    let value = match req.uri().path() {
+                        "/localapi/v0/status" if !already_logged_in && login.load(Ordering::SeqCst)==0 => json!({"BackendState":"NeedsLogin"}),
+                        "/localapi/v0/login-interactive" => { login.fetch_add(1, Ordering::SeqCst); json!({}) },
+                        "/localapi/v0/status" => json!({"BackendState":"Running","Self":{"DNSName":"companion.test.ts.net."}}),
+                        "/localapi/v0/query-feature" if feature.fetch_add(1, Ordering::SeqCst)==0 => json!({"ShouldWait":true,"URL":"https://login.tailscale.com/f/serve"}),
+                        "/localapi/v0/query-feature" => {
+                            let status:ConnectionStatus=read_json(&control.join("status.json")).unwrap();
+                            assert_eq!(status.auth_url.as_deref(), Some("https://login.tailscale.com/f/serve"));
+                            json!({"Complete":true})
+                        },
+                        "/localapi/v0/serve-config" => Value::Null,
+                        _ => json!({}),
+                    };
+                    axum::response::Response::builder().header("etag","\"test\"").body(axum::body::Body::from(value.to_string())).unwrap()
+                }
+            });
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let api = crate::tailscale::LocalApi::for_test(format!(
+                "http://{}",
+                listener.local_addr().unwrap()
+            ));
+            let server = tokio::spawn(async move {
+                axum::serve(listener, router).await.unwrap();
+            });
+            let integration = agent.tailscale_connect(&request, &api).await.unwrap();
+            assert_eq!(integration.companion_url, "https://companion.test.ts.net");
+            assert_eq!(integration.omni_url, "https://companion.test.ts.net:8443");
+            assert_eq!(
+                integration.s3_endpoint,
+                "https://companion.test.ts.net:10000"
+            );
+            assert_eq!(
+                login_calls.load(Ordering::SeqCst),
+                usize::from(!already_logged_in)
+            );
+            server.abort();
+        }
+    }
+
     #[test]
     fn cloudflare_selected_zone_is_decoded_without_exposing_credentials() {
         let encoded = base64::engine::general_purpose::STANDARD.encode(
