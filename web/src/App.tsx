@@ -1,6 +1,6 @@
 import RemoveAction from "./RemoveAction";
 import FilePicker from "./FilePicker";
-import { classes } from "./layout";
+import { classes, layout } from "./layout";
 import Input from "./Field";
 import {
   SideNav,
@@ -23,6 +23,8 @@ import {
   Picker,
   PickerItem,
   ToastQueue,
+  ActionMenu,
+  MenuItem,
 } from "@react-spectrum/s2";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
@@ -283,7 +285,7 @@ export default function App() {
           <div className={classes("brand")}>
             <Logo /> talos companion
           </div>
-          <div>
+          <div className={classes("story-detail")}>
             <span className={classes("eyebrow")}>
               A SMALL HOME FOR IMPORTANT THINGS
             </span>
@@ -499,13 +501,28 @@ export default function App() {
     Accounts: "The people you trust.",
     Settings: "Make yourself at home.",
   };
+  function signOut() {
+    void work(async () => {
+      await api("/api/logout", {});
+      setUser(null);
+    });
+  }
   return (
     <div className={classes("shell")}>
       <aside className={classes("sidebar")}>
-        <div className={classes("brand")}>
-          <Logo />
-          <div>
-            talos<span>companion</span>
+        <div className={classes("brand-row")}>
+          <div className={classes("brand")}>
+            <Logo />
+            <div>
+              talos<span>companion</span>
+            </div>
+          </div>
+          <div className={classes("mobile-only")}>
+            <ActionMenu aria-label="Account menu" size="L">
+              <MenuItem id="sign-out" onAction={signOut}>
+                <Text>{user.name} · Sign out</Text>
+              </MenuItem>
+            </ActionMenu>
           </div>
         </div>
         <div className={classes("workspace")}>
@@ -514,46 +531,69 @@ export default function App() {
             My infrastructure<small>SELF-HOSTED WORKSPACE</small>
           </div>
         </div>
-        <SideNav
-          aria-label="Workspace"
-          selectedRoute={destinations[view]}
-          styles={style({ height: { default: 200, lg: "auto" }, flexGrow: 0 })}
-        >
-          {views
-            .filter((v) => user.admin || v === "Settings")
-            .map((v) => (
-              <SideNavItem key={v} id={v} textValue={v} href={destinations[v]}>
-                <SideNavItemContent>
-                  <SideNavItemLink>
-                    <Text>{v}</Text>
-                  </SideNavItemLink>
-                </SideNavItemContent>
-              </SideNavItem>
-            ))}
-        </SideNav>
-        <div className={classes("sidebar-bottom")}>
-          <div className={classes("status")}>
-            <span className={classes("dot")} /> All yours. All local.
-          </div>
-          <Button
-            onPress={() =>
-              void work(async () => {
-                await api("/api/logout", {});
-                setUser(null);
-              })
-            }
-            type="button"
-            variant="secondary"
+        <div className={classes("desktop-only")}>
+          <SideNav
+            aria-label="Workspace"
+            selectedRoute={destinations[view]}
+            styles={style({ flexGrow: 0 })}
           >
-            <Text>{user.name} · Sign out</Text>
-          </Button>
+            {views
+              .filter((v) => user.admin || v === "Settings")
+              .map((v) => (
+                <SideNavItem
+                  key={v}
+                  id={v}
+                  textValue={v}
+                  href={destinations[v]}
+                >
+                  <SideNavItemContent>
+                    <SideNavItemLink>
+                      <Text>{v}</Text>
+                    </SideNavItemLink>
+                  </SideNavItemContent>
+                </SideNavItem>
+              ))}
+          </SideNav>
+        </div>
+        <div
+          className={style({
+            display: { default: "none", lg: "flex" },
+            flexGrow: 1,
+          })}
+        >
+          <div className={classes("sidebar-bottom")}>
+            <div className={classes("status")}>
+              <span className={classes("dot")} /> All yours. All local.
+            </div>
+            <Button onPress={signOut} type="button" variant="secondary">
+              <Text>{user.name} · Sign out</Text>
+            </Button>
+          </div>
         </div>
       </aside>
       <main className={classes("main")}>
         <header className={classes("topbar")}>
-          <span>
+          <span className={classes("desktop-only")}>
             Workspace <b>/</b> {view}
           </span>
+          <div className={classes("mobile-only")}>
+            <Picker
+              aria-label="Workspace page"
+              value={view}
+              onChange={(value) => {
+                if (views.includes(value as View)) setView(value as View);
+              }}
+              styles={style({ width: 160 })}
+            >
+              {views
+                .filter((v) => user.admin || v === "Settings")
+                .map((v) => (
+                  <PickerItem key={v} id={v}>
+                    {v}
+                  </PickerItem>
+                ))}
+            </Picker>
+          </div>
           <StatusLight variant="positive">Companion online</StatusLight>
         </header>
         <div className={classes("content")}>
@@ -583,7 +623,7 @@ export default function App() {
             {user.admin && view === "Overview" && (
               <>
                 <div className={classes("metrics")}>
-                  <Card>
+                  <Card className="metric-card">
                     <span className={classes("metric-icon")}>◎</span>
                     <span className={classes("eyebrow")}>
                       IDENTITY PROVIDER
@@ -593,7 +633,7 @@ export default function App() {
                     </strong>
                     <small>OpenID Connect · RS256</small>
                   </Card>
-                  <Card>
+                  <Card className="metric-card">
                     <span className={classes("metric-icon")}>↗</span>
                     <span className={classes("eyebrow")}>RECOVERY FILES</span>
                     <strong>
@@ -602,7 +642,7 @@ export default function App() {
                     </strong>
                     <small>Encrypted, including credentials</small>
                   </Card>
-                  <Card>
+                  <Card className="metric-card">
                     <span className={classes("metric-icon")}>⊞</span>
                     <span className={classes("eyebrow")}>YOUR PEOPLE</span>
                     <strong>
@@ -1201,45 +1241,65 @@ export default function App() {
 }
 function BackupTable({ backups }: { backups: Backup[] }) {
   return backups.length ? (
-    <TableView
-      aria-label="Encrypted recovery files"
-      overflowMode="wrap"
-      styles={style({ width: "full", height: 320 })}
-    >
-      <TableHeader>
-        <Column id="name" minWidth={280} isRowHeader>
-          Recovery file
-        </Column>
-        <Column id="size" minWidth={90}>
-          Size
-        </Column>
-        <Column id="protection" minWidth={110}>
-          Protection
-        </Column>
-        <Column id="download" minWidth={110}>
-          Download
-        </Column>
-      </TableHeader>
-      <TableBody items={backups}>
-        {(backup) => (
-          <Row id={backup.name}>
-            <Cell>
-              <code>{backup.name}</code>
-            </Cell>
-            <Cell>{(backup.bytes / 1024 / 1024).toFixed(2)} MB</Cell>
-            <Cell>Encrypted</Cell>
-            <Cell>
-              <Link
-                href={`/api/backups/${encodeURIComponent(backup.name)}`}
-                download
-              >
-                Download
-              </Link>
-            </Cell>
-          </Row>
-        )}
-      </TableBody>
-    </TableView>
+    <>
+      <ul className={layout.backupList} aria-label="Recovery file downloads">
+        {backups.map((backup) => (
+          <li key={backup.name} className={layout.backupItem}>
+            <code>{backup.name}</code>
+            <Text>
+              {(backup.bytes / 1024 / 1024).toFixed(2)} MB · Encrypted
+            </Text>
+            <Link
+              href={`/api/backups/${encodeURIComponent(backup.name)}`}
+              download
+            >
+              Download
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <div className={layout.backupTable}>
+        <TableView
+          aria-label="Encrypted recovery files"
+          overflowMode="wrap"
+          styles={style({ width: "full", height: 320 })}
+        >
+          <TableHeader>
+            <Column id="name" minWidth={280} isRowHeader>
+              Recovery file
+            </Column>
+            <Column id="size" minWidth={90}>
+              Size
+            </Column>
+            <Column id="protection" minWidth={110}>
+              Protection
+            </Column>
+            <Column id="download" minWidth={110}>
+              Download
+            </Column>
+          </TableHeader>
+          <TableBody items={backups}>
+            {(backup) => (
+              <Row id={backup.name}>
+                <Cell>
+                  <code>{backup.name}</code>
+                </Cell>
+                <Cell>{(backup.bytes / 1024 / 1024).toFixed(2)} MB</Cell>
+                <Cell>Encrypted</Cell>
+                <Cell>
+                  <Link
+                    href={`/api/backups/${encodeURIComponent(backup.name)}`}
+                    download
+                  >
+                    Download
+                  </Link>
+                </Cell>
+              </Row>
+            )}
+          </TableBody>
+        </TableView>
+      </div>
+    </>
   ) : (
     <div className={classes("empty")}>
       <span>↶</span>
