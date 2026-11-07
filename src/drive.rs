@@ -145,7 +145,7 @@ pub async fn callback(
     updated.drive.folder_id = folder_id;
     app.persist(&updated)?;
     *guard = Some(updated);
-    Ok(Redirect::to("/?drive=connected"))
+    Ok(Redirect::to("/backups?drive=connected"))
 }
 
 pub async fn upload(

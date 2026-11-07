@@ -145,6 +145,7 @@ fn router(app: App) -> Router {
         .route("/api/omni/ca", get(omni::ca))
         .route("/api/omni/talos-ca", get(omni::talos_ca))
         .route("/api/backups", get(backup::list).post(backup::make))
+        .route("/api/backups/mounted/check", post(backup::check_mounted))
         .route("/api/backups/{name}", get(backup::download))
         .route(
             "/api/vault",

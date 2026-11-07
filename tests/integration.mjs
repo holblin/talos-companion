@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, readdir, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -161,18 +161,66 @@ test(
         400,
       );
       let cookie = await login(a);
-      const integration = {profile:"lan",companion_url:"https://192.0.2.10:18443",omni_url:"https://192.0.2.10:19443",s3_endpoint:"https://192.0.2.10:19444"};
-      assert.equal((await request(a,"/api/omni/plan",{body:{integration}})).status,401);
-      const omniPlanResponse = await request(a,"/api/omni/plan",{cookie,body:{integration,primary_config:"account:\n  id: preserve-me\nauth:\n  auth0:\n    enabled: true\netcdBackup:\n  localPath: /keep/original\n"}});
-      assert.equal(omniPlanResponse.status,200,await omniPlanResponse.clone().text());
+      const integration = {
+        profile: "lan",
+        companion_url: "https://192.0.2.10:18443",
+        omni_url: "https://192.0.2.10:19443",
+        s3_endpoint: "https://192.0.2.10:19444",
+      };
+      assert.equal(
+        (await request(a, "/api/omni/plan", { body: { integration } })).status,
+        401,
+      );
+      const omniPlanResponse = await request(a, "/api/omni/plan", {
+        cookie,
+        body: {
+          integration,
+          primary_config:
+            "account:\n  id: preserve-me\nauth:\n  auth0:\n    enabled: true\netcdBackup:\n  localPath: /keep/original\n",
+        },
+      });
+      assert.equal(
+        omniPlanResponse.status,
+        200,
+        await omniPlanResponse.clone().text(),
+      );
       const omniPlan = await omniPlanResponse.json();
-      assert.equal(omniPlan.callback,"https://192.0.2.10:19443/oidc/consume");
+      assert.equal(omniPlan.callback, "https://192.0.2.10:19443/oidc/consume");
       assert.ok(omniPlan.changes.includes("auth.auth0.enabled"));
       assert.ok(omniPlan.changes.includes("etcdBackup.localPath"));
       assert.ok(!omniPlan.overlay.includes("preserve-me"));
-      assert.equal((await request(a,"/api/omni/plan",{cookie,body:{integration:{...integration,companion_url:"http://insecure.test"}}})).status,400);
-      assert.equal((await request(a,"/api/omni/plan",{cookie,body:{integration,primary_config:"auth: {}\nauth: {}\n"}})).status,400);
-      assert.equal((await request(a,"/api/omni/apply",{cookie,body:{integration,revision:"stale"}})).status,400);
+      assert.equal(
+        (
+          await request(a, "/api/omni/plan", {
+            cookie,
+            body: {
+              integration: {
+                ...integration,
+                companion_url: "http://insecure.test",
+              },
+            },
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await request(a, "/api/omni/plan", {
+            cookie,
+            body: { integration, primary_config: "auth: {}\nauth: {}\n" },
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await request(a, "/api/omni/apply", {
+            cookie,
+            body: { integration, revision: "stale" },
+          })
+        ).status,
+        400,
+      );
       assert.equal(
         (await request(a, "/api/setup/check", { body: {}, setup: true }))
           .status,
@@ -207,6 +255,39 @@ test(
         "member@example.com",
         "member secure password",
       );
+      const shareCheck = "/api/backups/mounted/check";
+      assert.equal((await request(a, shareCheck, { body: {} })).status, 401);
+      assert.equal(
+        (await request(a, shareCheck, { cookie: memberCookie, body: {} }))
+          .status,
+        403,
+      );
+      assert.equal(
+        (
+          await request(a, shareCheck, {
+            cookie,
+            body: {},
+            origin: "https://evil.example",
+          })
+        ).status,
+        400,
+      );
+      const checked = await request(a, shareCheck, { cookie, body: {} });
+      assert.equal(checked.status, 200);
+      const mountedDirectory = join(dir, "source", "mounted");
+      assert.equal((await checked.json()).path, mountedDirectory);
+      assert.deepEqual(await readdir(mountedDirectory), []);
+      await rename(mountedDirectory, mountedDirectory + "-offline");
+      try {
+        const unavailable = await request(a, shareCheck, { cookie, body: {} });
+        assert.equal(unavailable.status, 400);
+        assert.match(
+          (await unavailable.json()).error,
+          /Cannot write to the share/,
+        );
+      } finally {
+        await rename(mountedDirectory + "-offline", mountedDirectory);
+      }
       assert.equal(
         (await request(a, "/api/backups", { cookie: memberCookie })).status,
         403,

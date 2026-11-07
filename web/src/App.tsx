@@ -1,5 +1,9 @@
 import RemoveAction from "./RemoveAction";
 import FilePicker from "./FilePicker";
+import BackupDestinations, {
+  BackupFrequency,
+  GoogleDriveSetup,
+} from "./BackupSetup";
 import { classes, layout } from "./layout";
 import Input from "./Field";
 import {
@@ -522,6 +526,89 @@ export default function App() {
       setUser(null);
     });
   }
+  const backupSettings = user.admin && overview && (
+    <Card title="Backup settings">
+      <Form
+        isDisabled={busy}
+        key={JSON.stringify(overview.settings)}
+        onSubmit={(e) => {
+          const data = fields(e);
+          void work(async () => {
+            await api("/api/settings", {
+              retention: {
+                recovery_keep_last: Number(data["recovery_keep_last"]),
+                snapshot_keep_last: Number(data["snapshot_keep_last"]),
+              },
+              schedule: {
+                enabled: data["enabled"] === "on",
+                interval_seconds: Number(data["interval_seconds"]),
+                destination: data["destination"],
+              },
+            });
+            await refresh();
+            setNotice("Backup settings saved and applied.");
+          });
+        }}
+      >
+        <Checkbox
+          name="enabled"
+          defaultSelected={overview.settings.schedule.enabled}
+          styles={style({ width: "full", marginY: 12 })}
+        >
+          Enable scheduled backups
+        </Checkbox>
+        <BackupFrequency
+          seconds={overview.settings.schedule.interval_seconds}
+        />
+        <Picker
+          label={<>Scheduled destination</>}
+          name="destination"
+          defaultValue={overview.settings.schedule.destination}
+          styles={style({ width: "full", marginY: 12 })}
+        >
+          <PickerItem id="local">Local storage</PickerItem>
+          <PickerItem id="mounted" isDisabled={!overview.mounted}>
+            Mounted NFS / SMB
+          </PickerItem>
+          <PickerItem id="drive" isDisabled={!overview.drive.connected}>
+            Google Drive
+          </PickerItem>
+        </Picker>
+        <details>
+          <summary>Retention settings</summary>
+          <Input
+            label="Recovery files to keep per destination"
+            name="recovery_keep_last"
+            type="number"
+            min={0}
+            max={1000000}
+            step={1}
+            defaultValue={overview.settings.retention.recovery_keep_last}
+          />
+          <Input
+            label="Omni snapshots to keep per cluster"
+            name="snapshot_keep_last"
+            type="number"
+            min={0}
+            max={1000000}
+            step={1}
+            defaultValue={overview.settings.retention.snapshot_keep_last}
+          />
+          <p className={classes("hint")}>
+            Use 0 to keep everything. Retention applies after the next
+            successful backup.
+          </p>
+        </details>
+        <Button type="submit" variant="accent">
+          Save backup settings
+        </Button>
+      </Form>
+      <p className={classes("hint")}>
+        Saved in /data/config.json and included in recovery backups. Changes
+        apply immediately. An active backup finishes with its original settings.
+      </p>
+    </Card>
+  );
   return (
     <div className={classes("shell")}>
       <aside className={classes("sidebar")}>
@@ -738,49 +825,14 @@ export default function App() {
             )}
             {user.admin && view === "Backups" && (
               <>
-                <div className={classes("three-cols")}>
-                  <Card eyebrow="ON THIS SERVER" title="Local storage">
-                    <p>
-                      Save an encrypted recovery file in the persistent data
-                      directory. Download it whenever you need it.
-                    </p>
-                    <Button
-                      onPress={() => void createBackup("local")}
-                      type="button"
-                      variant="secondary"
-                    >
-                      Create local backup →
-                    </Button>
-                  </Card>
-                  <Card eyebrow="OFF-SITE" title="Google Drive">
-                    <p>
-                      Send an encrypted copy to your Google Drive folder. A
-                      local copy is always kept too.
-                    </p>
-                    <Button
-                      isDisabled={!overview?.drive.connected}
-                      onPress={() => void createBackup("drive")}
-                      type="button"
-                      variant="secondary"
-                    >
-                      Back up to Drive →
-                    </Button>
-                  </Card>
-                  <Card eyebrow="ON YOUR NETWORK" title="NFS / SMB">
-                    <p>
-                      Write a copy to a share mounted by Unraid and passed into
-                      the container.
-                    </p>
-                    <Button
-                      isDisabled={!overview?.mounted}
-                      onPress={() => void createBackup("mounted")}
-                      type="button"
-                      variant="secondary"
-                    >
-                      Back up to share →
-                    </Button>
-                  </Card>
-                </div>
+                {overview && (
+                  <BackupDestinations
+                    overview={overview}
+                    createBackup={createBackup}
+                    refresh={refresh}
+                  />
+                )}
+                {backupSettings}
                 <Card title="Your recovery files">
                   <BackupTable backups={backups} />
                   <p className={classes("hint")}>
@@ -1085,112 +1137,7 @@ export default function App() {
             )}
             {(view === "Settings" || !user.admin) && (
               <div className={classes("two-cols")}>
-                {user.admin && overview && (
-                  <Card title="Backup settings">
-                    <Form
-                      isDisabled={busy}
-                      key={JSON.stringify(overview.settings)}
-                      onSubmit={(e) => {
-                        const data = fields(e);
-                        void work(async () => {
-                          await api("/api/settings", {
-                            retention: {
-                              recovery_keep_last: Number(
-                                data["recovery_keep_last"],
-                              ),
-                              snapshot_keep_last: Number(
-                                data["snapshot_keep_last"],
-                              ),
-                            },
-                            schedule: {
-                              enabled: data["enabled"] === "on",
-                              interval_seconds: Number(
-                                data["interval_seconds"],
-                              ),
-                              destination: data["destination"],
-                            },
-                          });
-                          await refresh();
-                          setNotice("Backup settings saved and applied.");
-                        });
-                      }}
-                    >
-                      <Input
-                        label="Recovery files to keep per destination"
-                        name="recovery_keep_last"
-                        type="number"
-                        min={0}
-                        max={1000000}
-                        step={1}
-                        defaultValue={
-                          overview.settings.retention.recovery_keep_last
-                        }
-                      />
-                      <Input
-                        label="Omni snapshots to keep per cluster"
-                        name="snapshot_keep_last"
-                        type="number"
-                        min={0}
-                        max={1000000}
-                        step={1}
-                        defaultValue={
-                          overview.settings.retention.snapshot_keep_last
-                        }
-                      />
-                      <p className={classes("hint")}>
-                        Use 0 to keep everything. Retention applies after the
-                        next successful backup.
-                      </p>
-                      <Checkbox
-                        name="enabled"
-                        defaultSelected={overview.settings.schedule.enabled}
-                        styles={style({ width: "full", marginY: 12 })}
-                      >
-                        Enable scheduled backups
-                      </Checkbox>
-                      <Input
-                        label="Backup interval (seconds)"
-                        name="interval_seconds"
-                        type="number"
-                        min={60}
-                        max={31536000}
-                        step={1}
-                        defaultValue={
-                          overview.settings.schedule.interval_seconds
-                        }
-                      />
-                      <p className={classes("hint")}>
-                        3600 = hourly · 86400 = daily. Saving resets the
-                        schedule timer.
-                      </p>
-                      <Picker
-                        label={<>Scheduled destination</>}
-                        name="destination"
-                        defaultValue={overview.settings.schedule.destination}
-                        styles={style({ width: "full", marginY: 12 })}
-                      >
-                        <PickerItem id="local">Local storage</PickerItem>
-                        <PickerItem id="mounted" isDisabled={!overview.mounted}>
-                          Mounted NFS / SMB
-                        </PickerItem>
-                        <PickerItem
-                          id="drive"
-                          isDisabled={!overview.drive.connected}
-                        >
-                          Google Drive
-                        </PickerItem>
-                      </Picker>
-                      <Button type="submit" variant="accent">
-                        Save backup settings
-                      </Button>
-                    </Form>
-                    <p className={classes("hint")}>
-                      Saved in /data/config.json and included in recovery
-                      backups. Changes apply immediately. An active backup
-                      finishes with its original settings.
-                    </p>
-                  </Card>
-                )}
+                {backupSettings}
                 <Card title="Change your password">
                   <Form
                     isDisabled={busy}
@@ -1227,53 +1174,12 @@ export default function App() {
                 </Card>
                 {user.admin && (
                   <Card title="Connect Google Drive">
-                    <p>
-                      Create a Google OAuth web client with the Drive API
-                      enabled. Register this callback URL:
-                    </p>
-                    <code className={classes("block")}>
-                      {overview?.issuer}/oauth/google/callback
-                    </code>
-                    <Form
-                      isDisabled={busy}
-                      onSubmit={(e) => {
-                        const data = fields(e);
-                        void work(async () => {
-                          await api("/api/drive", data);
-                          const result = await api<{ url: string }>(
-                            "/api/drive/connect",
-                            {},
-                          );
-                          location.assign(result.url);
-                        });
-                      }}
-                    >
-                      <Input
-                        label="Google client ID"
-                        name="client_id"
-                        defaultValue={overview?.drive.client_id ?? ""}
+                    {overview && (
+                      <GoogleDriveSetup
+                        issuer={overview.issuer}
+                        drive={overview.drive}
                       />
-                      <Input
-                        label="Google client secret"
-                        name="client_secret"
-                        type="password"
-                      />
-                      <Input
-                        label="Destination folder ID (optional)"
-                        name="folder_id"
-                        required={false}
-                        placeholder="Leave empty to create a dedicated folder"
-                        defaultValue={overview?.drive.folder_id ?? ""}
-                      />
-                      <Button type="submit" variant="accent">
-                        Save and authorize Google Drive ↗
-                      </Button>
-                    </Form>
-                    <p className={classes("hint")}>
-                      Leave the folder ID empty to create a dedicated folder.
-                      Uses the drive.file scope. Testing-mode Google grants may
-                      expire after seven days; see docs/google-drive.md.
-                    </p>
+                    )}
                   </Card>
                 )}
               </div>

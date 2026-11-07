@@ -17,6 +17,39 @@ use tokio_util::io::ReaderStream;
 
 const BUFFER: usize = 64 * 1024;
 
+fn probe_directory(directory: &Path) -> anyhow::Result<()> {
+    use std::io::{Seek, SeekFrom};
+    anyhow::ensure!(directory.is_dir(), "Mounted destination is unavailable");
+    let mut file = tempfile::Builder::new()
+        .prefix(".companion-check-")
+        .tempfile_in(directory)?;
+    let contents = b"Talos Companion destination check\n";
+    file.write_all(contents)?;
+    file.as_file().sync_all()?;
+    file.seek(SeekFrom::Start(0))?;
+    let mut readback = Vec::new();
+    file.read_to_end(&mut readback)?;
+    anyhow::ensure!(readback == contents, "Destination read check failed");
+    file.close()?;
+    Ok(())
+}
+
+pub async fn check_mounted(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+    auth::csrf(&app, &headers)?;
+    auth::admin(&app, &headers).await?;
+    let directory = app.mounted.clone().ok_or_else(|| {
+        bad("Mount your NFS / SMB share on the host, map it into the container, and set MOUNTED_BACKUP_DIR first. Then apply the container changes and retry.")
+    })?;
+    let path = directory.to_string_lossy().into_owned();
+    let probe = tokio::task::spawn_blocking(move || probe_directory(&directory));
+    tokio::time::timeout(std::time::Duration::from_secs(10), probe)
+        .await
+        .map_err(|_| bad("Share check timed out. Check the host mount and NAS connection, then retry."))?
+        .map_err(anyhow::Error::from)?
+        .map_err(|e| bad(&format!("Cannot write to the share: {e}. Check the host mount and container user permissions.")))?;
+    Ok(Json(json!({"path":path})))
+}
+
 fn archive(
     state: &Store,
     receiver: &Path,
@@ -459,6 +492,18 @@ pub async fn restore(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn destination_probe_cleans_up_and_rejects_unavailable_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let existing = temp.path().join("existing.tcb");
+        std::fs::write(&existing, b"existing recovery file").unwrap();
+        probe_directory(temp.path()).unwrap();
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
+        assert_eq!(std::fs::read(existing).unwrap(), b"existing recovery file");
+        let missing = temp.path().join("not-mounted");
+        assert!(probe_directory(&missing).is_err());
+        assert!(!missing.exists());
+    }
     #[test]
     fn stage_verifies_reader_after_tar_end_marker() {
         struct AuthenticationFailure;
