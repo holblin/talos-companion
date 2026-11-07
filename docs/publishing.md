@@ -6,9 +6,10 @@ tracked-file and Actions-log credential audit; see [the audit record](security-a
 
 ## Current state
 
-- Current public image: [`holblin/talos-companion:0.2.2`](https://hub.docker.com/r/holblin/talos-companion/tags), also tagged `latest` and `sha-4f297c99bf955cb894b405d5c42e94dd1e9d037d`.
-- Its digest is `sha256:eedb0d14a86eeaf3cadaa7ab47ecce3117532c9f44ec9d03e84f0b46b6757898`. All three current tags resolve to that image. Registry verification confirms Linux amd64, one filesystem layer, UID `99:100`, and the Rust entrypoint. The compressed layer is 7,894,301 bytes.
-- [The 0.2.2 publishing run](https://github.com/holblin/talos-companion/actions/runs/41950924879) passed strict application checks, owner recovery tests, the 320 MiB streaming recovery test, secret scanning, automatic startup-secret permission checks, and container/template checks before upload. Docker Hub credentials remain an encrypted GitHub Actions secret.
+- Current public image: [`holblin/talos-companion:0.3.0`](https://hub.docker.com/r/holblin/talos-companion/tags), also tagged `latest` and `sha-f52aa607c4a8d84b556dd0de3dd3336d73145bed`.
+- Its digest is `sha256:a9cc0c11ec67558bb4c0f385148bd1f00fc123cece9ca611fc2460ced39432bc`. All three current tags resolve to that image. Registry verification confirms Linux amd64, one filesystem layer, UID `99:100`, and the Rust entrypoint. The compressed layer is 8,137,040 bytes.
+- [The 0.3.0 publishing run](https://github.com/holblin/talos-companion/actions/runs/42323185429) passed six frontend tests, strict application checks, owner recovery tests, the 320 MiB streaming recovery test, secret scanning, automatic startup-secret permission checks, and container/template checks before upload. This release adds React Spectrum S2, its style macro, TanStack Router and Query, and successful HTTP responses for frontend deep links. Docker Hub credentials remain an encrypted GitHub Actions secret.
+- Version 0.2.2 remains available at digest `sha256:eedb0d14a86eeaf3cadaa7ab47ecce3117532c9f44ec9d03e84f0b46b6757898`; [its publishing run](https://github.com/holblin/talos-companion/actions/runs/41950924879) is retained for reference.
 - Version 0.1.0 remains available at digest `sha256:c7d653fbef035575e11a7425a26fb2ce32d270b04a63e90d891d665a57b8fec8`.
 - `.github/workflows/release.yml` can build, test, and package the image without uploading it.
 - Publishing is an explicit manual workflow choice, off by default. Ordinary commits never push images.
