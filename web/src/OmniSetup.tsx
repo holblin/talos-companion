@@ -1,3 +1,4 @@
+import { documentClass } from "./layout";
 import FilePicker from "./FilePicker";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTask } from "./useTask";
@@ -241,8 +242,10 @@ export default function SetupFlow({
         ] as const
       ).map(([name, label]) => (
         <div key={name}>
-          <dt>{label}</dt>
-          <dd>{settings[name] || "We’ll configure this automatically."}</dd>
+          <dt className={documentClass("dt")}>{label}</dt>
+          <dd className={documentClass("dd")}>
+            {settings[name] || "We’ll configure this automatically."}
+          </dd>
         </div>
       ))}
     </dl>
@@ -252,18 +255,20 @@ export default function SetupFlow({
       <div className={classes("eyebrow")}>
         {mode === "access" ? "COMPANION ACCESS" : "OMNI CONFIGURATION"}
       </div>
-      <h2>
+      <h2 className={documentClass("h2")}>
         {mode === "access"
           ? settings.profile === "lan"
             ? "Local HTTPS"
             : provider
           : "Configure your Omni"}
       </h2>
-      <p>
+      <p className={documentClass("p")}>
         Active Omni identity-provider URL:{" "}
-        <code>{status?.active_issuer ?? "Loading…"}</code>
+        <code className={documentClass("code")}>
+          {status?.active_issuer ?? "Loading…"}
+        </code>
       </p>
-      <p>
+      <p className={documentClass("p")}>
         {mode === "access"
           ? step === 2
             ? "Step 1 of 2 · Prepare HTTPS"
@@ -272,11 +277,15 @@ export default function SetupFlow({
             ? "Step 2 of 3 · Find Omni"
             : "Step 3 of 3 · Check and configure"}
       </p>
-      {integration.error && <p role="alert">{integration.error.message}</p>}
+      {integration.error && (
+        <p className={documentClass("p")} role="alert">
+          {integration.error.message}
+        </p>
+      )}
       {step === 2 && settings.profile === "lan" && (
         <>
-          <h3>Prepare local HTTPS</h3>
-          <p>
+          <h3 className={documentClass("h3")}>Prepare local HTTPS</h3>
+          <p className={documentClass("p")}>
             Companion creates a certificate on its existing web port. Install
             its public trust certificate on your devices and on the Omni host
             before using it for sign-in. Local access requires Omni to reach
@@ -316,19 +325,20 @@ export default function SetupFlow({
           </Button>
           {localPrepared && (
             <>
-              <p>
-                <a href="/api/companion/ca">
+              <p className={documentClass("p")}>
+                <a className={documentClass("a")} href="/api/companion/ca">
                   Download Companion trust certificate
                 </a>
               </p>
-              <p>
+              <p className={documentClass("p")}>
                 Import this certificate into your operating system’s trusted
                 root certificates. On the Omni host, add it to the trust store
                 used by Omni. Then open the HTTPS address and confirm it loads
                 without a certificate warning.
               </p>
-              <p>
+              <p className={documentClass("p")}>
                 <a
+                  className={documentClass("a")}
                   href={settings.companion_url}
                   target="_blank"
                   rel="noreferrer"
@@ -345,8 +355,10 @@ export default function SetupFlow({
               </Checkbox>
             </>
           )}
-          <details>
-            <summary>Advanced settings</summary>
+          <details className={documentClass("details")}>
+            <summary className={documentClass("summary")}>
+              Advanced settings
+            </summary>
             <TextField
               label="Companion HTTPS address"
               value={settings.companion_url}
@@ -382,11 +394,15 @@ export default function SetupFlow({
       )}
       {step === 3 && mode === "access" && (
         <>
-          <h3>Verify and save Companion access</h3>
-          <p>
-            <code>{settings.companion_url}</code>
+          <h3 className={documentClass("h3")}>
+            Verify and save Companion access
+          </h3>
+          <p className={documentClass("p")}>
+            <code className={documentClass("code")}>
+              {settings.companion_url}
+            </code>
           </p>
-          <p>
+          <p className={documentClass("p")}>
             We verify HTTPS, this installation’s identity, OpenID discovery and
             signing keys. Saving this method keeps every other access method and
             the active Omni issuer unchanged.
@@ -410,19 +426,25 @@ export default function SetupFlow({
               : "Verify Companion HTTPS"}
           </Button>
           {checkingCompanion && (
-            <p role="status">
+            <p className={documentClass("p")} role="status">
               The tunnel is ready. Checking HTTPS and this Companion’s identity
               automatically…
             </p>
           )}
-          {companionHint && <p role="status">{companionHint}</p>}
+          {companionHint && (
+            <p className={documentClass("p")} role="status">
+              {companionHint}
+            </p>
+          )}
           {companionVerified && (
             <StatusLight variant="positive">
               Companion HTTPS and identity verified
             </StatusLight>
           )}
-          <details>
-            <summary>Advanced settings</summary>
+          <details className={documentClass("details")}>
+            <summary className={documentClass("summary")}>
+              Advanced settings
+            </summary>
             <TextField
               label="Companion HTTPS address"
               value={settings.companion_url}
@@ -468,15 +490,20 @@ export default function SetupFlow({
       )}
       {step === 4 && (
         <>
-          <h3>Where do you open Omni?</h3>
-          <p>
+          <h3 className={documentClass("h3")}>Where do you open Omni?</h3>
+          <p className={documentClass("p")}>
             Companion is ready at{" "}
-            <a href={settings.companion_url} target="_blank" rel="noreferrer">
+            <a
+              className={documentClass("a")}
+              href={settings.companion_url}
+              target="_blank"
+              rel="noreferrer"
+            >
               {settings.companion_url}
             </a>
             . Opening a different hostname may require signing in again.
           </p>
-          <p>
+          <p className={documentClass("p")}>
             {address
               ? "We found this address in your settings. Confirm it or paste the address you normally use."
               : "Paste the address you use to open Omni. You don’t need to change Docker settings."}
@@ -490,8 +517,10 @@ export default function SetupFlow({
             description="A hostname is enough. You can also paste a complete web address."
             styles={style({ width: "full", marginY: 12 })}
           />
-          <details>
-            <summary>Advanced settings</summary>
+          <details className={documentClass("details")}>
+            <summary className={documentClass("summary")}>
+              Advanced settings
+            </summary>
             <TextArea
               label="Public trust certificate (optional)"
               value={certificate}
@@ -538,15 +567,15 @@ export default function SetupFlow({
       )}
       {step === 2 && settings.profile !== "lan" && (
         <>
-          <h3>Connect {provider}</h3>
-          <p>
+          <h3 className={documentClass("h3")}>Connect {provider}</h3>
+          <p className={documentClass("p")}>
             {settings.profile === "cloudflare"
               ? "Sign in to Cloudflare, choose the domain you want to use, then return here. We’ll detect your approved domain, create the tunnel and addresses, and check Companion HTTPS. Your domain must already be managed by Cloudflare."
               : "Sign in to Tailscale and approve this Companion device. We’ll configure private HTTPS access for you."}
           </p>
           {!connection.data?.available && (
             <div role="status">
-              <p>
+              <p className={documentClass("p")}>
                 {connection.data?.bundled
                   ? "Preparing the built-in connection service…"
                   : "Cloud connections are included in the Companion Docker image. Update Companion to enable them."}
@@ -563,13 +592,15 @@ export default function SetupFlow({
             </div>
           )}
           {connection.error && (
-            <p role="alert">
+            <p className={documentClass("p")} role="alert">
               Could not check the connection service. Try again.
             </p>
           )}
           {settings.profile === "cloudflare" && (
-            <details>
-              <summary>Advanced settings</summary>
+            <details className={documentClass("details")}>
+              <summary className={documentClass("summary")}>
+                Advanced settings
+              </summary>
               <TextField
                 label="Cloudflare domain override (optional)"
                 value={domain}
@@ -599,8 +630,13 @@ export default function SetupFlow({
           {job?.profile === settings.profile &&
             job.state === "authorizing" &&
             job.auth_url && (
-              <p>
-                <a href={job.auth_url} target="_blank" rel="noreferrer">
+              <p className={documentClass("p")}>
+                <a
+                  className={documentClass("a")}
+                  href={job.auth_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   {provider === "Cloudflare"
                     ? "Open Cloudflare sign-in ↗"
                     : "Sign in to Tailscale ↗"}
@@ -608,7 +644,7 @@ export default function SetupFlow({
               </p>
             )}
           {connecting && (
-            <p role="status">
+            <p className={documentClass("p")} role="status">
               {job?.state === "configuring"
                 ? job.message
                 : job?.auth_url
@@ -637,7 +673,7 @@ export default function SetupFlow({
           )}
           {job?.profile === settings.profile &&
             ["failed", "expired"].includes(job.state) && (
-              <p role="status">
+              <p className={documentClass("p")} role="status">
                 {job.state === "expired"
                   ? "The sign-in request expired. Try again when you’re ready."
                   : job.message ||
@@ -681,7 +717,7 @@ export default function SetupFlow({
       )}
       {step === 5 && (
         <>
-          <h3>
+          <h3 className={documentClass("h3")}>
             {checking
               ? "Checking your connection"
               : allReady
@@ -689,7 +725,7 @@ export default function SetupFlow({
                 : "Let’s check your services"}
           </h3>
           {checking && (
-            <p role="status">
+            <p className={documentClass("p")} role="status">
               Checking Companion, Omni and the backup receiver…
             </p>
           )}
@@ -706,11 +742,13 @@ export default function SetupFlow({
                           : "Verified"
                         : "Needs attention"}
                     </StatusLight>
-                    {!result.ok && <p>{result.message}</p>}
+                    {!result.ok && (
+                      <p className={documentClass("p")}>{result.message}</p>
+                    )}
                   </li>
                 ))}
               </ul>
-              <p>
+              <p className={documentClass("p")}>
                 These checks run from Companion. Your first Omni backup will
                 also verify the connection from Omni.
               </p>
@@ -774,20 +812,24 @@ export default function SetupFlow({
           >
             Save verified network
           </Button>
-          <details>
-            <summary>Advanced settings</summary>
+          <details className={documentClass("details")}>
+            <summary className={documentClass("summary")}>
+              Advanced settings
+            </summary>
             <div>
               <h4>Manual addresses</h4>
-              <p>
+              <p className={documentClass("p")}>
                 Override advertised addresses for an existing proxy or custom
                 deployment. Changing an address does not create a listener,
                 certificate or proxy route.
               </p>
               {settings.profile === "lan" && status?.mounted && (
-                <p>
-                  <a href="/api/omni/ca">Download LAN trust certificate</a>
+                <p className={documentClass("p")}>
+                  <a className={documentClass("a")} href="/api/omni/ca">
+                    Download LAN trust certificate
+                  </a>
                   {" · "}
-                  <a href="/api/omni/talos-ca">
+                  <a className={documentClass("a")} href="/api/omni/talos-ca">
                     Download Talos trust configuration
                   </a>
                 </p>
@@ -812,9 +854,11 @@ export default function SetupFlow({
                 />
               ))}
             </div>
-            <details>
-              <summary>Import / repair an existing instance</summary>
-              <p>
+            <details className={documentClass("details")}>
+              <summary className={documentClass("summary")}>
+                Import / repair an existing instance
+              </summary>
+              <p className={documentClass("p")}>
                 Upload its main YAML/JSON configuration. It is inspected in
                 memory; private keys are not needed. The checker covers OIDC and
                 S3 enablement only. Existing CLI flags or later config files can
@@ -880,8 +924,9 @@ export default function SetupFlow({
                 Discover Omni address from configuration
               </Button>
             )}
-            <p>
+            <p className={documentClass("p")}>
               <a
+                className={documentClass("a")}
                 href="https://github.com/holblin/talos-companion/blob/main/docs/home-setup.md"
                 target="_blank"
                 rel="noreferrer"
@@ -890,15 +935,15 @@ export default function SetupFlow({
               </a>
             </p>
             {status?.restart_pending && (
-              <p role="status">
+              <p className={documentClass("p")} role="status">
                 An issuer migration is saved. Prepare HTTPS, restart Companion,
                 and open {status.integration.companion_url}. The active issuer
                 is still {status.active_issuer}.
               </p>
             )}
           </details>
-          <h3>Finish configuring Omni</h3>
-          <p>
+          <h3 className={documentClass("h3")}>Finish configuring Omni</h3>
+          <p className={documentClass("p")}>
             Companion HTTPS is active. Omni still needs the sign-in overlay and
             backup resource below. Apply them to Omni, restart Omni, then test
             sign-in and make a real backup.
@@ -923,13 +968,13 @@ export default function SetupFlow({
           </Button>
           {plan && (
             <div className={classes("recovery-box")}>
-              <h3>
+              <h3 className={documentClass("h3")}>
                 {plan.changes.length
                   ? `${String(plan.changes.length)} managed settings need adjustment`
                   : "Managed settings match"}
               </h3>
               {!plan.source_checked && (
-                <p>
+                <p className={documentClass("p")}>
                   No primary configuration was supplied. This is a proposed
                   configuration, not verification of a running instance.
                 </p>
@@ -937,15 +982,16 @@ export default function SetupFlow({
               <ul>
                 {plan.changes.map((path) => (
                   <li key={path}>
-                    <code>{path}</code>
+                    <code className={documentClass("code")}>{path}</code>
                   </li>
                 ))}
               </ul>
-              <p>
-                Callback: <code>{plan.callback}</code>
+              <p className={documentClass("p")}>
+                Callback:{" "}
+                <code className={documentClass("code")}>{plan.callback}</code>
               </p>
-              <p>{plan.note}</p>
-              <p className={classes("hint")}>
+              <p className={documentClass("p")}>{plan.note}</p>
+              <p className={documentClass("p", classes("hint"))}>
                 Downloads contain credentials. Store them privately. TLS,
                 storage, account UUID, initial administrator roles and EULA
                 acceptance are not rewritten by this repair.
@@ -1033,7 +1079,7 @@ export default function SetupFlow({
                 Apply managed Omni configuration
               </Button>
               {!plan.mounted && (
-                <p className={classes("hint")}>
+                <p className={documentClass("p", classes("hint"))}>
                   Apply these files using Omni’s administration tools. Companion
                   cannot restart a remote Omni server.
                 </p>
@@ -1041,13 +1087,19 @@ export default function SetupFlow({
             </div>
           )}
 
-          <details>
-            <summary>Connection details</summary>
+          <details className={documentClass("details")}>
+            <summary className={documentClass("summary")}>
+              Connection details
+            </summary>
             {job?.message}
           </details>
         </>
       )}
-      {notice && <p role="status">{notice}</p>}
+      {notice && (
+        <p className={documentClass("p")} role="status">
+          {notice}
+        </p>
+      )}
     </section>
   );
 }

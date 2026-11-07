@@ -1,3 +1,4 @@
+import { documentClass } from "./layout";
 import {
   createRootRoute,
   createRoute,
@@ -49,8 +50,10 @@ export function createAppRouter(history?: RouterHistory) {
     scrollRestoration: true,
     defaultNotFoundComponent: () => (
       <main className={style({ padding: 32 })}>
-        <h1>Page not found</h1>
-        <a href="/">Return to your companion</a>
+        <h1 className={documentClass("h1")}>Page not found</h1>
+        <a className={documentClass("a")} href="/">
+          Return to your companion
+        </a>
       </main>
     ),
   });

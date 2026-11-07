@@ -85,9 +85,22 @@ CI uses mise for the same checks and verifies the built image has exactly one la
 
 The interface uses React Spectrum S2 for accessible controls, forms, navigation,
 file selection, and recovery tables. Responsive layouts use S2's build-time
-`style()` macro in `web/src/layout.ts`; `style.css` contains document typography
-and semantic content selectors. The macro plugin runs before React in Vite and
+`style()` macro in `web/src/layout.ts`, including explicit native HTML typography
+through `documentClass()`. There is no app-owned CSS file. The only CSS import is
+Spectrum's standard `page.css`; the macro plugin runs before React in Vite and
 emits one shared CSS bundle.
+
+Impeccable is installed locally in `.agents/skills/impeccable` for design audits
+and polish. It is available to Codex on the next turn. Run its mechanical check
+from the repository root on Windows:
+
+```powershell
+.agents/skills/impeccable/scripts/impeccable.cmd detect --json web/src
+```
+
+The installation does not enable automatic agent hooks. See
+[the design review](docs/design-review.md) for findings, implemented changes,
+verification limits, and the repeatable desktop/mobile video capture workflow.
 
 TanStack Router provides `/`, `/backups`, `/access`, `/omni-configuration`, `/accounts`, and `/settings` (with `/identity` retained as an alias),
 including browser history and direct links. Spectrum's Provider delegates app

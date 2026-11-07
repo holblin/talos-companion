@@ -4,8 +4,11 @@ import { RouterProvider } from "@tanstack/react-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { router } from "./router";
 import { queryClient } from "./query";
+import { layout } from "./layout";
 import "@react-spectrum/s2/page.css";
-import "./style.css";
+
+document.body.className = layout.document;
+document.documentElement.dataset["colorScheme"] = "dark";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("The application root element is missing.");

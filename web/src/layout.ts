@@ -3,7 +3,7 @@ import type { StyleString } from "@react-spectrum/s2/style";
 import { mergeStyles } from "@react-spectrum/s2";
 
 // Application layouts use Spectrum tokens and compile to atomic CSS. Component
-// appearance belongs to S2; these styles only arrange the surrounding content.
+// appearance belongs to S2; native HTML uses explicit semantic styles below.
 export const layout = {
   shell: style({
     display: "flex",
@@ -11,6 +11,7 @@ export const layout = {
     minHeight: "screen",
   }),
   sidebar: style({
+    boxSizing: "border-box",
     position: { default: "static", lg: "sticky" },
     top: 0,
     width: { default: "full", lg: 240 },
@@ -53,9 +54,10 @@ export const layout = {
     font: "body-sm",
   }),
   content: style({
-    maxWidth: 1440,
+    boxSizing: "border-box",
+    maxWidth: 1280,
     marginX: "auto",
-    padding: { default: 16, md: 24, lg: 40 },
+    padding: { default: 20, md: 32, lg: 40 },
     overflowWrap: "anywhere",
   }),
   title: style({
@@ -77,15 +79,6 @@ export const layout = {
     marginBottom: { default: 16, md: 24 },
     minWidth: 0,
   }),
-  metrics: style({
-    display: "grid",
-    gridTemplateColumns: {
-      default: "minmax(0, 1fr)",
-      md: "repeat(3, minmax(0, 1fr))",
-    },
-    gap: { default: 12, md: 24 },
-    marginBottom: { default: 16, md: 24 },
-  }),
   twoColumns: style({
     display: "grid",
     gridTemplateColumns: {
@@ -103,7 +96,7 @@ export const layout = {
     },
     gap: { default: 0, xl: 24 },
   }),
-  recovery: style({ backgroundColor: "accent-subtle", overflow: "hidden" }),
+  recovery: style({ backgroundColor: "layer-1", overflow: "hidden" }),
   brand: style({
     display: "flex",
     alignItems: "center",
@@ -117,6 +110,7 @@ export const layout = {
     marginBottom: 12,
   }),
   muted: style({ color: "neutral-subdued" }),
+  subtitle: style({ color: "neutral-subdued", marginBottom: 0 }),
   hint: style({ font: "body-sm", color: "neutral-subdued", marginY: 16 }),
   row: style({
     display: "flex",
@@ -186,6 +180,7 @@ export const layout = {
     backgroundColor: "base",
   }),
   wizard: style({
+    boxSizing: "border-box",
     maxWidth: 800,
     marginX: "auto",
     backgroundColor: "layer-1",
@@ -256,7 +251,6 @@ export const layout = {
     font: "detail-sm",
     whiteSpace: "nowrap",
   }),
-  metricCard: style({ marginBottom: 0 }),
   backupList: style({
     display: { default: "flex", md: "none" },
     flexDirection: "column",
@@ -282,7 +276,171 @@ export const layout = {
     minWidth: 0,
   }),
   storyDetail: style({ display: { default: "none", md: "block" } }),
+  document: style({ margin: 0, backgroundColor: "base" }),
+  summary: style({
+    display: "grid",
+    gridTemplateColumns: {
+      default: "minmax(0, 1fr)",
+      md: "repeat(3, minmax(0, 1fr))",
+    },
+    margin: 0,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "gray-200",
+    borderRadius: "xl",
+    backgroundColor: "layer-1",
+    overflow: "hidden",
+  }),
+  summaryItem: style({
+    display: "flex",
+    flexDirection: { default: "row", md: "column" },
+    justifyContent: "space-between",
+    alignItems: { default: "center", md: "start" },
+    gap: 8,
+    padding: { default: 16, md: 24 },
+    minWidth: 0,
+  }),
+  summaryLabel: style({ margin: 0, font: "body-sm", color: "neutral-subdued" }),
+  summaryValue: style({
+    margin: 0,
+    font: "heading-sm",
+    fontVariantNumeric: "tabular-nums",
+  }),
+  serviceContent: style({ flexGrow: 1, minWidth: 0 }),
+  serviceDetail: style({
+    display: "block",
+    marginTop: 4,
+    font: "body-sm",
+    color: "neutral-subdued",
+  }),
+  brandDetail: style({
+    display: "block",
+    font: "body-sm",
+    fontWeight: "normal",
+    color: "neutral-subdued",
+    marginTop: 4,
+  }),
+  logo: style({
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    width: 40,
+    height: 44,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "gray-400",
+    borderRadius: "lg",
+    font: "heading-lg",
+  }),
+  serviceLogo: style({
+    display: "inline-flex",
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    width: 36,
+    height: 36,
+    borderRadius: "lg",
+    backgroundColor: "layer-2",
+    color: "neutral-subdued",
+  }),
+  avatar: style({
+    display: "inline-flex",
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    width: 36,
+    height: 36,
+    borderRadius: "full",
+    backgroundColor: "layer-2",
+  }),
+  footnote: style({
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 16,
+    font: "body-sm",
+    color: "neutral-subdued",
+    paddingY: 8,
+  }),
+  secretValue: style({
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 16,
+    marginTop: 8,
+  }),
+  progress: style({
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    listStyleType: "none",
+    padding: 0,
+    marginY: 24,
+  }),
+  progressStep: style({
+    paddingX: 12,
+    paddingY: 8,
+    borderRadius: "default",
+    font: "body-sm",
+    color: "neutral-subdued",
+    backgroundColor: "layer-2",
+  }),
+  progressCurrent: style({
+    color: "accent",
+    fontWeight: "bold",
+    backgroundColor: "accent-subtle",
+  }),
+  progressNumber: style({ marginEnd: 8 }),
+  nextSteps: style({ paddingStart: 24 }),
 };
+
+// Explicit semantic styles keep native HTML accessible without global selectors.
+const documentStyles = {
+  h1: style({
+    font: { default: "heading-lg", md: "heading-xl" },
+    margin: 0,
+    marginBottom: 12,
+    textWrap: "balance",
+    outlineStyle: "none",
+  }),
+  h2: style({
+    font: "heading",
+    margin: 0,
+    marginBottom: 16,
+    textWrap: "balance",
+    outlineStyle: "none",
+  }),
+  h3: style({ font: "heading-sm", margin: 0, marginBottom: 12 }),
+  p: style({
+    font: "body",
+    lineHeight: "[1.65]",
+    marginTop: 12,
+    marginBottom: 20,
+    maxWidth: "[72ch]",
+  }),
+  small: style({ font: "body-sm", color: "neutral-subdued" }),
+  code: style({ font: "code-xs", overflowWrap: "anywhere", minWidth: 0 }),
+  pre: style({
+    font: "code-sm",
+    overflowWrap: "anywhere",
+    whiteSpace: "pre-wrap",
+  }),
+  fieldset: style({ borderWidth: 0, padding: 0, margin: 0, minWidth: 0 }),
+  a: style({ color: "inherit", textUnderlineOffset: "[3px]" }),
+  details: style({ marginY: 24 }),
+  summary: style({ cursor: "pointer", fontWeight: "bold" }),
+  dt: style({ marginTop: 16, font: "body-sm", color: "neutral-subdued" }),
+  dd: style({ marginX: 0, marginY: 8, overflowWrap: "anywhere" }),
+};
+
+export function documentClass(
+  tag: keyof typeof documentStyles,
+  value?: string,
+) {
+  return `${value ?? ""} ${mergeStyles(documentStyles[tag], value as StyleString | undefined)}`;
+}
 
 const names: Record<string, StyleString> = {
   shell: layout.shell,
@@ -296,8 +454,6 @@ const names: Record<string, StyleString> = {
   content: layout.content,
   "page-title": layout.title,
   card: layout.card,
-  metrics: layout.metrics,
-  "metric-card": layout.metricCard,
   "overview-grid": layout.twoColumns,
   "two-cols": layout.twoColumns,
   "three-cols": layout.threeColumns,
@@ -328,6 +484,13 @@ const names: Record<string, StyleString> = {
   workspace: layout.workspace,
   badge: layout.badge,
   pill: layout.badge,
+  logo: layout.logo,
+  "service-logo": layout.serviceLogo,
+  avatar: layout.avatar,
+  footnote: layout.footnote,
+  "wizard-progress": layout.progress,
+  "wizard-next": layout.nextSteps,
+  "table-scroll": style({ overflowX: "auto" }),
 };
 
 export function classes(value: string) {

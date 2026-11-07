@@ -1,3 +1,4 @@
+import { documentClass } from "./layout";
 import RemoveAction from "./RemoveAction";
 import FilePicker from "./FilePicker";
 import BackupDestinations, {
@@ -6,6 +7,9 @@ import BackupDestinations, {
 } from "./BackupSetup";
 import { classes, layout } from "./layout";
 import Input from "./Field";
+import Cloud from "@react-spectrum/s2/icons/Cloud";
+import People from "@react-spectrum/s2/icons/People";
+import Download from "@react-spectrum/s2/icons/Download";
 import {
   SideNav,
   SideNavItem,
@@ -38,7 +42,6 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { destinations, type View } from "./navigation";
 import { queryClient } from "./query";
 import { useTask } from "./useTask";
-import "./style.css";
 import { api, ApiError } from "./api";
 const SetupWizard = lazy(() => import("./SetupWizard"));
 const OmniSetup = lazy(() =>
@@ -103,19 +106,16 @@ function Logo() {
 }
 function Card({
   title,
-  eyebrow,
   children,
   className = "",
 }: {
   title?: string;
-  eyebrow?: string;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <section className={classes(`card ${className}`)}>
-      {eyebrow && <div className={classes("eyebrow")}>{eyebrow}</div>}
-      {title && <h2>{title}</h2>}
+    <section className={classes(`card ${className}`)} aria-label={title}>
+      {title && <h2 className={documentClass("h2")}>{title}</h2>}
       {children}
     </section>
   );
@@ -125,8 +125,10 @@ function Secret({ label, value }: { label: string; value: string }) {
   return (
     <div className={classes("secret")}>
       <span>{label}</span>
-      <div>
-        <code>{show ? value : "••••••••••••••••••••••••"}</code>
+      <div className={layout.secretValue}>
+        <code className={documentClass("code")}>
+          {show ? value : "••••••••••••••••••••••••"}
+        </code>
         <Button
           onPress={() => {
             setShow(!show);
@@ -264,7 +266,9 @@ export default function App() {
             isIndeterminate
           />
         )}
-        <p>{loadError?.message || "Connecting to your companion…"}</p>
+        <p className={documentClass("p")}>
+          {loadError?.message || "Connecting to your companion…"}
+        </p>
         {loadError && (
           <Button
             variant="secondary"
@@ -304,40 +308,35 @@ export default function App() {
             <Logo /> talos companion
           </div>
           <div className={classes("story-detail")}>
-            <span className={classes("eyebrow")}>
-              A SMALL HOME FOR IMPORTANT THINGS
-            </span>
-            <h1>
+            <h1 className={documentClass("h1")}>
               Your infrastructure.
               <br />
               <em>Your identity.</em>
               <br />
               Your peace of mind.
             </h1>
-            <p>
+            <p className={documentClass("p")}>
               Accounts and recovery for Talos Omni.
               <br />
               Simple to run. Ready when you need it.
             </p>
-            <div className={classes("orbit")} aria-hidden="true">
-              <span>✳</span>
-              <i />
-              <b>OMNI</b>
-            </div>
           </div>
-          <footer>
-            SELF-HOSTED BY YOU <span>RUST + REACT</span>
+          <footer className={classes("footnote desktop-only")}>
+            Self-hosted by you
           </footer>
         </div>
         <main className={classes("welcome-form")}>
           <div className={classes("onboarding")}>
-            <span className={classes("eyebrow")}>WELCOME BACK</span>
-            <h2 ref={signInHeading} tabIndex={-1}>
+            <h2
+              className={documentClass("h2")}
+              ref={signInHeading}
+              tabIndex={-1}
+            >
               {recovering
                 ? "Recover administrator access"
                 : "Sign in to your companion"}
             </h2>
-            <p className={classes("muted")}>
+            <p className={documentClass("p", layout.subtitle)}>
               {recovering
                 ? "Reset your administrator password using a recovery code."
                 : "Use your companion account to continue."}
@@ -345,7 +344,7 @@ export default function App() {
             {messages}
             {!recovering ? (
               <>
-                <fieldset disabled={busy}>
+                <fieldset className={documentClass("fieldset")} disabled={busy}>
                   <Form
                     isDisabled={busy}
                     onSubmit={(e) => {
@@ -401,7 +400,7 @@ export default function App() {
                 >
                   Back to sign in
                 </Button>
-                <p className={classes("hint")}>
+                <p className={documentClass("p", classes("hint"))}>
                   The server owner can recover access without losing accounts,
                   identity or backups. Request a code here, then read it in
                   Companion’s server logs. No command or restart is needed.
@@ -431,7 +430,7 @@ export default function App() {
                     only once.
                   </div>
                 )}
-                <p className={classes("hint")}>
+                <p className={documentClass("p", classes("hint"))}>
                   On Unraid, open Docker → talos-companion → Logs. For other
                   installations, use the service’s logs or terminal output. Find
                   the latest “Password recovery code:” entry. It is valid for 15
@@ -439,14 +438,14 @@ export default function App() {
                   verification attempts. Repeated requests do not replace an
                   active log code or extend its expiry, even after a restart.
                 </p>
-                <p className={classes("hint")}>
+                <p className={documentClass("p", classes("hint"))}>
                   Your current password keeps working until you finish below.
                   The code cannot sign in to Companion or Omni. Anyone who can
                   read these logs can recover the administrator account. Keep
                   logs private and exclude recovery entries from shared log
                   exports.
                 </p>
-                <fieldset disabled={busy}>
+                <fieldset className={documentClass("fieldset")} disabled={busy}>
                   <Form
                     isDisabled={busy}
                     onSubmit={(e) => {
@@ -499,6 +498,7 @@ export default function App() {
                   </Form>
                 </fieldset>
                 <a
+                  className={documentClass("a")}
                   href="https://github.com/holblin/talos-companion/blob/main/docs/home-setup.md#recover-a-forgotten-administrator-password"
                   target="_blank"
                   rel="noreferrer"
@@ -594,7 +594,7 @@ export default function App() {
             step={1}
             defaultValue={overview.settings.retention.snapshot_keep_last}
           />
-          <p className={classes("hint")}>
+          <p className={documentClass("p", classes("hint"))}>
             Use 0 to keep everything. Retention applies after the next
             successful backup.
           </p>
@@ -603,7 +603,7 @@ export default function App() {
           Save backup settings
         </Button>
       </Form>
-      <p className={classes("hint")}>
+      <p className={documentClass("p", classes("hint"))}>
         Saved in /data/config.json and included in recovery backups. Changes
         apply immediately. An active backup finishes with its original settings.
       </p>
@@ -616,7 +616,7 @@ export default function App() {
           <div className={classes("brand")}>
             <Logo />
             <div>
-              talos<span>companion</span>
+              talos<span className={layout.brandDetail}>companion</span>
             </div>
           </div>
           <div className={classes("mobile-only")}>
@@ -630,7 +630,10 @@ export default function App() {
         <div className={classes("workspace")}>
           <span className={classes("dot")} />
           <div>
-            My infrastructure<small>SELF-HOSTED WORKSPACE</small>
+            My infrastructure
+            <small className={documentClass("small", layout.brandDetail)}>
+              Self-hosted workspace
+            </small>
           </div>
         </div>
         <div className={classes("desktop-only")}>
@@ -701,9 +704,10 @@ export default function App() {
         <div className={classes("content")}>
           <div className={classes("page-title")}>
             <div>
-              <span className={classes("eyebrow")}>YOUR TALOS COMPANION</span>
-              <h1>{user.admin ? titles[view] : "Your account."}</h1>
-              <p className={classes("muted")}>
+              <h1 className={documentClass("h1")}>
+                {user.admin ? titles[view] : "Your account."}
+              </h1>
+              <p className={documentClass("p", layout.subtitle)}>
                 {view === "Overview"
                   ? "A little clarity for the infrastructure you call home."
                   : "Identity and recovery, under your control."}
@@ -721,45 +725,49 @@ export default function App() {
             )}
           </div>
           {messages}
-          <fieldset disabled={busy}>
+          <fieldset className={documentClass("fieldset")} disabled={busy}>
             {user.admin && view === "Overview" && (
               <>
-                <div className={classes("metrics")}>
-                  <Card className="metric-card">
-                    <span className={classes("metric-icon")}>◎</span>
-                    <span className={classes("eyebrow")}>
-                      IDENTITY PROVIDER
-                    </span>
-                    <strong>
-                      {overview?.redirect_uri ? "Configured" : "Needs setup"}
-                    </strong>
-                    <small>OpenID Connect · RS256</small>
-                  </Card>
-                  <Card className="metric-card">
-                    <span className={classes("metric-icon")}>↗</span>
-                    <span className={classes("eyebrow")}>RECOVERY FILES</span>
-                    <strong>
-                      {backups.length.toString().padStart(2, "0")}{" "}
-                      <i>backups</i>
-                    </strong>
-                    <small>Encrypted, including credentials</small>
-                  </Card>
-                  <Card className="metric-card">
-                    <span className={classes("metric-icon")}>⊞</span>
-                    <span className={classes("eyebrow")}>YOUR PEOPLE</span>
-                    <strong>
-                      {users.length.toString().padStart(2, "0")} <i>accounts</i>
-                    </strong>
-                    <small>Managed on your own terms</small>
-                  </Card>
-                </div>
+                <dl className={layout.summary} aria-label="Workspace summary">
+                  <div className={layout.summaryItem}>
+                    <dt className={documentClass("dt", layout.summaryLabel)}>
+                      Identity provider
+                    </dt>
+                    <dd className={documentClass("dd", layout.summaryValue)}>
+                      {dashboard.isPending
+                        ? "Loading…"
+                        : overview?.redirect_uri
+                          ? "Configured"
+                          : "Needs setup"}
+                    </dd>
+                  </div>
+                  <div className={layout.summaryItem}>
+                    <dt className={documentClass("dt", layout.summaryLabel)}>
+                      Recovery files
+                    </dt>
+                    <dd className={documentClass("dd", layout.summaryValue)}>
+                      {dashboard.isPending
+                        ? "Loading…"
+                        : `${String(backups.length)} encrypted`}
+                    </dd>
+                  </div>
+                  <div className={layout.summaryItem}>
+                    <dt className={documentClass("dt", layout.summaryLabel)}>
+                      Your people
+                    </dt>
+                    <dd className={documentClass("dd", layout.summaryValue)}>
+                      {dashboard.isPending
+                        ? "Loading…"
+                        : `${String(users.length)} ${users.length === 1 ? "account" : "accounts"}`}
+                    </dd>
+                  </div>
+                </dl>
                 <div className={classes("overview-grid")}>
                   <Card
                     className={classes("recovery-card")}
-                    eyebrow="A LITTLE PREPARATION GOES A LONG WAY"
                     title="Keep a way back."
                   >
-                    <p>
+                    <p className={documentClass("p")}>
                       Your accounts, identity keys, integration credentials, and
                       received Omni backups. Together in one encrypted recovery
                       file.
@@ -773,35 +781,61 @@ export default function App() {
                     >
                       Manage your backups ↗
                     </Button>
-                    <div className={classes("recovery-art")} aria-hidden="true">
-                      ↶
-                    </div>
                   </Card>
-                  <Card
-                    eyebrow="CONNECTED SERVICES"
-                    title="Your infrastructure"
-                  >
+                  <Card title="Your infrastructure">
                     <div className={classes("service")}>
-                      <span className={classes("service-logo")}>O</span>
-                      <div>
-                        <b>Talos Omni</b>
-                        <small>OIDC identity + S3 backup receiver</small>
-                      </div>
-                      <span className={classes("badge")}>
-                        {overview?.redirect_uri ? "Configured" : "Set up"}
+                      <span
+                        className={classes("service-logo")}
+                        aria-hidden="true"
+                      >
+                        <People />
                       </span>
+                      <div className={layout.serviceContent}>
+                        <b>Talos Omni</b>
+                        <small
+                          className={documentClass(
+                            "small",
+                            layout.serviceDetail,
+                          )}
+                        >
+                          OIDC identity + S3 backup receiver
+                        </small>
+                      </div>
+                      <StatusLight
+                        variant={
+                          overview?.redirect_uri ? "positive" : "neutral"
+                        }
+                      >
+                        {overview?.redirect_uri ? "Configured" : "Set up"}
+                      </StatusLight>
                     </div>
                     <div className={classes("service")}>
-                      <span className={classes("service-logo")}>G</span>
-                      <div>
+                      <span
+                        className={classes("service-logo")}
+                        aria-hidden="true"
+                      >
+                        <Cloud />
+                      </span>
+                      <div className={layout.serviceContent}>
                         <b>Google Drive</b>
-                        <small>Off-site encrypted recovery files</small>
+                        <small
+                          className={documentClass(
+                            "small",
+                            layout.serviceDetail,
+                          )}
+                        >
+                          Off-site encrypted recovery files
+                        </small>
                       </div>
-                      <span className={classes("badge")}>
+                      <StatusLight
+                        variant={
+                          overview?.drive.connected ? "positive" : "neutral"
+                        }
+                      >
                         {overview?.drive.connected
                           ? "Connected"
                           : "Not connected"}
-                      </span>
+                      </StatusLight>
                     </div>
                     <Button
                       onPress={() => {
@@ -818,7 +852,7 @@ export default function App() {
                   <BackupTable backups={backups.slice(0, 3)} />
                 </Card>
                 <div className={classes("footnote")}>
-                  ✳ Small footprint. Important job.{" "}
+                  Small footprint. Important job.{" "}
                   <span>Built for your homelab.</span>
                 </div>
               </>
@@ -835,7 +869,7 @@ export default function App() {
                 {backupSettings}
                 <Card title="Your recovery files">
                   <BackupTable backups={backups} />
-                  <p className={classes("hint")}>
+                  <p className={documentClass("p", classes("hint"))}>
                     Recovery files contain password hashes and identity keys.
                     Encryption uses your BACKUP_PASSPHRASE. Recovery files
                     stream without a fixed size cap. Retention:{" "}
@@ -850,7 +884,7 @@ export default function App() {
                   </p>
                 </Card>
                 <Card title="Omni credentials and recovery material">
-                  <p>
+                  <p className={documentClass("p")}>
                     Add your Omni configuration, encryption keys, or other
                     recovery files here. These files stay private to
                     administrators and are included in encrypted recovery
@@ -892,9 +926,9 @@ export default function App() {
                   </Form>
                   {vault.map((name) => (
                     <div className={classes("account")} key={name}>
-                      <code>{name}</code>
+                      <code className={documentClass("code")}>{name}</code>
                       <a
-                        className={classes("download")}
+                        className={documentClass("a", classes("download"))}
                         href={`/api/vault/${encodeURIComponent(name)}`}
                       >
                         Download ↓
@@ -917,20 +951,20 @@ export default function App() {
                       </RemoveAction>
                     </div>
                   ))}
-                  <p className={classes("hint")}>
+                  <p className={documentClass("p", classes("hint"))}>
                     Uploading a file with the same name replaces the previous
                     version. Companion does not automatically collect Omni’s own
                     database or encryption material.
                   </p>
                 </Card>
                 <Card title="Restore on a fresh instance">
-                  <p>
+                  <p className={documentClass("p")}>
                     Start a new container with an empty data directory. Choose
                     “Restore a backup” on the first-launch screen. Supply your
                     original passphrase, and optionally replace the first
                     administrator’s credentials.
                   </p>
-                  <p className={classes("hint")}>
+                  <p className={documentClass("p", classes("hint"))}>
                     Cluster backups received over S3 are separate from Omni’s
                     own database and encryption-key backups. Include those
                     separately using the documented recovery procedure.
@@ -961,28 +995,31 @@ export default function App() {
                   }
                 >
                   <OmniSetup>
-                    <details className={classes("card")}>
-                      <summary>
+                    <details
+                      className={documentClass("details", classes("card"))}
+                    >
+                      <summary className={documentClass("summary")}>
                         Advanced settings: identity and backup credentials
                       </summary>
                       <div className={classes("two-cols")}>
-                        <Card
-                          eyebrow="OPENID CONNECT"
-                          title="Give Omni a familiar face"
-                        >
-                          <p>
+                        <Card title="Give Omni a familiar face">
+                          <p className={documentClass("p")}>
                             Your companion is a dedicated identity provider for
                             one Omni instance. Add Omni’s exact callback URL,
                             then configure Omni with these values.
                           </p>
                           <dl>
-                            <dt>Issuer URL</dt>
-                            <dd>
-                              <code>{overview.issuer}</code>
+                            <dt className={documentClass("dt")}>Issuer URL</dt>
+                            <dd className={documentClass("dd")}>
+                              <code className={documentClass("code")}>
+                                {overview.issuer}
+                              </code>
                             </dd>
-                            <dt>Client ID</dt>
-                            <dd>
-                              <code>{overview.client_id}</code>
+                            <dt className={documentClass("dt")}>Client ID</dt>
+                            <dd className={documentClass("dd")}>
+                              <code className={documentClass("code")}>
+                                {overview.client_id}
+                              </code>
                             </dd>
                           </dl>
                           <Secret
@@ -1012,27 +1049,28 @@ export default function App() {
                             </Button>
                           </Form>
                         </Card>
-                        <Card
-                          eyebrow="S3-COMPATIBLE RECEIVER"
-                          title="A home for Omni backups"
-                        >
-                          <p>
+                        <Card title="A home for Omni backups">
+                          <p className={documentClass("p")}>
                             Use the verified backup endpoint from the guided
                             setup. The bucket is created automatically after
                             account setup.
                           </p>
                           <dl>
-                            <dt>Bucket</dt>
-                            <dd>
-                              <code>omni</code>
+                            <dt className={documentClass("dt")}>Bucket</dt>
+                            <dd className={documentClass("dd")}>
+                              <code className={documentClass("code")}>
+                                omni
+                              </code>
                             </dd>
-                            <dt>Region</dt>
-                            <dd>
-                              <code>us-east-1</code>
+                            <dt className={documentClass("dt")}>Region</dt>
+                            <dd className={documentClass("dd")}>
+                              <code className={documentClass("code")}>
+                                us-east-1
+                              </code>
                             </dd>
-                            <dt>Endpoint</dt>
-                            <dd>
-                              <code>
+                            <dt className={documentClass("dt")}>Endpoint</dt>
+                            <dd className={documentClass("dd")}>
+                              <code className={documentClass("code")}>
                                 {overview.s3_endpoint ||
                                   "Complete the guided connection setup above."}
                               </code>
@@ -1046,7 +1084,7 @@ export default function App() {
                             label="Secret key"
                             value={overview.s3_secret_key}
                           />
-                          <p className={classes("hint")}>
+                          <p className={documentClass("p", classes("hint"))}>
                             Configure Omni with S3 backups enabled. See
                             docs/omni.md for the resource template and full
                             setup instructions. Omni access roles are managed in
@@ -1070,7 +1108,12 @@ export default function App() {
                         </span>
                         <div>
                           <b>{u.name}</b>
-                          <small>
+                          <small
+                            className={documentClass(
+                              "small",
+                              layout.brandDetail,
+                            )}
+                          >
                             {u.email} · {u.admin ? "Administrator" : "Member"}
                           </small>
                         </div>
@@ -1095,7 +1138,7 @@ export default function App() {
                       </div>
                     ))}
                   </div>
-                  <p className={classes("hint")}>
+                  <p className={documentClass("p", classes("hint"))}>
                     Administrators can manage identity settings, people, and
                     backups. Members can sign in to Omni and change their own
                     password. Adding an email here is an administrator’s
@@ -1167,7 +1210,7 @@ export default function App() {
                       Update password
                     </Button>
                   </Form>
-                  <p className={classes("hint")}>
+                  <p className={documentClass("p", classes("hint"))}>
                     Changing your password signs you out of all companion
                     sessions.
                   </p>
@@ -1196,7 +1239,7 @@ function BackupTable({ backups }: { backups: Backup[] }) {
       <ul className={layout.backupList} aria-label="Recovery file downloads">
         {backups.map((backup) => (
           <li key={backup.name} className={layout.backupItem}>
-            <code>{backup.name}</code>
+            <code className={documentClass("code")}>{backup.name}</code>
             <Text>
               {(backup.bytes / 1024 / 1024).toFixed(2)} MB · Encrypted
             </Text>
@@ -1213,10 +1256,10 @@ function BackupTable({ backups }: { backups: Backup[] }) {
         <TableView
           aria-label="Encrypted recovery files"
           overflowMode="wrap"
-          styles={style({ width: "full", height: 320 })}
+          styles={style({ width: "full", height: "auto" })}
         >
           <TableHeader>
-            <Column id="name" minWidth={280} isRowHeader>
+            <Column id="name" width="2fr" minWidth={280} isRowHeader>
               Recovery file
             </Column>
             <Column id="size" minWidth={90}>
@@ -1233,7 +1276,7 @@ function BackupTable({ backups }: { backups: Backup[] }) {
             {(backup) => (
               <Row id={backup.name}>
                 <Cell>
-                  <code>{backup.name}</code>
+                  <code className={documentClass("code")}>{backup.name}</code>
                 </Cell>
                 <Cell>{(backup.bytes / 1024 / 1024).toFixed(2)} MB</Cell>
                 <Cell>Encrypted</Cell>
@@ -1253,9 +1296,9 @@ function BackupTable({ backups }: { backups: Backup[] }) {
     </>
   ) : (
     <div className={classes("empty")}>
-      <span>↶</span>
-      <h3>Your first backup starts here.</h3>
-      <p>
+      <Download styles={style({ marginBottom: 16 })} />
+      <h3 className={documentClass("h3")}>Your first backup starts here.</h3>
+      <p className={documentClass("p")}>
         Create a recovery file to keep your accounts and infrastructure safe.
       </p>
     </div>

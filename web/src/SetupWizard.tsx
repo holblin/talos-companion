@@ -1,6 +1,7 @@
+import { documentClass } from "./layout";
 import FilePicker from "./FilePicker";
 import { useTask } from "./useTask";
-import { classes } from "./layout";
+import { classes, layout } from "./layout";
 import Field from "./Field";
 import {
   RadioGroup,
@@ -187,7 +188,7 @@ export default function SetupWizard({
           </span>{" "}
           talos companion
         </div>
-        <p className={classes("eyebrow")}>
+        <p className={documentClass("p", classes("eyebrow"))}>
           FIRST-TIME SETUP · STEP {step + 1} OF {labels.length}
         </p>
         <ol className={classes("wizard-progress")} aria-label="Setup progress">
@@ -195,14 +196,20 @@ export default function SetupWizard({
             <li
               key={label}
               aria-current={i === step ? "step" : undefined}
-              className={i < step ? "done" : ""}
+              className={
+                i === step
+                  ? `${layout.progressStep} ${layout.progressCurrent}`
+                  : layout.progressStep
+              }
             >
-              <span>{i < step ? "✓" : i + 1}</span>
+              <span className={layout.progressNumber}>
+                {i < step ? "✓" : i + 1}
+              </span>
               {label}
             </li>
           ))}
         </ol>
-        <h1 ref={heading} tabIndex={-1}>
+        <h1 className={documentClass("h1")} ref={heading} tabIndex={-1}>
           {
             [
               "Welcome to your companion.",
@@ -230,10 +237,14 @@ export default function SetupWizard({
             void next();
           }}
         >
-          <fieldset disabled={busy} aria-busy={busy}>
+          <fieldset
+            className={documentClass("fieldset")}
+            disabled={busy}
+            aria-busy={busy}
+          >
             {step === 0 && (
               <>
-                <p>
+                <p className={documentClass("p")}>
                   Keep your Talos Omni sign-in, accounts, credentials, and
                   recovery files together on your own server. We’ll guide you
                   through the essentials.
@@ -249,7 +260,7 @@ export default function SetupWizard({
                   <Radio value="create">Start a new installation</Radio>
                   <Radio value="restore">Restore an existing companion</Radio>
                 </RadioGroup>
-                <p className={classes("hint")}>
+                <p className={documentClass("p", classes("hint"))}>
                   {mode === "create"
                     ? "Create an administrator and choose your backup routine."
                     : "Recover accounts, identity keys, credentials, Omni snapshots, and settings from a .tcb file."}
@@ -272,7 +283,7 @@ export default function SetupWizard({
                     </li>
                   </ul>
                 </div>
-                <p className={classes("hint")}>
+                <p className={documentClass("p", classes("hint"))}>
                   Omni and Google Drive connections can be completed after
                   setup. You don’t need either to get started.
                 </p>
@@ -280,7 +291,7 @@ export default function SetupWizard({
             )}
             {step === 1 && (
               <>
-                <p>
+                <p className={documentClass("p")}>
                   The setup token confirms you can administer this server. It is
                   separate from your account password and backup passphrase.
                 </p>
@@ -294,7 +305,7 @@ export default function SetupWizard({
                     setToken(value);
                   }}
                 />
-                <p className={classes("hint")}>
+                <p className={documentClass("p", classes("hint"))}>
                   Find SETUP_TOKEN in your Unraid container settings or Docker
                   .env file. If no override was supplied, find the generated
                   token in the container's first-start logs or its private
@@ -302,7 +313,7 @@ export default function SetupWizard({
                 </p>
                 <div className={classes("wizard-note")}>
                   <strong>Before continuing</strong>
-                  <p>
+                  <p className={documentClass("p")}>
                     Use the address you intend to keep for this companion. Omni
                     will use the configured public address to identify your
                     sign-in provider. Store backups and the encryption
@@ -315,19 +326,19 @@ export default function SetupWizard({
               <>
                 {mode === "create" ? (
                   <>
-                    <p>
+                    <p className={documentClass("p")}>
                       This account manages other users, Omni sign-in,
                       credentials, and backups. Public registration is disabled.
                     </p>
                     {accountFields}
-                    <p className={classes("hint")}>
+                    <p className={documentClass("p", classes("hint"))}>
                       Choose an email you control. No verification email will be
                       sent.
                     </p>
                   </>
                 ) : (
                   <>
-                    <p>
+                    <p className={documentClass("p")}>
                       Choose a version 2 companion recovery file. The entire
                       encrypted file is checked before accounts or data are
                       replaced.
@@ -340,7 +351,7 @@ export default function SetupWizard({
                       isDisabled={busy}
                     />
                     {file && (
-                      <p className={classes("hint")}>
+                      <p className={documentClass("p", classes("hint"))}>
                         Selected: {file.name} ·{" "}
                         {(file.size / 1024 / 1024).toFixed(2)} MiB
                       </p>
@@ -355,7 +366,7 @@ export default function SetupWizard({
                         setPassphrase(value);
                       }}
                     />
-                    <p className={classes("hint")}>
+                    <p className={documentClass("p", classes("hint"))}>
                       Use the passphrase from when this backup was created. It
                       may differ from the passphrase configured on this
                       replacement server.
@@ -371,7 +382,7 @@ export default function SetupWizard({
                     </Checkbox>
                     {override ? (
                       <>
-                        <p className={classes("hint")}>
+                        <p className={documentClass("p", classes("hint"))}>
                           Useful if you’ve lost the original login. The
                           administrator’s identity ID and all other accounts are
                           preserved.
@@ -379,12 +390,12 @@ export default function SetupWizard({
                         {accountFields}
                       </>
                     ) : (
-                      <p className={classes("hint")}>
+                      <p className={documentClass("p", classes("hint"))}>
                         You’ll sign in with an administrator account from the
                         backup.
                       </p>
                     )}
-                    <p className={classes("hint")}>
+                    <p className={documentClass("p", classes("hint"))}>
                       Large restores can take several minutes. Keep this page
                       open. The server needs space for both the upload and its
                       extracted contents.
@@ -395,7 +406,7 @@ export default function SetupWizard({
             )}
             {mode === "create" && step === 3 && settings && (
               <>
-                <p>
+                <p className={documentClass("p")}>
                   Start with daily encrypted backups to local storage, or choose
                   a mounted destination. You can change all of these later in
                   Settings.
@@ -460,7 +471,7 @@ export default function SetupWizard({
                     Mounted NFS / SMB
                   </PickerItem>
                 </Picker>
-                <p className={classes("hint")}>
+                <p className={documentClass("p", classes("hint"))}>
                   Local backups are stored in /data/backups.{" "}
                   {deployment?.mounted
                     ? `Mounted destination: ${deployment.mounted}.`
@@ -501,7 +512,7 @@ export default function SetupWizard({
                     });
                   }}
                 />
-                <p className={classes("hint")}>
+                <p className={documentClass("p", classes("hint"))}>
                   0 keeps everything. Old files are pruned only after a
                   successful backup. Local storage alone won’t protect against
                   losing this server.
@@ -510,7 +521,7 @@ export default function SetupWizard({
             )}
             {reviewing && (
               <>
-                <p>
+                <p className={documentClass("p")}>
                   Review these details before{" "}
                   {mode === "create"
                     ? "creating your installation"
@@ -519,22 +530,26 @@ export default function SetupWizard({
                   continuing.
                 </p>
                 <dl className={classes("wizard-review")}>
-                  <dt>Public address / OIDC issuer</dt>
-                  <dd>{deployment?.public_url}</dd>
-                  <dt>Installation</dt>
-                  <dd>
+                  <dt className={documentClass("dt")}>
+                    Public address / OIDC issuer
+                  </dt>
+                  <dd className={documentClass("dd")}>
+                    {deployment?.public_url}
+                  </dd>
+                  <dt className={documentClass("dt")}>Installation</dt>
+                  <dd className={documentClass("dd")}>
                     {mode === "create"
                       ? "New companion"
                       : `Restore ${file?.name ?? "selected backup"}`}
                   </dd>
-                  <dt>Administrator</dt>
-                  <dd>
+                  <dt className={documentClass("dt")}>Administrator</dt>
+                  <dd className={documentClass("dd")}>
                     {mode === "create" || override
                       ? `${account.name} · ${account.email}`
                       : "Keep the accounts from the backup"}
                   </dd>
-                  <dt>Backups</dt>
-                  <dd>
+                  <dt className={documentClass("dt")}>Backups</dt>
+                  <dd className={documentClass("dd")}>
                     {mode === "restore"
                       ? "Restore the saved schedule and retention settings"
                       : settings?.schedule.enabled
@@ -543,8 +558,8 @@ export default function SetupWizard({
                   </dd>
                   {mode === "create" && (
                     <>
-                      <dt>Retention</dt>
-                      <dd>
+                      <dt className={documentClass("dt")}>Retention</dt>
+                      <dd className={documentClass("dd")}>
                         {settings?.retention.recovery_keep_last || "Unlimited"}{" "}
                         recovery files per destination;{" "}
                         {settings?.retention.snapshot_keep_last || "unlimited"}{" "}
@@ -554,7 +569,7 @@ export default function SetupWizard({
                   )}
                 </dl>
                 {deployment?.public_url.startsWith("http:") && (
-                  <p className={classes("hint")}>
+                  <p className={documentClass("p", classes("hint"))}>
                     The public address uses HTTP. For access outside your
                     trusted local network, configure HTTPS at your reverse proxy
                     and update PUBLIC_URL before connecting Omni.
@@ -571,7 +586,7 @@ export default function SetupWizard({
                     onConfirmation={setRecoveryConfirmation}
                   />
                 )}
-                <p className={classes("hint")}>
+                <p className={documentClass("p", classes("hint"))}>
                   {mode === "restore"
                     ? "Recovered identities and integration credentials are preserved. Recheck external destinations on this replacement server after sign-in."
                     : settings?.schedule.enabled
@@ -582,7 +597,7 @@ export default function SetupWizard({
             )}
             {step === last && (
               <>
-                <p>
+                <p className={documentClass("p")}>
                   {mode === "create"
                     ? "Your administrator and backup settings are saved."
                     : "Your accounts, credentials, and backup configuration have been restored."}{" "}
@@ -613,7 +628,7 @@ export default function SetupWizard({
                     </span>
                   </li>
                 </ol>
-                <p className={classes("hint")}>
+                <p className={documentClass("p", classes("hint"))}>
                   {mode === "restore" && !override
                     ? "Use an administrator login from your backup."
                     : `Sign in as ${account.email}.`}{" "}
@@ -623,7 +638,10 @@ export default function SetupWizard({
               </>
             )}
             {busy && (
-              <p className={classes("message")} role="status">
+              <p
+                className={documentClass("p", classes("message"))}
+                role="status"
+              >
                 {reviewing
                   ? mode === "restore"
                     ? "Uploading, decrypting, and validating your recovery file. Keep this page open…"

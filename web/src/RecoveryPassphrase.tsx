@@ -1,3 +1,4 @@
+import { documentClass } from "./layout";
 import { useTask } from "./useTask";
 import { classes } from "./layout";
 import type { TextFieldRef } from "@react-spectrum/s2";
@@ -91,14 +92,16 @@ export default function RecoveryPassphrase({
       className={classes("wizard-note recovery-passphrase")}
       aria-labelledby="recovery-title"
     >
-      <h2 id="recovery-title">Save your backup passphrase</h2>
-      <p>
+      <h2 className={documentClass("h2")} id="recovery-title">
+        Save your backup passphrase
+      </h2>
+      <p className={documentClass("p")}>
         This unlocks your encrypted recovery backups. Store it in a password
         manager or another safe place <strong>outside this server</strong>.
         Losing the server and this passphrase means losing access to those
         backups.
       </p>
-      <p className={classes("hint")}>
+      <p className={documentClass("p", classes("hint"))}>
         This is separate from your account password and setup token. On a
         replacement server, it protects future backups; older files still need
         their original passphrase.
@@ -142,17 +145,17 @@ export default function RecoveryPassphrase({
               Download recovery note
             </Button>
           </div>
-          <details>
-            <summary>
+          <details className={documentClass("details")}>
+            <summary className={documentClass("summary")}>
               Optional: protect a recovery copy with an age / SSH public key
             </summary>
-            <p>
+            <p className={documentClass("p")}>
               Download an age-encrypted note containing this passphrase. Anyone
               with one matching private key can recover the note locally. You
               can paste native age keys or import supported public SSH keys from
               GitHub.
             </p>
-            <fieldset disabled={busy}>
+            <fieldset className={documentClass("fieldset")} disabled={busy}>
               <TextField
                 label={<>GitHub username (optional)</>}
                 value={githubUser}
@@ -191,15 +194,15 @@ export default function RecoveryPassphrase({
                 {busy ? "Working…" : "Download encrypted recovery note (.age)"}
               </Button>
             </fieldset>
-            <p className={classes("hint")}>
+            <p className={documentClass("p", classes("hint"))}>
               Private keys stay on your computer. Hardware-backed SSH keys are
               not supported. Keep the matching private key long-term, even if
               you remove its public key from GitHub.
             </p>
-            <code className={classes("block")}>
+            <code className={documentClass("code", classes("block"))}>
               age -d -i /path/to/private-key talos-companion-recovery.txt.age
             </code>
-            <p className={classes("hint")}>
+            <p className={documentClass("p", classes("hint"))}>
               This recovers the passphrase note; use that passphrase to restore
               the .tcb backup. The encrypted note is an extra recovery copy, not
               a replacement for the backup itself.
@@ -208,9 +211,14 @@ export default function RecoveryPassphrase({
         </>
       )}
       <div aria-live="polite">
-        {notice && <p className={classes("hint")}>{notice}</p>}
+        {notice && (
+          <p className={documentClass("p", classes("hint"))}>{notice}</p>
+        )}
         {error && (
-          <p className={classes("message error")} role="alert">
+          <p
+            className={documentClass("p", classes("message error"))}
+            role="alert"
+          >
             {error}
           </p>
         )}
@@ -242,12 +250,12 @@ export default function RecoveryPassphrase({
             maxLength={4096}
             styles={style({ width: "full", marginY: 12 })}
           ></TextField>
-          <p className={classes("hint")}>
+          <p className={documentClass("p", classes("hint"))}>
             Paste it from the place where you saved it. To see the original
             again, uncheck the box above.
           </p>
           {confirmation && (
-            <p role="status">
+            <p className={documentClass("p")} role="status">
               {confirmation === passphrase
                 ? "Passphrase matches. Your recovery details are ready."
                 : "The passphrase does not match yet."}

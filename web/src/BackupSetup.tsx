@@ -8,7 +8,7 @@ import {
 } from "@react-spectrum/s2";
 import Input from "./Field";
 import { api } from "./api";
-import { classes } from "./layout";
+import { classes, documentClass } from "./layout";
 import { useTask } from "./useTask";
 
 type Drive = { client_id: string; folder_id: string; connected: boolean };
@@ -45,7 +45,9 @@ export function BackupFrequency({ seconds }: { seconds: number }) {
       ) : (
         <input type="hidden" name="interval_seconds" value={frequency} />
       )}
-      <p className={classes("hint")}>Saving resets the schedule timer.</p>
+      <p className={documentClass("p", classes("hint"))}>
+        Saving resets the schedule timer.
+      </p>
     </>
   );
 }
@@ -67,14 +69,18 @@ export function GoogleDriveSetup({
   }
   return (
     <>
-      <p>
+      <p className={documentClass("p")}>
         Sign in to Google to allow encrypted backups. Companion creates a
         dedicated backup folder automatically and keeps a local copy too.
       </p>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p className={documentClass("p")} role="alert">
+          {error}
+        </p>
+      )}
       {!editing ? (
         <>
-          <p>
+          <p className={documentClass("p")}>
             Your Google application is saved. Continue to Google to approve
             access.
           </p>
@@ -101,8 +107,10 @@ export function GoogleDriveSetup({
         </>
       ) : (
         <>
-          <p>Step 1 of 2 · Set up your Google application once</p>
-          <p>
+          <p className={documentClass("p")}>
+            Step 1 of 2 · Set up your Google application once
+          </p>
+          <p className={documentClass("p")}>
             This self-hosted installation needs your own Google OAuth
             application before Google can offer sign-in. Your client secret
             stays on this server.
@@ -111,6 +119,7 @@ export function GoogleDriveSetup({
             <li>
               Open{" "}
               <a
+                className={documentClass("a")}
                 href="https://console.cloud.google.com/apis/library/drive.googleapis.com"
                 target="_blank"
                 rel="noreferrer"
@@ -123,6 +132,7 @@ export function GoogleDriveSetup({
               Configure the OAuth consent screen, then create an OAuth client of
               type <b>Web application</b> in{" "}
               <a
+                className={documentClass("a")}
                 href="https://console.cloud.google.com/apis/credentials"
                 target="_blank"
                 rel="noreferrer"
@@ -133,7 +143,7 @@ export function GoogleDriveSetup({
             </li>
             <li>Register this exact authorized redirect URI:</li>
           </ol>
-          <code className={classes("block")}>
+          <code className={documentClass("code", classes("block"))}>
             {issuer}/oauth/google/callback
           </code>
           <Form
@@ -166,8 +176,10 @@ export function GoogleDriveSetup({
               type="password"
               autoComplete="off"
             />
-            <details>
-              <summary>Use an existing backup folder (optional)</summary>
+            <details className={documentClass("details")}>
+              <summary className={documentClass("summary")}>
+                Use an existing backup folder (optional)
+              </summary>
               <Input
                 label="Destination folder ID (optional)"
                 name="folder_id"
@@ -175,7 +187,7 @@ export function GoogleDriveSetup({
                 defaultValue={drive.folder_id}
                 placeholder="Leave empty to create a dedicated folder"
               />
-              <p>
+              <p className={documentClass("p")}>
                 Use a folder created by this Google application. An arbitrary
                 folder ID does not grant access.
               </p>
@@ -184,7 +196,7 @@ export function GoogleDriveSetup({
               {busy ? "Opening Google…" : "Save and authorize Google Drive ↗"}
             </Button>
           </Form>
-          <p className={classes("hint")}>
+          <p className={documentClass("p", classes("hint"))}>
             Step 2: approve access in Google, then return here. Companion only
             requests access to files created by this application. Google grants
             in Testing mode may expire after seven days; use an appropriate
@@ -218,8 +230,8 @@ export default function BackupDestinations({
       <div className={classes("three-cols")}>
         <section className={classes("card")} aria-label="Local storage">
           <div className={classes("eyebrow")}>ON THIS SERVER</div>
-          <h2>Local storage</h2>
-          <p>
+          <h2 className={documentClass("h2")}>Local storage</h2>
+          <p className={documentClass("p")}>
             Save an encrypted recovery file in the persistent data directory.
             Download it whenever you need it.
           </p>
@@ -233,8 +245,8 @@ export default function BackupDestinations({
         </section>
         <section className={classes("card")} aria-label="Google Drive">
           <div className={classes("eyebrow")}>OFF-SITE</div>
-          <h2>Google Drive</h2>
-          <p>
+          <h2 className={documentClass("h2")}>Google Drive</h2>
+          <p className={documentClass("p")}>
             Send an encrypted copy to Google Drive. A local copy is always kept
             too.
           </p>
@@ -268,8 +280,10 @@ export default function BackupDestinations({
         </section>
         <section className={classes("card")} aria-label="NFS / SMB">
           <div className={classes("eyebrow")}>ON YOUR NETWORK</div>
-          <h2>NFS / SMB</h2>
-          <p>Save an encrypted copy on your NAS or network share.</p>
+          <h2 className={documentClass("h2")}>NFS / SMB</h2>
+          <p className={documentClass("p")}>
+            Save an encrypted copy on your NAS or network share.
+          </p>
           <StatusLight variant={verified ? "positive" : "neutral"}>
             {verified
               ? "Write check passed"
@@ -302,7 +316,7 @@ export default function BackupDestinations({
             editing === "drive" ? "Google Drive setup" : "Network share setup"
           }
         >
-          <h2 ref={setupHeading} tabIndex={-1}>
+          <h2 className={documentClass("h2")} ref={setupHeading} tabIndex={-1}>
             {editing === "drive" ? "Connect Google Drive" : "Connect NFS / SMB"}
           </h2>
           <Button
@@ -318,7 +332,7 @@ export default function BackupDestinations({
             <GoogleDriveSetup issuer={overview.issuer} drive={overview.drive} />
           ) : (
             <>
-              <p>
+              <p className={documentClass("p")}>
                 Mount your share once on the host, then check it here. Companion
                 runs without host mount privileges, so NAS credentials stay with
                 the host.
@@ -331,42 +345,59 @@ export default function BackupDestinations({
                 </li>
                 <li>
                   In the Companion container settings, add a Path from that
-                  mounted host folder to <code>/destinations/network</code>,
-                  with Read/Write access.
+                  mounted host folder to{" "}
+                  <code className={documentClass("code")}>
+                    /destinations/network
+                  </code>
+                  , with Read/Write access.
                 </li>
                 <li>
-                  Add the variable <code>MOUNTED_BACKUP_DIR</code> with value{" "}
-                  <code>/destinations/network</code>, then apply the container
-                  changes and return to this page.
+                  Add the variable{" "}
+                  <code className={documentClass("code")}>
+                    MOUNTED_BACKUP_DIR
+                  </code>{" "}
+                  with value{" "}
+                  <code className={documentClass("code")}>
+                    /destinations/network
+                  </code>
+                  , then apply the container changes and return to this page.
                 </li>
               </ol>
-              <details>
-                <summary>Using Docker Compose instead?</summary>
-                <p>
+              <details className={documentClass("details")}>
+                <summary className={documentClass("summary")}>
+                  Using Docker Compose instead?
+                </summary>
+                <p className={documentClass("p")}>
                   Mount the share on your Docker host first. Add these entries
                   to the Companion service, keeping its existing environment and
                   volumes:
                 </p>
-                <pre>
-                  <code>
+                <pre className={documentClass("pre")}>
+                  <code className={documentClass("code")}>
                     {
                       "environment:\n  MOUNTED_BACKUP_DIR: /destinations/network\nvolumes:\n  - /path/to/mounted/share:/destinations/network"
                     }
                   </code>
                 </pre>
               </details>
-              <p>
+              <p className={documentClass("p")}>
                 Container destination:{" "}
-                <code>{overview.mounted ?? "Not detected yet"}</code>
+                <code className={documentClass("code")}>
+                  {overview.mounted ?? "Not detected yet"}
+                </code>
               </p>
-              <p>
+              <p className={documentClass("p")}>
                 The check creates, reads, and removes a small temporary file.
                 Confirm on the host that this folder is the mounted share; a
                 writable folder alone cannot prove the NAS is mounted.
               </p>
-              {error && <p role="alert">{error}</p>}
+              {error && (
+                <p className={documentClass("p")} role="alert">
+                  {error}
+                </p>
+              )}
               {verified && (
-                <p role="status">
+                <p className={documentClass("p")} role="status">
                   Share write check passed. You can back up now or choose NFS /
                   SMB in Backup settings below.
                 </p>

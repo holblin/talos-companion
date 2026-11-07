@@ -1,3 +1,4 @@
+import { documentClass } from "./layout";
 import { type ReactNode, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -63,18 +64,29 @@ export function CompanionAccess() {
     );
   return (
     <section className={classes("card")}>
-      <h2>Companion access</h2>
-      <p>
+      <h2 className={documentClass("h2")}>Companion access</h2>
+      <p className={documentClass("p")}>
         Configure any or all three methods. Adding access keeps your existing
         methods running and does not change Omni’s identity provider.
       </p>
       {catalog.data && (
-        <p>
-          Omni’s canonical issuer: <code>{catalog.data.active_issuer}</code>
+        <p className={documentClass("p")}>
+          Omni’s canonical issuer:{" "}
+          <code className={documentClass("code")}>
+            {catalog.data.active_issuer}
+          </code>
         </p>
       )}
-      {catalog.isPending && <p role="status">Loading access methods…</p>}
-      {catalog.error && <p role="alert">{catalog.error.message}</p>}
+      {catalog.isPending && (
+        <p className={documentClass("p")} role="status">
+          Loading access methods…
+        </p>
+      )}
+      {catalog.error && (
+        <p className={documentClass("p")} role="alert">
+          {catalog.error.message}
+        </p>
+      )}
       <div className={classes("three-cols")}>
         {methods.map((method) => {
           const saved = catalog.data?.accesses.find(
@@ -86,8 +98,8 @@ export function CompanionAccess() {
               aria-label={method.name}
               className={classes("card")}
             >
-              <h3>{method.name}</h3>
-              <p>{method.description}</p>
+              <h3 className={documentClass("h3")}>{method.name}</h3>
+              <p className={documentClass("p")}>{method.description}</p>
               <StatusLight
                 variant={saved?.verified_at ? "positive" : "neutral"}
               >
@@ -99,11 +111,13 @@ export function CompanionAccess() {
               </StatusLight>
               {saved && (
                 <>
-                  <p>
-                    <code>{saved.integration.companion_url}</code>
+                  <p className={documentClass("p")}>
+                    <code className={documentClass("code")}>
+                      {saved.integration.companion_url}
+                    </code>
                   </p>
                   {saved.verified_at > 0 && (
-                    <p>
+                    <p className={documentClass("p")}>
                       Last verified:{" "}
                       {new Date(saved.verified_at * 1000).toLocaleString()}
                     </p>
@@ -111,7 +125,9 @@ export function CompanionAccess() {
                   {catalog.data?.active_issuer ===
                     saved.integration.companion_url &&
                     catalog.data.active_profile === method.profile && (
-                      <p>Selected for Omni’s identity provider.</p>
+                      <p className={documentClass("p")}>
+                        Selected for Omni’s identity provider.
+                      </p>
                     )}
                 </>
               )}
@@ -158,8 +174,8 @@ export function CompanionAccess() {
               {method.profile === "lan" &&
                 saved &&
                 catalog.data?.local_ca_available && (
-                  <p>
-                    <a href="/api/companion/ca">
+                  <p className={documentClass("p")}>
+                    <a className={documentClass("a")} href="/api/companion/ca">
                       Download local trust certificate
                     </a>
                   </p>
@@ -168,10 +184,12 @@ export function CompanionAccess() {
           );
         })}
       </div>
-      <p>
+      <p className={documentClass("p")}>
         Once a method is verified, choose it in{" "}
-        <a href="/omni-configuration">Omni configuration</a>. Each selection is
-        checked again before use.
+        <a className={documentClass("a")} href="/omni-configuration">
+          Omni configuration
+        </a>
+        . Each selection is checked again before use.
       </p>
     </section>
   );
@@ -207,30 +225,42 @@ export function OmniConfiguration({ children }: { children?: ReactNode } = {}) {
   return (
     <>
       <section className={classes("card")}>
-        <h2>Omni configuration</h2>
+        <h2 className={documentClass("h2")}>Omni configuration</h2>
         {catalog.isPending ? (
-          <p role="status">Loading verified Companion access…</p>
+          <p className={documentClass("p")} role="status">
+            Loading verified Companion access…
+          </p>
         ) : catalog.error ? (
-          <p role="alert">{catalog.error.message}</p>
+          <p className={documentClass("p")} role="alert">
+            {catalog.error.message}
+          </p>
         ) : verified.length === 0 ? (
           <>
-            <h3>Configure Companion access first</h3>
-            <p>
+            <h3 className={documentClass("h3")}>
+              Configure Companion access first
+            </h3>
+            <p className={documentClass("p")}>
               Omni needs a verified HTTPS endpoint for Companion. Add Local
               HTTPS, Tailscale or Cloudflare before configuring Omni.
             </p>
-            <a href="/access">Set up Companion access →</a>
+            <a className={documentClass("a")} href="/access">
+              Set up Companion access →
+            </a>
           </>
         ) : (
           <>
-            <p>Step 1 of 3 · Choose the access method Omni will use</p>
-            <p>
+            <p className={documentClass("p")}>
+              Step 1 of 3 · Choose the access method Omni will use
+            </p>
+            <p className={documentClass("p")}>
               All configured access methods remain available. Companion
               advertises one canonical OpenID Connect issuer.
             </p>
-            <p>
+            <p className={documentClass("p")}>
               Active identity-provider URL:{" "}
-              <code>{catalog.data.active_issuer}</code>
+              <code className={documentClass("code")}>
+                {catalog.data.active_issuer}
+              </code>
             </p>
             <Picker
               label="Companion access for Omni"
@@ -255,13 +285,19 @@ export function OmniConfiguration({ children }: { children?: ReactNode } = {}) {
             {selected && (
               <>
                 <dl>
-                  <dt>Companion identity provider</dt>
-                  <dd>
-                    <code>{selected.companion_url}</code>
+                  <dt className={documentClass("dt")}>
+                    Companion identity provider
+                  </dt>
+                  <dd className={documentClass("dd")}>
+                    <code className={documentClass("code")}>
+                      {selected.companion_url}
+                    </code>
                   </dd>
-                  <dt>S3 backup receiver</dt>
-                  <dd>
-                    <code>{selected.s3_endpoint}</code>
+                  <dt className={documentClass("dt")}>S3 backup receiver</dt>
+                  <dd className={documentClass("dd")}>
+                    <code className={documentClass("code")}>
+                      {selected.s3_endpoint}
+                    </code>
                   </dd>
                 </dl>
                 {changesIssuer && (
@@ -305,8 +341,10 @@ export function OmniConfiguration({ children }: { children?: ReactNode } = {}) {
             >
               Use this access for Omni
             </Button>
-            <p>
-              <a href="/access">Manage Companion access methods</a>
+            <p className={documentClass("p")}>
+              <a className={documentClass("a")} href="/access">
+                Manage Companion access methods
+              </a>
             </p>
           </>
         )}
