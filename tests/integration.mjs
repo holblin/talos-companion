@@ -12,6 +12,37 @@ import {
 import { setTimeout as delay } from "node:timers/promises";
 import { server, stop, request, login, s3, passphrase } from "./helpers.mjs";
 
+test("authentication throttling uses socket peers rather than forwarded headers", { timeout: 30000 }, async () => {
+  const data = await mkdtemp(join(tmpdir(), "companion-auth-throttle-"));
+  let child;
+  try {
+    ({ child } = await server(18450, data));
+    for (let attempt = 0; attempt < 31; attempt++) {
+      const response = await fetch("http://127.0.0.1:18450/api/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-requested-with": "talos-companion",
+          "x-forwarded-for": `192.0.2.${attempt}`,
+          forwarded: `for=192.0.2.${attempt}`,
+        },
+        body: "invalid JSON",
+      });
+      assert.equal(response.status, attempt < 30 ? 400 : 429);
+      if (attempt === 30) assert.equal(response.headers.get("retry-after"), "900");
+      await response.text();
+    }
+    // Throttling credentials must not prevent probes or expose protected APIs.
+    assert.equal((await request(18450, "/healthz")).status, 200);
+    assert.equal((await request(18450, "/api/settings", { body: {} })).status, 401);
+    assert.equal((await request(18450, "/api/vault")).status, 401);
+    assert.equal((await request(18450, "/api/omni/apply", { body: {} })).status, 401);
+  } finally {
+    if (child) await stop(child);
+    await rm(data, { recursive: true, force: true });
+  }
+});
+
 test(
   "accounts, OIDC, signed S3 multipart, encrypted export, restart, and credential override restore",
   { timeout: 300000 },

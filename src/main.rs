@@ -165,6 +165,7 @@ fn router(app: App) -> Router {
         .route("/oauth/authorize", get(oidc::authorize))
         .route("/oauth/token", post(oidc::token))
         .route("/oauth/userinfo", get(oidc::userinfo))
+        .layer(middleware::from_fn_with_state(app.clone(), auth::guard))
         .layer(middleware::from_fn(secure_headers))
         .with_state(app)
 }
@@ -263,31 +264,164 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
     }
-    #[tokio::test]
-    async fn setup_token_and_csrf_required() {
-        let dir = tempfile::tempdir().unwrap();
-        let app = App {
+    fn test_app(data: &std::path::Path) -> App {
+        App {
             _process_lock: std::sync::Arc::new(tempfile::tempfile().unwrap()),
             store: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
             memory: std::sync::Arc::new(tokio::sync::Mutex::new(Memory {
                 sessions: Default::default(),
                 codes: Default::default(),
                 drive_states: Default::default(),
-                attempts: vec![],
+                throttle: Default::default(),
             })),
             io: Default::default(),
             backup_lock: Default::default(),
             settings: tokio::sync::watch::channel(settings::Settings::default()).0,
-            data: dir.path().into(),
+            data: data.into(),
             public_url: "http://localhost:8080".into(),
             issuer: tokio::sync::watch::channel("http://localhost:8080".into()).0,
             setup_token: "a secure and long setup token".into(),
             backup_passphrase: "a secure backup passphrase".into(),
             mounted: None,
             http: reqwest::Client::new(),
-        };
+        }
+    }
+    #[tokio::test]
+    async fn setup_token_and_csrf_required() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = test_app(dir.path());
         let req=axum::http::Request::builder().method("POST").uri("/api/setup").header("content-type","application/json").body(axum::body::Body::from(r#"{"name":"Admin","email":"admin@example.com","password":"correct-horse-battery"}"#)).unwrap();
         let result = router(app).oneshot(req).await.unwrap();
         assert_eq!(result.status(), axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn api_actions_require_a_session_before_parsing_the_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = test_app(dir.path());
+        let routes = router(app.clone());
+        for (method, path) in [
+            ("GET", "/api/overview"),
+            ("GET", "/api/settings"),
+            ("POST", "/api/settings"),
+            ("POST", "/api/backups"),
+            ("GET", "/api/backups/private.tcb"),
+            ("POST", "/api/vault"),
+            ("DELETE", "/api/vault/private"),
+            ("GET", "/api/users"),
+            ("POST", "/api/users"),
+            ("DELETE", "/api/users/someone"),
+            ("POST", "/api/password"),
+            ("POST", "/api/logout"),
+            ("POST", "/api/omni/connection/finish"),
+            ("POST", "/api/omni/apply"),
+            ("POST", "/api/companion/activate"),
+            ("POST", "/api/drive/connect"),
+            ("GET", "/api/omni/ca"),
+            ("GET", "/api/omni/talos-ca"),
+            ("POST", "/api/future-action"),
+        ] {
+            for cookie in ["", "tc_session=forged"] {
+                let response = routes
+                    .clone()
+                    .oneshot(
+                        axum::http::Request::builder()
+                            .method(method)
+                            .uri(path)
+                            .header("cookie", cookie)
+                            .body(axum::body::Body::from("invalid JSON"))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    response.status(),
+                    axum::http::StatusCode::UNAUTHORIZED,
+                    "{method} {path}"
+                );
+            }
+        }
+        assert!(app.store.read().await.is_none());
+        assert!(!dir.path().join("state.json").exists());
+    }
+
+    #[tokio::test]
+    async fn account_throttling_cannot_be_bypassed_by_changing_case_or_ip() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = test_app(dir.path());
+        let user = auth::make_user(auth::Account {
+            email: "admin@example.com".into(),
+            name: "Admin".into(),
+            password: "a very secure password".into(),
+            admin: true,
+        })
+        .unwrap_or_else(|_| panic!("valid account"));
+        *app.store.write().await = Some(Store {
+            version: 1,
+            users: vec![user],
+            signing_key: String::new(),
+            client_id: String::new(),
+            client_secret: String::new(),
+            redirect_uri: String::new(),
+            s3_access_key: String::new(),
+            s3_secret_key: String::new(),
+            drive: Default::default(),
+            integration: Default::default(),
+        });
+        let routes = router(app.clone());
+        for attempt in 0..6 {
+            let req = axum::http::Request::builder().method("POST").uri("/api/login")
+                .header("content-type", "application/json")
+                .header("x-requested-with", "talos-companion")
+                .extension(format!("192.0.2.{}:1234", attempt + 1).parse::<std::net::SocketAddr>().unwrap())
+                .body(axum::body::Body::from(serde_json::to_vec(&json!({
+                    "email": if attempt % 2 == 0 { "admin@example.com" } else { " ADMIN@EXAMPLE.COM " },
+                    "password": if attempt == 5 { "a very secure password" } else { "wrong password" },
+                })).unwrap())).unwrap();
+            let response = routes.clone().oneshot(req).await.unwrap();
+            assert_eq!(
+                response.status(),
+                if attempt < 5 {
+                    axum::http::StatusCode::UNAUTHORIZED
+                } else {
+                    axum::http::StatusCode::TOO_MANY_REQUESTS
+                }
+            );
+            assert!(response.headers().get("set-cookie").is_none());
+            if attempt == 5 {
+                assert_eq!(response.headers()["retry-after"], "900");
+            }
+        }
+        assert!(app.memory.lock().await.sessions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn malformed_authentication_requests_and_forwarded_ip_rotation_are_throttled() {
+        let dir = tempfile::tempdir().unwrap();
+        let routes = router(test_app(dir.path()));
+        for attempt in 0..31 {
+            let response = routes
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .method("POST")
+                        .uri("/api/login")
+                        .header("content-type", "application/json")
+                        .header("x-forwarded-for", format!("192.0.2.{attempt}"))
+                        .extension("127.0.0.1:1234".parse::<std::net::SocketAddr>().unwrap())
+                        .body(axum::body::Body::from("invalid JSON"))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                if attempt < 30 {
+                    axum::http::StatusCode::BAD_REQUEST
+                } else {
+                    axum::http::StatusCode::TOO_MANY_REQUESTS
+                }
+            );
+        }
     }
 }

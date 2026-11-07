@@ -132,17 +132,6 @@ pub async fn recover_password(
     Json(input): Json<RecoverPassword>,
 ) -> Result<Json<Value>> {
     auth::csrf(&app, &headers)?;
-    {
-        let mut memory = app.memory.lock().await;
-        memory.attempts.retain(|t| *t + 60 > now());
-        if memory.attempts.len() >= 20 {
-            return Err(crate::model::Error(
-                axum::http::StatusCode::TOO_MANY_REQUESTS,
-                "Too many attempts; try again in a minute".into(),
-            ));
-        }
-        memory.attempts.push(now());
-    }
     let invalid = || {
         crate::model::Error(
             axum::http::StatusCode::UNAUTHORIZED,

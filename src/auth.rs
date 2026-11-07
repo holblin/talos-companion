@@ -1,14 +1,110 @@
 use crate::model::*;
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Request, State},
     http::{HeaderMap, StatusCode, header},
+    middleware::Next,
     response::{IntoResponse, Response},
 };
 use rsa::pkcs8::EncodePrivateKey;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::{collections::HashMap, net::SocketAddr, sync::LazyLock};
 use subtle::ConstantTimeEq;
+
+// Fixed windows are not extended by rejected requests. Entries are bounded and
+// expire, including for made-up accounts and rotating client addresses.
+#[derive(Default)]
+pub struct Throttle {
+    windows: HashMap<String, (u64, usize)>,
+}
+impl Throttle {
+    fn check(&mut self, key: String, limit: usize, seconds: u64, time: u64) -> Result<()> {
+        self.windows.retain(|_, (until, _)| *until > time);
+        if self.windows.len() >= 4096 && !self.windows.contains_key(&key) {
+            return Err(limited());
+        }
+        let window = self.windows.entry(key).or_insert((time + seconds, 0));
+        if window.1 >= limit {
+            return Err(limited());
+        }
+        window.1 += 1;
+        Ok(())
+    }
+}
+fn limited() -> Error {
+    Error(
+        StatusCode::TOO_MANY_REQUESTS,
+        "Too many authentication attempts; try again later".into(),
+    )
+}
+
+/// API access is denied by default, before body parsing or handler side effects.
+/// Only bootstrap, authentication and read-only protocol probes are exempt.
+pub async fn guard(State(app): State<App>, req: Request, next: Next) -> Result<Response> {
+    let path = req.uri().path();
+    let credentials = matches!(
+        path,
+        "/api/login"
+            | "/api/password"
+            | "/api/password/recover"
+            | "/api/password/recovery-code"
+            | "/oauth/token"
+            | "/api/setup"
+            | "/api/setup/check"
+            | "/api/setup/recovery-key"
+            | "/api/setup/github-keys"
+            | "/api/restore"
+    );
+    if credentials {
+        // Use the socket peer only. Forwarded headers are client-controlled
+        // unless a separately configured trusted proxy validates them.
+        let peer = req
+            .extensions()
+            .get::<SocketAddr>()
+            .map_or_else(|| "unknown".into(), |peer| peer.ip().to_string());
+        let mut memory = app.memory.lock().await;
+        memory.throttle.check("global".into(), 60, 60, now())?;
+        memory
+            .throttle
+            .check(format!("peer:{peer}"), 30, 900, now())?;
+    }
+    if matches!(
+        path,
+        "/api/setup"
+            | "/api/setup/check"
+            | "/api/setup/recovery-key"
+            | "/api/setup/github-keys"
+            | "/api/restore"
+    ) {
+        setup_auth(&app, req.headers())?;
+    } else if path.starts_with("/api/")
+        && !matches!(
+            path,
+            "/api/status"
+                | "/api/login"
+                | "/api/password/recover"
+                | "/api/password/recovery-code"
+                | "/api/omni/identity"
+        )
+    {
+        user(&app, req.headers()).await?;
+        if !matches!(
+            *req.method(),
+            axum::http::Method::GET | axum::http::Method::HEAD
+        ) {
+            csrf(&app, req.headers())?;
+        }
+    }
+    Ok(next.run(req).await)
+}
+
+// A single reusable dummy hash gives unknown accounts the same verification
+// work as known accounts, without hashing a second password on every request.
+static DUMMY_HASH: LazyLock<String> = LazyLock::new(|| {
+    hash_password(&secret()).unwrap_or_else(|_| unreachable!("valid dummy password"))
+});
+static PASSWORD_WORK: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
 
 pub async fn user(app: &App, headers: &HeaderMap) -> Result<User> {
     let token = headers
@@ -195,36 +291,34 @@ pub async fn login(
     Json(input): Json<Login>,
 ) -> Result<Response> {
     csrf(&app, &headers)?;
+    let email = input.email.trim().to_lowercase();
+    if email.len() > 254 || input.password.len() > 256 {
+        return Err(Error(
+            StatusCode::UNAUTHORIZED,
+            "Invalid email or password".into(),
+        ));
+    }
     {
         let mut m = app.memory.lock().await;
-        m.attempts.retain(|t| *t + 60 > now());
-        if m.attempts.len() >= 20 {
-            return Err(Error(
-                StatusCode::TOO_MANY_REQUESTS,
-                "Too many attempts; try again in a minute".into(),
-            ));
-        }
-        m.attempts.push(now());
+        m.throttle.check(format!("login:{email}"), 5, 900, now())?;
     }
+    let permit = PASSWORD_WORK.try_acquire().map_err(|_| limited())?;
     let u = app
         .store
         .read()
         .await
         .as_ref()
-        .and_then(|s| {
-            s.users
-                .iter()
-                .find(|u| u.email == input.email.trim().to_lowercase())
-        })
+        .and_then(|s| s.users.iter().find(|u| u.email == email))
         .cloned();
     // Always perform Argon2 work, including for unknown accounts.
-    let hash = u
-        .as_ref()
-        .map(|u| u.password_hash.clone())
-        .unwrap_or(hash_password("dummy-password-value")?);
-    let valid = tokio::task::spawn_blocking(move || verify_password(&input.password, &hash))
-        .await
-        .map_err(anyhow::Error::from)?;
+    let candidate = u.as_ref().map(|u| u.password_hash.clone());
+    let valid = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let hash = candidate.as_deref().unwrap_or_else(|| DUMMY_HASH.as_str());
+        verify_password(&input.password, hash)
+    })
+    .await
+    .map_err(anyhow::Error::from)?;
     let u = u
         .filter(|_| valid)
         .ok_or_else(|| Error(StatusCode::UNAUTHORIZED, "Invalid email or password".into()))?;
@@ -253,6 +347,7 @@ pub async fn login(
             expires: now() + 28800,
         },
     );
+    m.throttle.windows.remove(&format!("login:{email}"));
     drop(m);
     drop(guard);
     let secure = if app.issuer().starts_with("https:")
@@ -358,10 +453,23 @@ pub async fn password(
 ) -> Result<Json<Value>> {
     csrf(&app, &headers)?;
     let actor = user(&app, &headers).await?;
-    if !verify_password(&input.current, &actor.password_hash) {
-        return Err(bad("Current password is incorrect"));
-    }
-    let hash = hash_password(&input.password)?;
+    app.memory
+        .lock()
+        .await
+        .throttle
+        .check(format!("password:{}", actor.id), 5, 900, now())?;
+    let permit = PASSWORD_WORK.try_acquire().map_err(|_| limited())?;
+    let hash = actor.password_hash.clone();
+    let current = input.current;
+    let hash = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        if current.len() > 256 || !verify_password(&current, &hash) {
+            return Err(bad("Current password is incorrect"));
+        }
+        hash_password(&input.password)
+    })
+    .await
+    .map_err(anyhow::Error::from)??;
     let mut guard = app.store.write().await;
     let mut s = guard.clone().ok_or_else(denied)?;
     let u = s
@@ -369,6 +477,9 @@ pub async fn password(
         .iter_mut()
         .find(|u| u.id == actor.id)
         .ok_or_else(denied)?;
+    if u.password_hash != actor.password_hash {
+        return Err(denied());
+    }
     u.password_hash = hash;
     app.persist(&s)?;
     *guard = Some(s);
@@ -376,4 +487,40 @@ pub async fn password(
     m.sessions.retain(|_, s| s.user_id != actor.id);
     m.codes.retain(|_, s| s.user_id != actor.id);
     Ok(Json(json!({"ok":true})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lockout_expires_without_being_extended_by_rejections() {
+        let mut throttle = Throttle::default();
+        for _ in 0..5 {
+            assert!(throttle.check("account".into(), 5, 900, 100).is_ok());
+        }
+        assert_eq!(
+            throttle
+                .check("account".into(), 5, 900, 101)
+                .err()
+                .unwrap()
+                .0,
+            StatusCode::TOO_MANY_REQUESTS
+        );
+        assert!(throttle.check("other-account".into(), 5, 900, 101).is_ok());
+        assert!(throttle.check("account".into(), 5, 900, 999).is_err());
+        assert!(throttle.check("account".into(), 5, 900, 1000).is_ok());
+    }
+
+    #[test]
+    fn rotating_keys_cannot_grow_throttle_memory_without_bound() {
+        let mut throttle = Throttle::default();
+        for key in 0..4096 {
+            assert!(throttle.check(key.to_string(), 5, 900, 0).is_ok());
+        }
+        assert!(throttle.check("extra".into(), 5, 900, 1).is_err());
+        assert_eq!(throttle.windows.len(), 4096);
+        assert!(throttle.check("extra".into(), 5, 900, 900).is_ok());
+        assert_eq!(throttle.windows.len(), 1);
+    }
 }

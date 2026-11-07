@@ -363,8 +363,8 @@ where
 }
 pub async fn serve(listener: tokio::net::TcpListener, router: axum::Router) -> anyhow::Result<()> {
     loop {
-        let (stream, _) = listener.accept().await?;
-        let router = router.clone();
+        let (stream, peer) = listener.accept().await?;
+        let router = router.clone().layer(axum::Extension(peer));
         tokio::spawn(async move {
             let mut first = [0; 1];
             let ready =

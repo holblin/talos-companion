@@ -22,7 +22,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Error(pub StatusCode, pub String);
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
-        (self.0, Json(json!({"error":self.1}))).into_response()
+        let mut response = (self.0, Json(json!({"error":self.1}))).into_response();
+        if self.0 == StatusCode::TOO_MANY_REQUESTS {
+            response
+                .headers_mut()
+                .insert(axum::http::header::RETRY_AFTER, "900".parse().unwrap());
+        }
+        response
     }
 }
 impl From<anyhow::Error> for Error {
@@ -167,7 +173,7 @@ pub struct Memory {
     pub sessions: HashMap<String, Session>,
     pub codes: HashMap<String, Code>,
     pub drive_states: HashMap<String, (String, u64)>,
-    pub attempts: Vec<u64>,
+    pub throttle: crate::auth::Throttle,
 }
 #[derive(Clone)]
 pub struct App {
@@ -253,7 +259,7 @@ impl App {
                 sessions: HashMap::new(),
                 codes: HashMap::new(),
                 drive_states: HashMap::new(),
-                attempts: Vec::new(),
+                throttle: Default::default(),
             })),
             io: Arc::new(RwLock::new(())),
             backup_lock: Arc::new(Mutex::new(())),
