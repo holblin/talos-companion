@@ -847,6 +847,7 @@ mod tests {
                 id: "localapi-test".into(),
                 profile: Profile::Tailscale,
                 domain: String::new(),
+                companion_url: String::new(),
                 expires_at: now() + 60,
             };
             let login_calls = Arc::new(AtomicUsize::new(0));

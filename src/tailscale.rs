@@ -250,6 +250,18 @@ mod tests {
                 .is_none()
         );
         drop(requests);
+        api.set_hostname("renamed-companion").await.unwrap();
+        {
+            let requests = seen.lock().unwrap();
+            let (method, endpoint, _, body) = requests.last().unwrap();
+            assert_eq!(method, Method::PATCH);
+            assert_eq!(endpoint, "/localapi/v0/prefs");
+            assert_eq!(
+                body,
+                &json!({"Hostname":"renamed-companion","HostnameSet":true})
+            );
+        }
+        assert!(api.set_hostname("new.other.ts.net").await.is_err());
         server.abort();
     }
 
