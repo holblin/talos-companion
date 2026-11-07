@@ -37,6 +37,21 @@ impl Agent {
             .kill_on_drop(true);
         command
     }
+    fn daemon_command(&self) -> Command {
+        let mut command = self.command("/usr/local/bin/tailscaled");
+        command
+            .args([
+                "--tun=userspace-networking",
+                &format!("--state={}", self.state.join("tailscaled.state").display()),
+                // A custom --state filename does not establish Tailscale's certificate
+                // cache directory. Keep certificates writable inside existing appdata.
+                &format!("--statedir={}", self.state.display()),
+                &self.socket_arg(),
+                "--socks5-server=127.0.0.1:1055",
+            ])
+            .stdout(Stdio::null());
+        command
+    }
     async fn output(&self, binary: &str, args: &[&str]) -> anyhow::Result<Vec<u8>> {
         let mut child = self.command(binary).args(args).spawn()?;
         let mut output = Vec::new();
@@ -488,16 +503,7 @@ pub async fn run() -> anyhow::Result<()> {
         });
         relays.spawn(async move { axum::serve(listener, router).await });
     }
-    let mut daemon = agent
-        .command("/usr/local/bin/tailscaled")
-        .args([
-            "--tun=userspace-networking",
-            &format!("--state={}", agent.state.join("tailscaled.state").display()),
-            &agent.socket_arg(),
-            "--socks5-server=127.0.0.1:1055",
-        ])
-        .stdout(Stdio::null())
-        .spawn()?;
+    let mut daemon = agent.daemon_command().spawn()?;
     // Heartbeat runs during browser authorization as well as while idle.
     let mut heartbeat = tokio::spawn(heartbeat(agent.clone()));
     let mut tunnel: Option<Child> = None;
@@ -577,6 +583,36 @@ pub async fn run() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tailscale_keeps_certificates_and_existing_identity_in_writable_appdata() {
+        let agent = Agent {
+            state: PathBuf::from("/data/connections/private"),
+            control: PathBuf::from("/data/connections/control"),
+            companion: String::new(),
+            omni: String::new(),
+            s3: String::new(),
+        };
+        let command = agent.daemon_command();
+        let args = command
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert!(
+            args.contains(&"--statedir=/data/connections/private".to_owned()),
+            "Tailscale Serve needs an explicit writable certificate directory even when --state is set"
+        );
+        let state_file = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--state="))
+            .unwrap();
+        assert_eq!(Path::new(state_file).parent(), Some(agent.state.as_path()));
+        assert_eq!(
+            Path::new(state_file).file_name().unwrap(),
+            "tailscaled.state"
+        );
+        assert!(args.contains(&"--tun=userspace-networking".to_owned()));
+    }
     #[test]
     fn cloudflare_restart_is_independent_of_the_last_authorized_provider() {
         let state = tempfile::tempdir().unwrap();
