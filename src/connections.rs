@@ -237,9 +237,13 @@ pub async fn start(
     }
     if input.profile == Profile::Lan
         || input.domain.len() > 240
-        || (input.profile == Profile::Cloudflare && !domain(&input.domain))
+        || (input.profile == Profile::Cloudflare
+            && !input.domain.is_empty()
+            && !domain(&input.domain))
     {
-        return Err(bad("Choose Cloudflare with a valid domain, or Tailscale"));
+        return Err(bad(
+            "Choose Cloudflare or Tailscale. An optional domain override must be a domain such as example.com, without https:// or a path.",
+        ));
     }
     let dir = control_dir().ok_or_else(|| bad("Connector control directory is not configured"))?;
     if pending(&dir)

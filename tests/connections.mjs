@@ -31,8 +31,8 @@ test('guided connections require admin/CSRF, bind jobs, and check receiver ident
     const located=await request(port,'/api/omni/location',{cookie,body:{address:fakeOrigin+'/login?next=home'}});assert.equal(located.status,200);assert.equal((await located.json()).origin,fakeOrigin);
     assert.equal((await request(port,'/api/omni/location',{cookie,body:{address:fakeOrigin,certificate:'-----BEGIN PRIVATE KEY-----'}})).status,400);
     assert.equal((await request(port,'/api/omni/location',{body:{address:fakeOrigin}})).status,401);
-    const started=await connect({profile:'cloudflare',domain:'lab.example.test'});assert.equal(started.status,200);
-    const {id}=await started.json();const job=JSON.parse(await readFile(join(control,'request.json'),'utf8'));assert.equal(job.id,id);
+    const started=await connect({profile:'cloudflare'});assert.equal(started.status,200);
+    const {id}=await started.json();const job=JSON.parse(await readFile(join(control,'request.json'),'utf8'));assert.equal(job.id,id);assert.equal(job.domain,'','domain is discovered after authorization, without another Docker option');
     assert.equal((await connect({profile:'tailscale'})).status,400,'parallel provider jobs are rejected');
     let result=await (await request(port,'/api/omni/connection',{cookie})).json();assert.equal(result.connection.state,'starting');
     await writeFile(join(control,'status.json'),JSON.stringify({id:'stale-job',state:'connected',profile:'tailscale',message:'stale',expires_at:job.expires_at}));

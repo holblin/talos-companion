@@ -4,6 +4,8 @@ use crate::{
     model::{now, secret},
     omni::{Integration, Profile},
 };
+use base64::Engine;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -22,6 +24,82 @@ struct Agent {
     companion: String,
     omni: String,
     s3: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudflareAuthorization {
+    #[serde(rename = "zoneID")]
+    zone_id: String,
+    api_token: String,
+    #[serde(default)]
+    endpoint: String,
+}
+
+fn cloudflare_authorization(pem: &str) -> anyhow::Result<CloudflareAuthorization> {
+    let invalid =
+        || anyhow::anyhow!("Cloudflare authorization could not be read. Try signing in again.");
+    anyhow::ensure!(pem.len() <= 65536, "Cloudflare authorization is too large");
+    let marker = "-----BEGIN ARGO TUNNEL TOKEN-----";
+    let mut blocks = pem.split(marker);
+    blocks.next();
+    let block = blocks.next().ok_or_else(invalid)?;
+    anyhow::ensure!(
+        blocks.next().is_none(),
+        "Ambiguous Cloudflare authorization"
+    );
+    let encoded = block
+        .split_once("-----END ARGO TUNNEL TOKEN-----")
+        .ok_or_else(invalid)?
+        .0;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded.split_whitespace().collect::<String>())
+        .map_err(|_| invalid())?;
+    let auth: CloudflareAuthorization = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
+    anyhow::ensure!(
+        auth.zone_id.len() == 32
+            && auth.zone_id.bytes().all(|b| b.is_ascii_hexdigit())
+            && !auth.api_token.is_empty()
+            && auth.api_token.len() <= 8192,
+        "Cloudflare authorization is incomplete. Try signing in again."
+    );
+    Ok(auth)
+}
+
+async fn cloudflare_domain(cert: &Path) -> anyhow::Result<String> {
+    let fallback = "Couldn’t detect the domain approved in Cloudflare. Open Advanced settings, enter that domain and try again. No API token is needed.";
+    anyhow::ensure!(
+        std::fs::metadata(cert)?.len() <= 65536,
+        "Cloudflare authorization is too large"
+    );
+    let auth = cloudflare_authorization(&std::fs::read_to_string(cert)?)?;
+    let host = match auth.endpoint.as_str() {
+        "" => "api.cloudflare.com",
+        "fed" => "api.fed.cloudflare.com",
+        _ => anyhow::bail!(fallback),
+    };
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(20))
+        .build()?;
+    let response = client
+        .get(format!("https://{host}/client/v4/zones/{}", auth.zone_id))
+        .bearer_auth(&auth.api_token)
+        .send()
+        .await
+        .map_err(|_| anyhow::anyhow!(fallback))?;
+    let value = crate::endpoint_checks::small_json(response)
+        .await
+        .map_err(|_| anyhow::anyhow!(fallback))?;
+    let name = value["result"]["name"]
+        .as_str()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    anyhow::ensure!(
+        value["success"] == true && domain(&name) && name.len() <= 240,
+        fallback
+    );
+    Ok(name)
 }
 impl Agent {
     fn socket_arg(&self) -> String {
@@ -143,7 +221,6 @@ impl Agent {
         &self,
         request: &ConnectionRequest,
     ) -> anyhow::Result<(Integration, Child)> {
-        anyhow::ensure!(domain(&request.domain), "Invalid Cloudflare domain");
         let cert = self.state.join(".cloudflared/cert.pem");
         if !cert.is_file() {
             self.authorize(request, "/usr/local/bin/cloudflared", &["tunnel", "login"])
@@ -156,12 +233,25 @@ impl Agent {
         self.status(
             request,
             "configuring",
+            "Finding the domain you approved in Cloudflare…",
+            None,
+            None,
+        )?;
+        let domain = if request.domain.is_empty() {
+            cloudflare_domain(&cert).await?
+        } else {
+            anyhow::ensure!(domain(&request.domain), "Invalid Cloudflare domain");
+            request.domain.clone()
+        };
+        self.status(
+            request,
+            "configuring",
             "Creating the tunnel and DNS records. Existing DNS records will not be overwritten.",
             None,
             None,
         )?;
         let cert = cert.to_string_lossy();
-        let domain_id = hex::encode(Sha256::digest(request.domain.as_bytes()));
+        let domain_id = hex::encode(Sha256::digest(domain.as_bytes()));
         let credential = self.state.join(format!("tunnel-{}.json", &domain_id[..16]));
         let credential_text = credential.to_string_lossy();
         let name_path = self.state.join("instance.json");
@@ -197,9 +287,9 @@ impl Agent {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing tunnel ID"))?;
         let hostnames = [
-            format!("companion.{}", request.domain),
-            format!("omni.{}", request.domain),
-            format!("s3.{}", request.domain),
+            format!("companion.{domain}"),
+            format!("omni.{domain}"),
+            format!("s3.{domain}"),
         ];
         for hostname in &hostnames {
             self.output(
@@ -214,7 +304,7 @@ impl Agent {
                     hostname,
                 ],
             )
-            .await?;
+            .await.map_err(|_| anyhow::anyhow!("Couldn’t create the DNS record for {hostname}. Check that the approved domain matches and that this hostname has no conflicting DNS record, then try again."))?;
         }
         let config = self.state.join("cloudflare.json");
         let configuration = json!({"tunnel":id,"credentials-file":credential,"ingress":[
@@ -582,6 +672,33 @@ pub async fn run() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cloudflare_selected_zone_is_decoded_without_exposing_credentials() {
+        let encoded = base64::engine::general_purpose::STANDARD.encode(
+            br#"{"zoneID":"0123456789abcdef0123456789abcdef","accountID":"account","apiToken":"private-test-token"}"#,
+        );
+        let pem = format!(
+            "-----BEGIN ARGO TUNNEL TOKEN-----\n{encoded}\n-----END ARGO TUNNEL TOKEN-----"
+        );
+        let auth = super::cloudflare_authorization(&pem).unwrap();
+        assert_eq!(auth.zone_id, "0123456789abcdef0123456789abcdef");
+        assert_eq!(auth.api_token, "private-test-token");
+        for invalid in [
+            format!("{pem}\n{pem}"),
+            pem.replace(&encoded, "private-test-token"),
+            pem.replace(
+                &encoded,
+                &base64::engine::general_purpose::STANDARD
+                    .encode(br#"{"zoneID":"../../attacker","apiToken":"private-test-token"}"#),
+            ),
+        ] {
+            let error = super::cloudflare_authorization(&invalid)
+                .err()
+                .unwrap()
+                .to_string();
+            assert!(!error.contains("private-test-token"));
+        }
+    }
     use super::*;
     #[test]
     fn tailscale_keeps_certificates_and_existing_identity_in_writable_appdata() {

@@ -85,6 +85,13 @@ without appdata, recreate access methods and reinstall any regenerated local CA.
 
 Cloudflare uses official cloudflared browser authorization, creates a tunnel and
 DNS routes for companion.DOMAIN, omni.DOMAIN and s3.DOMAIN, and runs the tunnel.
+Choose **Continue with Cloudflare**, open its sign-in page, select a domain already
+managed by Cloudflare and approve it. Return to Companion; it detects the approved
+domain, creates the addresses and automatically checks Companion HTTPS before you
+save. No token, zone ID or Docker parameter is required. If your authorization cannot
+read the domain name, enter that same domain under **Advanced settings** and retry.
+Existing authorization is reused. Advanced settings also supports an explicit domain
+override; it must belong to the approved Cloudflare zone.
 Existing DNS records are not forcibly overwritten. DNS/certificate propagation
 may require a recheck. Cloudflare request/upload limits apply to public traffic.
 

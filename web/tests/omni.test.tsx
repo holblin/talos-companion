@@ -34,6 +34,7 @@ type Job = {
   state: string;
   auth_url: string | null;
   integration: Integration | null;
+  message?: string;
 };
 let accesses: AccessMethod[],
   issuer: string,
@@ -214,17 +215,22 @@ it("adds Cloudflare alongside existing methods without implicitly selecting it f
   await events.click(
     await screen.findByRole("button", { name: "Add Cloudflare" }),
   );
-  await events.type(
-    screen.getByRole("textbox", { name: "Your Cloudflare domain" }),
-    "example.test",
-  );
+  expect(
+    screen.getByRole("textbox", { name: /domain override/ }).closest("details")
+      ?.open,
+  ).toBe(false);
+  expect(
+    screen
+      .getByRole("button", { name: "Continue with Cloudflare" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
   await events.click(
     screen.getByRole("checkbox", { name: /Allow public access/ }),
   );
   await events.click(
-    screen.getByRole("button", { name: "Connect Cloudflare" }),
+    screen.getByRole("button", { name: "Continue with Cloudflare" }),
   );
-  await screen.findByRole("link", { name: "Sign in to Cloudflare ↗" });
+  await screen.findByRole("link", { name: "Open Cloudflare sign-in ↗" });
   job = {
     id: "job-1",
     profile: "cloudflare",
@@ -238,14 +244,19 @@ it("adds Cloudflare alongside existing methods without implicitly selecting it f
   await screen.findByRole("heading", {
     name: "Verify and save Companion access",
   });
-  await events.click(
-    screen.getByRole("button", { name: "Verify Companion HTTPS" }),
-  );
+
   await screen.findByText("Companion HTTPS and identity verified");
   await events.click(
     screen.getByRole("button", { name: "Save access method" }),
   );
   await screen.findByRole("button", { name: "Manage Cloudflare" });
+  expect(posted.find((p) => p.path === "/api/omni/connection")?.body).toEqual({
+    profile: "cloudflare",
+    domain: "",
+  });
+  expect(posted.filter((p) => p.path === "/api/companion/check")).toHaveLength(
+    1,
+  );
   expect(accesses).toHaveLength(3);
   expect(issuer).toBe(local.companion_url);
 });
@@ -310,4 +321,38 @@ it("rechecks a saved access method before it can be used for Omni", async () => 
   await screen.findByText("Endpoint verification failed");
   expect(screen.queryByRole("textbox", { name: "Omni address" })).toBeNull();
   expect(posted.some((p) => p.path === "/api/companion/activate")).toBe(true);
+});
+
+it("keeps manual Cloudflare domain entry under Advanced and displays actionable failures", async () => {
+  job = {
+    id: "failed",
+    profile: "cloudflare",
+    state: "failed",
+    auth_url: null,
+    integration: null,
+    message:
+      "Couldn’t detect the domain. Open Advanced settings and try again.",
+  };
+  const events = userEvent.setup();
+  mount();
+  await events.click(
+    await screen.findByRole("button", { name: "Add Cloudflare" }),
+  );
+  await screen.findByText(/Couldn’t detect the domain/);
+  await events.click(screen.getByText("Advanced settings"));
+  await events.type(
+    screen.getByRole("textbox", { name: /domain override/ }),
+    "example.test",
+  );
+  await events.click(
+    screen.getByRole("checkbox", { name: /Allow public access/ }),
+  );
+  await events.click(
+    screen.getByRole("button", { name: "Continue with Cloudflare" }),
+  );
+  await screen.findByRole("link", { name: "Open Cloudflare sign-in ↗" });
+  expect(posted.find((p) => p.path === "/api/omni/connection")?.body).toEqual({
+    profile: "cloudflare",
+    domain: "example.test",
+  });
 });

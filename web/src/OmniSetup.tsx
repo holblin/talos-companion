@@ -100,6 +100,56 @@ export default function SetupFlow({
       s3_endpoint: "",
     };
   const [companionVerified, setCompanionVerified] = useState(false);
+  const [autoCheck, setAutoCheck] = useState<Integration | null>(null);
+  const [checkingCompanion, setCheckingCompanion] = useState(false);
+  const [companionHint, setCompanionHint] = useState("");
+  useEffect(() => {
+    if (!autoCheck) return;
+    const endpoints = autoCheck;
+    const controller = new AbortController();
+    const cancelled = () => controller.signal.aborted;
+    async function check() {
+      setCheckingCompanion(true);
+      setCompanionHint("");
+      for (let attempt = 0; attempt < 6 && !cancelled(); attempt++) {
+        try {
+          await api("/api/companion/check", {
+            profile: endpoints.profile,
+            companion_url: endpoints.companion_url,
+          });
+          if (!cancelled()) {
+            setCompanionVerified(true);
+            setCheckingCompanion(false);
+          }
+          return;
+        } catch {
+          if (attempt < 5 && !cancelled()) {
+            await new Promise<void>((resolve) => {
+              const timer = setTimeout(resolve, 5000);
+              controller.signal.addEventListener(
+                "abort",
+                () => {
+                  clearTimeout(timer);
+                  resolve();
+                },
+                { once: true },
+              );
+            });
+          }
+        }
+      }
+      if (!cancelled()) {
+        setCheckingCompanion(false);
+        setCompanionHint(
+          "Cloudflare is configured, but HTTPS is not verified yet. DNS and certificates can take a few minutes. Choose Verify Companion HTTPS to check again before saving.",
+        );
+      }
+    }
+    void check();
+    return () => {
+      controller.abort();
+    };
+  }, [autoCheck]);
   const [trustInstalled, setTrustInstalled] = useState(false);
   const [localPrepared, setLocalPrepared] = useState(false);
   const [step, setStep] = useState(
@@ -156,6 +206,7 @@ export default function SetupFlow({
         setPlan(null);
         setAccepted(false);
         setCompanionVerified(false);
+        if (job.profile === "cloudflare") setAutoCheck(job.integration);
       }
     }
   }, [job, status, mode, initial.profile, initial.companion_url]);
@@ -342,7 +393,7 @@ export default function SetupFlow({
           </p>
           <Button
             variant="secondary"
-            isDisabled={busy}
+            isDisabled={busy || checkingCompanion}
             onPress={() => {
               void work(async () => {
                 setCompanionVerified(false);
@@ -354,8 +405,17 @@ export default function SetupFlow({
               });
             }}
           >
-            Verify Companion HTTPS
+            {checkingCompanion
+              ? "Checking Companion HTTPS…"
+              : "Verify Companion HTTPS"}
           </Button>
+          {checkingCompanion && (
+            <p role="status">
+              The tunnel is ready. Checking HTTPS and this Companion’s identity
+              automatically…
+            </p>
+          )}
+          {companionHint && <p role="status">{companionHint}</p>}
           {companionVerified && (
             <StatusLight variant="positive">
               Companion HTTPS and identity verified
@@ -367,6 +427,9 @@ export default function SetupFlow({
               label="Companion HTTPS address"
               value={settings.companion_url}
               onChange={(value) => {
+                setAutoCheck(null);
+                setCheckingCompanion(false);
+                setCompanionHint("");
                 change("companion_url", value);
                 setCompanionVerified(false);
               }}
@@ -382,7 +445,7 @@ export default function SetupFlow({
           </Button>
           <Button
             variant="accent"
-            isDisabled={busy || !companionVerified}
+            isDisabled={busy || checkingCompanion || !companionVerified}
             onPress={() => {
               void work(async () => {
                 await api("/api/companion/access", {
@@ -478,7 +541,7 @@ export default function SetupFlow({
           <h3>Connect {provider}</h3>
           <p>
             {settings.profile === "cloudflare"
-              ? "Sign in to Cloudflare and approve your domain. We’ll create the tunnel and addresses for you."
+              ? "Sign in to Cloudflare, choose the domain you want to use, then return here. We’ll detect your approved domain, create the tunnel and addresses, and check Companion HTTPS. Your domain must already be managed by Cloudflare."
               : "Sign in to Tailscale and approve this Companion device. We’ll configure private HTTPS access for you."}
           </p>
           {!connection.data?.available && (
@@ -505,18 +568,21 @@ export default function SetupFlow({
             </p>
           )}
           {settings.profile === "cloudflare" && (
-            <TextField
-              label="Your Cloudflare domain"
-              value={domain}
-              onChange={(value) => {
-                setDomain(value);
-                setAuthorized(false);
-              }}
-              placeholder="example.com"
-              description="For example: example.com. We’ll create companion, omni and backup addresses under it."
-              isDisabled={busy || connecting}
-              styles={style({ width: "full", marginY: 12 })}
-            />
+            <details>
+              <summary>Advanced settings</summary>
+              <TextField
+                label="Cloudflare domain override (optional)"
+                value={domain}
+                onChange={(value) => {
+                  setDomain(value);
+                  setAuthorized(false);
+                }}
+                placeholder="example.com"
+                description="Normally detected from Cloudflare. Only enter the domain you approved if automatic detection fails. Use example.com without https:// or a port."
+                isDisabled={busy || connecting}
+                styles={style({ width: "full", marginY: 12 })}
+              />
+            </details>
           )}
           {!connecting && (
             <Checkbox
@@ -526,7 +592,7 @@ export default function SetupFlow({
               styles={style({ width: "full", marginY: 12 })}
             >
               {settings.profile === "cloudflare"
-                ? "Allow public access to Companion, Omni and the protected backup receiver through this domain."
+                ? "Allow public access to Companion, Omni and the protected backup receiver through the domain I approve in Cloudflare."
                 : "Allow my Tailscale devices to access Companion, Omni and the backup receiver."}
             </Checkbox>
           )}
@@ -535,15 +601,19 @@ export default function SetupFlow({
             job.auth_url && (
               <p>
                 <a href={job.auth_url} target="_blank" rel="noreferrer">
-                  Sign in to {provider} ↗
+                  {provider === "Cloudflare"
+                    ? "Open Cloudflare sign-in ↗"
+                    : "Sign in to Tailscale ↗"}
                 </a>
               </p>
             )}
           {connecting && (
             <p role="status">
-              {job?.auth_url
-                ? "Approve the request in the sign-in page, then return here. We’ll continue automatically."
-                : "Preparing your connection…"}
+              {job?.state === "configuring"
+                ? job.message
+                : job?.auth_url
+                  ? "Approve the request in the sign-in page, then return here. We’ll continue automatically."
+                  : "Preparing your connection…"}
             </p>
           )}
           {connecting && (
@@ -570,7 +640,8 @@ export default function SetupFlow({
               <p role="status">
                 {job.state === "expired"
                   ? "The sign-in request expired. Try again when you’re ready."
-                  : "We couldn’t finish the connection. Check the account and domain you approved, then try again."}
+                  : job.message ||
+                    "We couldn’t finish the connection. Check the account and domain you approved, then try again."}
               </p>
             )}
           <Button
@@ -585,11 +656,7 @@ export default function SetupFlow({
           <Button
             variant="accent"
             isDisabled={
-              busy ||
-              connecting ||
-              !authorized ||
-              !connection.data?.available ||
-              (settings.profile === "cloudflare" && !domain.trim())
+              busy || connecting || !authorized || !connection.data?.available
             }
             onPress={() => {
               void work(async () => {
@@ -604,7 +671,11 @@ export default function SetupFlow({
               });
             }}
           >
-            {connecting ? "Connecting…" : "Connect " + provider}
+            {connecting
+              ? "Connecting…"
+              : settings.profile === "cloudflare"
+                ? "Continue with Cloudflare"
+                : "Connect Tailscale"}
           </Button>
         </>
       )}
