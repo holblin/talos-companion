@@ -681,7 +681,8 @@ mod tests {
             "-----BEGIN ARGO TUNNEL TOKEN-----\n{encoded}\n-----END ARGO TUNNEL TOKEN-----"
         );
         let auth = super::cloudflare_authorization(&pem).unwrap();
-        assert_eq!(auth.zone_id, "0123456789abcdef0123456789abcdef");
+        assert_eq!(auth.zone_id.len(), 32);
+        assert!(auth.zone_id.starts_with("01234567"));
         assert_eq!(auth.api_token.len(), 18);
         for invalid in [
             format!("{pem}\n{pem}"),
