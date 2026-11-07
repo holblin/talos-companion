@@ -3,6 +3,7 @@
 mod auth;
 mod backup;
 mod backup_format;
+mod cloudflare_dns;
 mod companion_setup;
 mod connection_agent;
 mod connections;

@@ -1,6 +1,6 @@
 # Deploy on Unraid
 
-The Linux amd64 image is published on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion). Use `holblin/talos-companion:0.3.7` for a pinned version, or `holblin/talos-companion:latest` for the current stable release. `deploy/compose.hub.yaml` runs the registry image without a local build. Source builds using the main `compose.yaml` remain available.
+The Linux amd64 image is published on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion). Use `holblin/talos-companion:0.3.8` for a pinned version, or `holblin/talos-companion:latest` for the current stable release. `deploy/compose.hub.yaml` runs the registry image without a local build. Source builds using the main `compose.yaml` remain available.
 
 The repository includes a build/publish workflow and a template-only bundle generator. Public templates for Companion and Omni are available in [talos-companion-unraid](https://github.com/holblin/talos-companion-unraid). See [publishing instructions](publishing.md) for registry-only Compose installation and Community Apps catalog review, which is separate from public template availability.
 
@@ -31,6 +31,19 @@ chmod 700 /mnt/user/appdata/talos-companion
 ```
 
 Set a stable `PUBLIC_URL`. Leave `SETUP_TOKEN` and `BACKUP_PASSPHRASE` empty to generate persistent private secrets, or provide explicit overrides of 24+ and 16+ characters respectively. Find the generated setup token in first-start container logs or the private appdata `setup-token` file. At Review, save the shown backup passphrase outside Unraid and re-enter it after checking the saved box. The `backup-passphrase` file is also private persistent appdata. Real `.env` files, generated secrets, keys, and recovery archives must not be committed to Git.
+
+## Cloudflare hostname changes
+
+Saving a Companion Cloudflare address updates the tunnel and DNS routes, then
+verifies HTTPS, this installation's identity, OpenID discovery, and signing keys.
+If normal DNS access fails, Companion also checks using Cloudflare's public DNS
+over HTTPS service. Certificate and hostname validation remain enabled.
+
+If only that check succeeds, the address is saved as **Cloudflare verified · local
+DNS updating**. Local DNS caches may still contain an older wildcard or negative
+answer. Use **Check Cloudflare** after the cache refreshes to clear this status.
+Omni issuer activation still requires verification through normal DNS. Local HTTPS
+and Tailscale do not use the public DNS fallback.
 
 ## NFS and SMB
 

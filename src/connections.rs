@@ -61,6 +61,8 @@ pub struct Settings {
 pub struct AccessMethod {
     pub integration: Integration,
     pub verified_at: u64,
+    #[serde(default)]
+    pub local_dns_pending: bool,
 }
 pub fn provider_path(profile: &Profile) -> PathBuf {
     private_dir().join(match profile {

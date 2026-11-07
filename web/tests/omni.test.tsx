@@ -45,7 +45,9 @@ let accesses: AccessMethod[],
   rejectProvider: boolean;
 let client: QueryClient;
 let providers: Integration["profile"][];
+let localDnsPending: boolean;
 beforeEach(() => {
+  localDnsPending = false;
   providers = ["cloudflare", "tailscale"];
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -88,11 +90,21 @@ beforeEach(() => {
           }
           accesses = [
             ...accesses.filter((a) => a.integration.profile !== body.profile),
-            { integration, verified_at: 100 },
+            {
+              integration,
+              verified_at: 100,
+              local_dns_pending: localDnsPending,
+            },
           ];
         }
-        value = { accesses, active_issuer: issuer };
-      } else if (path === "/api/omni")
+        value = {
+          accesses,
+          active_issuer: issuer,
+          local_dns_pending: localDnsPending,
+        };
+      } else if (path === "/api/companion/check")
+        value = { ok: true, local_dns_pending: localDnsPending };
+      else if (path === "/api/omni")
         value = {
           integration: local,
           defaults: local,
@@ -226,6 +238,9 @@ it.each([
     expect(
       posted.filter((p) => p.path === "/api/companion/access").at(-1)?.body,
     ).toEqual({ profile: integration.profile, companion_url: url });
+    expect(
+      posted.filter((p) => p.path === "/api/omni/connection"),
+    ).toHaveLength(1);
     expect(posted.some((p) => p.path === "/api/companion/activate")).toBe(
       false,
     );
@@ -263,6 +278,66 @@ function mount(component = <CompanionAccess />) {
     </QueryClientProvider>,
   );
 }
+it("saves an edited URL verified through Cloudflare while local DNS is updating", async () => {
+  accesses = [{ integration: cloud, verified_at: 100 }];
+  issuer = local.companion_url;
+  localDnsPending = true;
+  const events = userEvent.setup();
+  mount();
+  await events.click(
+    await screen.findByRole("button", { name: "Manage Cloudflare" }),
+  );
+  await events.click(screen.getByText("Advanced settings"));
+  const input = screen.getByRole("textbox", {
+    name: "Companion HTTPS address",
+  });
+  await events.clear(input);
+  await events.type(input, "https://companion2.example.test");
+  await events.click(
+    screen.getByRole("button", { name: "Save access method" }),
+  );
+  await screen.findByRole("button", { name: "Manage Cloudflare" });
+  expect(
+    screen.getByText("Cloudflare verified · local DNS updating"),
+  ).toBeTruthy();
+  expect(accesses[0]?.local_dns_pending).toBe(true);
+  expect(accesses[0]?.integration.companion_url).toBe(
+    "https://companion2.example.test",
+  );
+  expect(issuer).toBe(local.companion_url);
+  expect(posted.filter((p) => p.path === "/api/omni/connection")).toHaveLength(
+    1,
+  );
+  localDnsPending = false;
+  await events.click(screen.getByRole("button", { name: "Check Cloudflare" }));
+  await waitFor(() => {
+    expect(
+      screen.queryByText("Cloudflare verified · local DNS updating"),
+    ).toBeNull();
+  });
+  expect(accesses[0]?.local_dns_pending).toBe(false);
+  expect(screen.getByText("Verified access")).toBeTruthy();
+});
+
+it("explains Cloudflare-only verification before saving", async () => {
+  accesses = [{ integration: cloud, verified_at: 100 }];
+  localDnsPending = true;
+  const events = userEvent.setup();
+  mount();
+  await events.click(
+    await screen.findByRole("button", { name: "Manage Cloudflare" }),
+  );
+  await events.click(
+    screen.getByRole("button", { name: "Verify Companion HTTPS" }),
+  );
+  await screen.findByText(
+    "Companion HTTPS and identity verified through Cloudflare DNS",
+  );
+  expect(
+    screen.getByText(/Cloudflare is ready; local DNS access is still updating/),
+  ).toBeTruthy();
+  expect(posted.some((p) => p.path === "/api/companion/access")).toBe(false);
+});
 async function selectOmni(name: string) {
   const events = userEvent.setup();
   mount(<OmniConfiguration />);

@@ -165,6 +165,9 @@ async fn verify(app: &App, input: &Endpoint) -> Result<String> {
             .proxy(reqwest::Proxy::all("socks5h://127.0.0.1:1055").map_err(anyhow::Error::from)?);
     }
     let client = builder.build().map_err(anyhow::Error::from)?;
+    verify_with_client(app, &url, &client).await
+}
+async fn verify_with_client(app: &App, url: &url::Url, client: &reqwest::Client) -> Result<String> {
     let key = app
         .store
         .read()
@@ -173,7 +176,7 @@ async fn verify(app: &App, input: &Endpoint) -> Result<String> {
         .ok_or_else(denied)?
         .s3_secret_key
         .clone();
-    endpoint_checks::identify(&client, url.as_str(), &key, "companion")
+    endpoint_checks::identify(client, url.as_str(), &key, "companion")
         .await
         .map_err(|_| {
             bad("Could not verify this Companion over HTTPS. Check routing and certificate trust.")
@@ -205,6 +208,40 @@ async fn verify(app: &App, input: &Endpoint) -> Result<String> {
     }
     Ok(url.origin().ascii_serialization())
 }
+
+async fn verification_with_fallback(
+    normal: impl std::future::Future<Output = Result<String>>,
+    cloudflare: impl std::future::Future<Output = Result<String>>,
+    profile: &Profile,
+) -> Result<(String, bool)> {
+    match normal.await {
+        Ok(origin) => Ok((origin, false)),
+        Err(error) if *profile != Profile::Cloudflare => Err(error),
+        Err(_) => Ok((cloudflare.await?, true)),
+    }
+}
+
+async fn verify_access(app: &App, input: &Endpoint) -> Result<(String, bool)> {
+    let cloudflare = async {
+        let url = https(&input.companion_url)?;
+        let host = url
+            .host_str()
+            .ok_or_else(|| bad("Missing Companion hostname"))?;
+        let addresses = crate::cloudflare_dns::resolve(host).await
+            .map_err(|_| bad("Could not verify Companion through normal DNS or Cloudflare DNS. Check routing and certificate trust, then retry."))?;
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
+            .resolve_to_addrs(host, &addresses)
+            .build()
+            .map_err(anyhow::Error::from)?;
+        // Keep the original URL for Host, SNI, and certificate validation.
+        verify_with_client(app, &url, &client).await
+    };
+    verification_with_fallback(verify(app, input), cloudflare, &input.profile).await
+}
+
 pub async fn check(
     State(app): State<App>,
     headers: HeaderMap,
@@ -212,8 +249,10 @@ pub async fn check(
 ) -> Result<Json<Value>> {
     auth::csrf(&app, &headers)?;
     auth::admin(&app, &headers).await?;
-    let origin = verify(&app, &input).await?;
-    Ok(Json(json!({"companion_url":origin,"ok":true})))
+    let (origin, local_dns_pending) = verify_access(&app, &input).await?;
+    Ok(Json(
+        json!({"companion_url":origin,"ok":true,"local_dns_pending":local_dns_pending}),
+    ))
 }
 pub async fn accesses(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     auth::admin(&app, &headers).await?;
@@ -243,6 +282,7 @@ pub async fn accesses(State(app): State<App>, headers: HeaderMap) -> Result<Json
             accesses.push(connections::AccessMethod {
                 integration,
                 verified_at: 0,
+                local_dns_pending: false,
             });
         }
     }
@@ -258,8 +298,8 @@ pub async fn save_access(
     auth::csrf(&app, &headers)?;
     auth::admin(&app, &headers).await?;
     let _serial = app.backup_lock.lock().await;
-    let origin = match verify(&app, &input).await {
-        Ok(origin) => origin,
+    let (origin, local_dns_pending) = match verify_access(&app, &input).await {
+        Ok(verified) => verified,
         Err(error) => {
             let mut saved = connections::settings();
             if let Some(access) = saved.accesses.iter_mut().find(|a| {
@@ -267,6 +307,7 @@ pub async fn save_access(
                     && a.integration.companion_url == input.companion_url.trim_end_matches('/')
             }) {
                 access.verified_at = 0;
+                access.local_dns_pending = false;
                 connections::write_json(&connections::settings_path(), &saved)?;
             }
             return Err(error);
@@ -308,11 +349,12 @@ pub async fn save_access(
     saved.accesses.push(connections::AccessMethod {
         integration: integration.clone(),
         verified_at: now(),
+        local_dns_pending,
     });
     connections::private_directory(&connections::root())?;
     connections::write_json(&connections::settings_path(), &saved)?;
     Ok(Json(
-        json!({"ok":true,"integration":integration,"active_issuer":app.issuer()}),
+        json!({"ok":true,"integration":integration,"active_issuer":app.issuer(),"local_dns_pending":local_dns_pending}),
     ))
 }
 pub async fn activate(
@@ -409,4 +451,190 @@ pub async fn backup_proxy(
             .map_err(|_| hyper::StatusCode::BAD_GATEWAY)?,
     };
     crate::connection_agent::forward(State(proxy), request).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rsa::pkcs8::EncodePrivateKey;
+
+    #[tokio::test]
+    async fn alternate_dns_verifies_tls_and_identity_without_masking_normal_access() {
+        let dir = tempfile::tempdir().unwrap();
+        let signing_key = rsa::RsaPrivateKey::new(&mut rand::thread_rng(), 2048)
+            .unwrap()
+            .to_pkcs8_pem(Default::default())
+            .unwrap()
+            .to_string();
+        let store = Store {
+            version: 1,
+            users: vec![],
+            signing_key,
+            client_id: "test".into(),
+            client_secret: String::new(),
+            redirect_uri: String::new(),
+            s3_access_key: String::new(),
+            s3_secret_key: "test-instance-secret".into(),
+            drive: Default::default(),
+            integration: Default::default(),
+        };
+        let app = App {
+            _process_lock: Arc::new(tempfile::tempfile().unwrap()),
+            store: Arc::new(tokio::sync::RwLock::new(Some(store))),
+            memory: Arc::new(tokio::sync::Mutex::new(Memory {
+                sessions: Default::default(),
+                codes: Default::default(),
+                drive_states: Default::default(),
+                attempts: vec![],
+            })),
+            io: Default::default(),
+            backup_lock: Default::default(),
+            settings: tokio::sync::watch::channel(crate::settings::Settings::default()).0,
+            data: dir.path().into(),
+            public_url: "https://canonical.example.test".into(),
+            issuer: tokio::sync::watch::channel("https://canonical.example.test".into()).0,
+            setup_token: String::new(),
+            backup_passphrase: String::new(),
+            mounted: None,
+            http: reqwest::Client::new(),
+        };
+        let cert =
+            rcgen::generate_simple_self_signed(vec!["companion.example.test".into()]).unwrap();
+        let certificate = LocalCertificate {
+            host: "companion.example.test".into(),
+            expires_at: 0,
+            ca: cert.cert.pem(),
+            ca_key: String::new(),
+            cert: cert.cert.pem(),
+            key: cert.signing_key.serialize_pem(),
+        };
+        let tls = acceptor(&certificate).unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let url = url::Url::parse(&format!(
+            "https://companion.example.test:{}",
+            address.port()
+        ))
+        .unwrap();
+        let routes = axum::Router::new()
+            .route(
+                "/api/omni/identity",
+                axum::routing::get(endpoint_checks::companion_identity),
+            )
+            .route(
+                "/.well-known/openid-configuration",
+                axum::routing::get(crate::oidc::discovery),
+            )
+            .route("/oauth/jwks", axum::routing::get(crate::oidc::jwks))
+            .with_state(app.clone());
+        let server = tokio::spawn(async move {
+            loop {
+                let (stream, _) = listener.accept().await.unwrap();
+                let tls = tls.clone();
+                let routes = routes.clone();
+                tokio::spawn(async move {
+                    if let Ok(stream) = tls.accept(stream).await {
+                        serve_io(stream, routes).await;
+                    }
+                });
+            }
+        });
+        let client = |trusted: bool, ip: &str| {
+            let mut builder = reqwest::Client::builder()
+                .no_proxy()
+                .timeout(std::time::Duration::from_secs(2))
+                .resolve(
+                    "companion.example.test",
+                    format!("{ip}:{}", address.port()).parse().unwrap(),
+                );
+            if trusted {
+                builder = builder.add_root_certificate(
+                    reqwest::Certificate::from_pem(certificate.ca.as_bytes()).unwrap(),
+                );
+            }
+            builder.build().unwrap()
+        };
+        let normal = client(true, "127.0.0.2");
+        let public = client(true, "127.0.0.1");
+        let result = verification_with_fallback(
+            verify_with_client(&app, &url, &normal),
+            verify_with_client(&app, &url, &public),
+            &Profile::Cloudflare,
+        )
+        .await
+        .map_err(|e| e.1)
+        .unwrap();
+        assert_eq!(result, (url.origin().ascii_serialization(), true));
+        assert!(
+            verification_with_fallback(
+                verify_with_client(&app, &url, &normal),
+                verify_with_client(&app, &url, &public),
+                &Profile::Lan
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            !verification_with_fallback(
+                verify_with_client(&app, &url, &public),
+                async { panic!("normal success must not depend on DoH") },
+                &Profile::Cloudflare
+            )
+            .await
+            .map_err(|e| e.1)
+            .unwrap()
+            .1
+        );
+        assert!(
+            verify_with_client(&app, &url, &client(false, "127.0.0.1"))
+                .await
+                .is_err(),
+            "TLS trust must never be disabled"
+        );
+        let mut wrong = app.clone();
+        wrong.issuer = tokio::sync::watch::channel("https://other.example.test".into()).0;
+        assert!(
+            verify_with_client(&wrong, &url, &public).await.is_err(),
+            "issuer must match"
+        );
+        let mut wrong_store = app.store.read().await.as_ref().unwrap().clone();
+        wrong_store.s3_secret_key = "different-instance".into();
+        wrong.store = Arc::new(tokio::sync::RwLock::new(Some(wrong_store)));
+        assert!(
+            verify_with_client(&wrong, &url, &public).await.is_err(),
+            "installation proof must match"
+        );
+        wrong.issuer = app.issuer.clone();
+        {
+            let mut store = wrong.store.write().await;
+            let store = store.as_mut().unwrap();
+            store.s3_secret_key = "test-instance-secret".into();
+            store.signing_key = rsa::RsaPrivateKey::new(&mut rand::thread_rng(), 2048)
+                .unwrap()
+                .to_pkcs8_pem(Default::default())
+                .unwrap()
+                .to_string();
+        }
+        assert!(
+            verify_with_client(&wrong, &url, &public).await.is_err(),
+            "signing keys must match"
+        );
+        let wrong_host =
+            url::Url::parse(&format!("https://other.example.test:{}", address.port())).unwrap();
+        let wrong_host_client = reqwest::Client::builder()
+            .no_proxy()
+            .resolve("other.example.test", address)
+            .add_root_certificate(
+                reqwest::Certificate::from_pem(certificate.ca.as_bytes()).unwrap(),
+            )
+            .build()
+            .unwrap();
+        assert!(
+            verify_with_client(&app, &wrong_host, &wrong_host_client)
+                .await
+                .is_err(),
+            "certificate hostname must match"
+        );
+        server.abort();
+    }
 }

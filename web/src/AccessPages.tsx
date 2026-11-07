@@ -12,9 +12,17 @@ import {
 import { api } from "./api";
 import { classes } from "./layout";
 import { useTask } from "./useTask";
+import {
+  cloudflareDnsPendingMessage,
+  type CompanionVerification,
+} from "./verifyCompanion";
 import SetupFlow, { type Integration, type Profile } from "./OmniSetup";
 
-export type AccessMethod = { integration: Integration; verified_at: number };
+export type AccessMethod = {
+  integration: Integration;
+  verified_at: number;
+  local_dns_pending?: boolean;
+};
 export type AccessCatalog = {
   accesses: AccessMethod[];
   active_issuer: string;
@@ -101,16 +109,27 @@ export function CompanionAccess() {
               <h3 className={documentClass("h3")}>{method.name}</h3>
               <p className={documentClass("p")}>{method.description}</p>
               <StatusLight
-                variant={saved?.verified_at ? "positive" : "neutral"}
+                variant={
+                  saved?.verified_at && !saved.local_dns_pending
+                    ? "positive"
+                    : "neutral"
+                }
               >
-                {saved?.verified_at
-                  ? "Verified access"
-                  : saved
-                    ? "Needs verification"
-                    : "Not configured"}
+                {saved?.local_dns_pending
+                  ? "Cloudflare verified · local DNS updating"
+                  : saved?.verified_at
+                    ? "Verified access"
+                    : saved
+                      ? "Needs verification"
+                      : "Not configured"}
               </StatusLight>
               {saved && (
                 <>
+                  {saved.local_dns_pending && (
+                    <p className={documentClass("p")} role="status">
+                      {cloudflareDnsPendingMessage}
+                    </p>
+                  )}
                   <p className={documentClass("p")}>
                     <code className={documentClass("code")}>
                       {saved.integration.companion_url}
@@ -155,11 +174,18 @@ export function CompanionAccess() {
                   onPress={() => {
                     void work(async () => {
                       try {
-                        await api("/api/companion/access", {
-                          profile: method.profile,
-                          companion_url: saved.integration.companion_url,
-                        });
-                        ToastQueue.positive(method.name + " access verified.");
+                        const result = await api<CompanionVerification>(
+                          "/api/companion/access",
+                          {
+                            profile: method.profile,
+                            companion_url: saved.integration.companion_url,
+                          },
+                        );
+                        ToastQueue.positive(
+                          result.local_dns_pending
+                            ? cloudflareDnsPendingMessage
+                            : method.name + " access verified.",
+                        );
                       } finally {
                         await client.invalidateQueries({
                           queryKey: ["companion-access"],

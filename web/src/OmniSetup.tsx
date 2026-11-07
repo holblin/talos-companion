@@ -14,6 +14,11 @@ import {
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import {
+  waitForCompanion,
+  cloudflareDnsPendingMessage,
+  type CompanionVerification,
+} from "./verifyCompanion";
 
 export type Profile = "lan" | "cloudflare" | "tailscale";
 export type Integration = {
@@ -102,6 +107,7 @@ export default function SetupFlow({
       s3_endpoint: "",
     };
   const [companionVerified, setCompanionVerified] = useState(false);
+  const [companionDnsPending, setCompanionDnsPending] = useState(false);
   const [autoCheck, setAutoCheck] = useState<Integration | null>(null);
   const [checkingCompanion, setCheckingCompanion] = useState(false);
   const [companionHint, setCompanionHint] = useState("");
@@ -113,38 +119,27 @@ export default function SetupFlow({
     async function check() {
       setCheckingCompanion(true);
       setCompanionHint("");
-      for (let attempt = 0; attempt < 6 && !cancelled(); attempt++) {
-        try {
-          await api("/api/companion/check", {
-            profile: endpoints.profile,
-            companion_url: endpoints.companion_url,
-          });
-          if (!cancelled()) {
-            setCompanionVerified(true);
-            setCheckingCompanion(false);
-          }
-          return;
-        } catch {
-          if (attempt < 5 && !cancelled()) {
-            await new Promise<void>((resolve) => {
-              const timer = setTimeout(resolve, 5000);
-              controller.signal.addEventListener(
-                "abort",
-                () => {
-                  clearTimeout(timer);
-                  resolve();
-                },
-                { once: true },
-              );
-            });
-          }
-        }
-      }
-      if (!cancelled()) {
-        setCheckingCompanion(false);
-        setCompanionHint(
-          "Cloudflare is configured, but HTTPS is not verified yet. DNS and certificates can take a few minutes. Choose Verify Companion HTTPS to check again before saving.",
-        );
+      try {
+        if (
+          await waitForCompanion(endpoints, controller.signal, (result) => {
+            setCompanionDnsPending(!!result.local_dns_pending);
+            setCompanionHint(
+              result.local_dns_pending
+                ? "Cloudflare is ready; local DNS access is still updating. Save this address to keep the verified Cloudflare configuration."
+                : "",
+            );
+          })
+        )
+          setCompanionVerified(true);
+      } catch (error) {
+        if (!cancelled())
+          setCompanionHint(
+            error instanceof Error
+              ? error.message
+              : "Companion HTTPS verification failed",
+          );
+      } finally {
+        if (!cancelled()) setCheckingCompanion(false);
       }
     }
     void check();
@@ -193,6 +188,7 @@ export default function SetupFlow({
     connection.data?.providers.includes(settings.profile) ?? false;
   const appliedConnection = useRef("");
   const startedConnection = useRef("");
+  const configuredAccess = useRef(initial);
   useEffect(() => {
     if (
       mode === "access" &&
@@ -206,6 +202,7 @@ export default function SetupFlow({
       if (startedConnection.current === job.id || !initial.companion_url) {
         setStep(3);
         setSettings(job.integration);
+        configuredAccess.current = job.integration;
         setChecks(null);
         setPlan(null);
         setAccepted(false);
@@ -223,16 +220,18 @@ export default function SetupFlow({
   const [accepted, setAccepted] = useState(false);
   const { busy, notice, setNotice, work } = useTask({ toastErrors: true });
   const updateController = useRef<AbortController | null>(null);
+  const pendingVerification = useRef(false);
   useEffect(() => () => updateController.current?.abort(), []);
   async function saveAccess() {
     let endpoints = settings;
+    const controller = new AbortController();
+    const cancelled = () => controller.signal.aborted;
+    updateController.current = controller;
     if (
       settings.profile !== "lan" &&
-      settings.companion_url !==
-        (initial.companion_url || job?.integration?.companion_url)
+      settings.companion_url.trim().replace(/\/$/, "") !==
+        configuredAccess.current.companion_url.trim().replace(/\/$/, "")
     ) {
-      const controller = new AbortController();
-      const cancelled = () => controller.signal.aborted;
       if (
         settings.profile === "tailscale" &&
         window.location.hostname ===
@@ -242,7 +241,6 @@ export default function SetupFlow({
           "Open Companion through Local HTTPS or Cloudflare before renaming Tailscale, so this page stays connected during the update.",
         );
       }
-      updateController.current = controller;
       setAutoCheck(null);
       setCompanionVerified(false);
       setNotice(`Updating ${provider} configuration…`);
@@ -262,6 +260,8 @@ export default function SetupFlow({
             throw new Error(update.message);
           if (update.state === "connected" && update.integration) {
             endpoints = update.integration;
+            configuredAccess.current = endpoints;
+            pendingVerification.current = true;
             setSettings(endpoints);
             configured = true;
             break;
@@ -274,31 +274,23 @@ export default function SetupFlow({
         throw new Error(
           "Provider update timed out. Check the connection and try saving again.",
         );
-      setNotice(
-        "Provider updated. Waiting for HTTPS and verifying this Companion…",
-      );
-      for (let attempt = 0; ; attempt++) {
-        if (cancelled()) return;
-        try {
-          await api("/api/companion/check", {
-            profile: endpoints.profile,
-            companion_url: endpoints.companion_url,
-          });
-          if (cancelled()) return;
-          break;
-        } catch (error) {
-          if (attempt === 11) throw error;
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-        }
-      }
     }
-    await api("/api/companion/access", {
+    if (pendingVerification.current) {
+      setNotice(
+        "Provider updated. Waiting for DNS caches and HTTPS certificates (up to 10 minutes), then verifying this Companion…",
+      );
+      if (!(await waitForCompanion(endpoints, controller.signal))) return;
+    }
+    const saved = await api<CompanionVerification>("/api/companion/access", {
       profile: endpoints.profile,
       companion_url: endpoints.companion_url,
     });
+    pendingVerification.current = false;
     await queryClient.invalidateQueries({ queryKey: ["companion-access"] });
     ToastQueue.positive(
-      "Companion access saved. Your other methods and Omni issuer are unchanged.",
+      saved.local_dns_pending
+        ? cloudflareDnsPendingMessage
+        : "Companion access saved. Your other methods and Omni issuer are unchanged.",
     );
     onDone();
   }
@@ -496,10 +488,19 @@ export default function SetupFlow({
             onPress={() => {
               void work(async () => {
                 setCompanionVerified(false);
-                await api("/api/companion/check", {
-                  profile: settings.profile,
-                  companion_url: settings.companion_url,
-                });
+                const result = await api<CompanionVerification>(
+                  "/api/companion/check",
+                  {
+                    profile: settings.profile,
+                    companion_url: settings.companion_url,
+                  },
+                );
+                setCompanionDnsPending(!!result.local_dns_pending);
+                setCompanionHint(
+                  result.local_dns_pending
+                    ? "Cloudflare is ready; local DNS access is still updating. Save this address to keep the verified Cloudflare configuration."
+                    : "",
+                );
                 setCompanionVerified(true);
               });
             }}
@@ -521,7 +522,9 @@ export default function SetupFlow({
           )}
           {companionVerified && (
             <StatusLight variant="positive">
-              Companion HTTPS and identity verified
+              {companionDnsPending
+                ? "Companion HTTPS and identity verified through Cloudflare DNS"
+                : "Companion HTTPS and identity verified"}
             </StatusLight>
           )}
           <details className={documentClass("details")}>
