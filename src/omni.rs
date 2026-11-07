@@ -169,12 +169,22 @@ fn atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     tmp.persist(path).map_err(anyhow::Error::from)?;
     Ok(())
 }
-fn defaults(app: &App, store: &Store) -> Integration {
-    if let Some(saved) = crate::connections::settings().integration {
+pub(crate) fn defaults(app: &App, store: &Store) -> Integration {
+    if let Some(saved) = crate::connections::settings().integration
+        && (store.integration.companion_url.is_empty()
+            || (saved.companion_url == app.issuer() && saved.profile == store.integration.profile))
+    {
         return saved;
     }
     if !store.integration.companion_url.is_empty() {
-        return store.integration.clone();
+        let mut integration = store.integration.clone();
+        if integration.s3_endpoint.is_empty()
+            && integration.profile == Profile::Lan
+            && crate::companion_setup::local_root().is_some()
+        {
+            integration.s3_endpoint = app.issuer();
+        }
+        return integration;
     }
     let agent = crate::connections::agent_info();
     let omni = url::Url::parse(&store.redirect_uri)
@@ -183,7 +193,7 @@ fn defaults(app: &App, store: &Store) -> Integration {
         .unwrap_or_default();
     Integration {
         profile: Profile::Lan,
-        companion_url: app.public_url.clone(),
+        companion_url: app.issuer(),
         omni_url: if omni.is_empty() {
             agent
                 .as_ref()
@@ -205,7 +215,7 @@ pub async fn status(State(app): State<App>, headers: HeaderMap) -> Result<Json<V
     let store = app.store.read().await;
     let s = store.as_ref().ok_or_else(denied)?;
     Ok(Json(
-        json!({"integration":s.integration,"active_issuer":app.public_url,"mounted":Path::new(MANAGED).is_dir(),"restart_pending":!s.integration.companion_url.is_empty() && s.integration.companion_url!=app.public_url,"defaults":defaults(&app,s)}),
+        json!({"integration":s.integration,"active_issuer":app.issuer(),"mounted":Path::new(MANAGED).is_dir(),"restart_pending":!s.integration.companion_url.is_empty() && s.integration.companion_url!=app.issuer(),"defaults":defaults(&app,s)}),
     ))
 }
 pub async fn preview(

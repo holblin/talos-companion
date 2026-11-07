@@ -60,7 +60,7 @@ pub fn origin(value: &str) -> anyhow::Result<url::Url> {
     );
     Ok(url)
 }
-async fn small_json(mut response: reqwest::Response) -> anyhow::Result<Value> {
+pub(crate) async fn small_json(mut response: reqwest::Response) -> anyhow::Result<Value> {
     anyhow::ensure!(
         response.status().is_success(),
         "Endpoint rejected the identity check"
@@ -92,7 +92,7 @@ pub fn verify_identity(
     );
     Ok(())
 }
-async fn identify(
+pub(crate) async fn identify(
     client: &reqwest::Client,
     base: &str,
     key: &str,
@@ -208,6 +208,11 @@ pub async fn run(
         builder = builder.add_root_certificate(
             reqwest::Certificate::from_pem(&bytes)
                 .map_err(|_| bad("Invalid saved public trust certificate"))?,
+        );
+    }
+    if let Some(ca) = crate::companion_setup::local_root() {
+        builder = builder.add_root_certificate(
+            reqwest::Certificate::from_pem(ca.as_bytes()).map_err(anyhow::Error::from)?,
         );
     }
     if integration.profile == Profile::Lan {

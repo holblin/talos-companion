@@ -25,6 +25,9 @@ hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["server-auto", "tokio", "http1", "http2"] }
 jsonwebtoken = "9"
 rand = "0.8"
+rcgen = { version = "0.14", features = ["x509-parser"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+tower = { version = "0.5", features = ["util"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "socks", "rustls-tls-webpki-roots"] }
 rsa = { version = "0.9", features = ["pem"] }
 s3s = "0.17.0"
@@ -47,5 +50,4 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }
-tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"

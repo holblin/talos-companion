@@ -3,6 +3,7 @@
 mod auth;
 mod backup;
 mod backup_format;
+mod companion_setup;
 mod connection_agent;
 mod connections;
 mod drive;
@@ -22,7 +23,7 @@ use axum::{
     http::{HeaderMap, header},
     middleware::{self, Next},
     response::Response,
-    routing::{delete, get, post},
+    routing::{any, delete, get, post},
 };
 use model::*;
 use serde_json::{Value, json};
@@ -45,7 +46,7 @@ async fn overview(State(app): State<App>, headers: HeaderMap) -> Result<Json<Val
     let s = guard.as_ref().ok_or_else(denied)?;
     let settings = app.settings.borrow().clone();
     Ok(Json(
-        json!({"issuer":app.public_url,"client_id":s.client_id,"client_secret":s.client_secret,"redirect_uri":s.redirect_uri,"s3_access_key":s.s3_access_key,"s3_secret_key":s.s3_secret_key,"bucket":"omni","mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"drive":{"client_id":s.drive.client_id,"folder_id":s.drive.folder_id,"connected":!s.drive.refresh_token.is_empty()},"streaming_backups":true,"retention":settings.retention,"settings":settings}),
+        json!({"issuer":app.issuer(),"client_id":s.client_id,"client_secret":s.client_secret,"redirect_uri":s.redirect_uri,"s3_endpoint":omni::defaults(&app,s).s3_endpoint,"s3_access_key":s.s3_access_key,"s3_secret_key":s.s3_secret_key,"bucket":"omni","mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"drive":{"client_id":s.drive.client_id,"folder_id":s.drive.folder_id,"connected":!s.drive.refresh_token.is_empty()},"streaming_backups":true,"retention":settings.retention,"settings":settings}),
     ))
 }
 async fn secure_headers(req: axum::extract::Request, next: Next) -> Response {
@@ -63,11 +64,18 @@ async fn secure_headers(req: axum::extract::Request, next: Next) -> Response {
 }
 fn frontend_routes<S: Clone + Send + Sync + 'static>(static_dir: &str) -> Router<S> {
     let index = ServeFile::new(format!("{static_dir}/index.html"));
-    let routes = ["/backups", "/identity", "/accounts", "/settings"]
-        .into_iter()
-        .fold(Router::new(), |routes, path| {
-            routes.route_service(path, index.clone())
-        });
+    let routes = [
+        "/backups",
+        "/identity",
+        "/access",
+        "/omni-configuration",
+        "/accounts",
+        "/settings",
+    ]
+    .into_iter()
+    .fold(Router::new(), |routes, path| {
+        routes.route_service(path, index.clone())
+    });
     routes.fallback_service(ServeDir::new(static_dir).not_found_service(index))
 }
 
@@ -76,6 +84,16 @@ fn router(app: App) -> Router {
     Router::new()
         .merge(frontend_routes(&static_dir))
         .route("/healthz", get(|| async { Json(json!({"ok":true})) }))
+        .merge(
+            Router::new()
+                .route("/omni", any(companion_setup::backup_proxy))
+                .route("/omni/{*key}", any(companion_setup::backup_proxy))
+                .route(
+                    "/.well-known/talos-companion",
+                    get(companion_setup::backup_proxy),
+                )
+                .layer(DefaultBodyLimit::disable()),
+        )
         .route("/api/status", get(auth::status))
         .route("/api/setup", post(auth::setup))
         .route("/api/setup/check", post(auth::setup_check))
@@ -99,6 +117,14 @@ fn router(app: App) -> Router {
         .route("/api/overview", get(overview))
         .route("/api/settings", get(settings::get).post(settings::update))
         .route("/api/oidc", post(oidc::configure))
+        .route(
+            "/api/companion/access",
+            get(companion_setup::accesses).post(companion_setup::save_access),
+        )
+        .route("/api/companion/local", post(companion_setup::prepare))
+        .route("/api/companion/ca", get(companion_setup::ca))
+        .route("/api/companion/check", post(companion_setup::check))
+        .route("/api/companion/activate", post(companion_setup::activate))
         .route("/api/omni", get(omni::status))
         .route(
             "/api/omni/connection",
@@ -178,7 +204,7 @@ async fn main() -> anyhow::Result<()> {
     let address = std::env::var("LISTEN_ADDR").unwrap_or("0.0.0.0:8080".into());
     let listener = tokio::net::TcpListener::bind(&address).await?;
     tracing::info!(%address,"Companion listening");
-    tokio::select! {result=axum::serve(listener,router(app.clone())).with_graceful_shutdown(async{let _=tokio::signal::ctrl_c().await;}).into_future()=>{result?;},result=receiver=>{result?;},_=scheduled=>{},_=connections::supervise()=>{}}
+    tokio::select! {result=companion_setup::serve(listener,router(app.clone()))=>{result?;},result=receiver=>{result?;},_=scheduled=>{},_=connections::supervise()=>{},_=tokio::signal::ctrl_c()=>{}}
     Ok(())
 }
 fn healthcheck() -> anyhow::Result<()> {
@@ -253,6 +279,7 @@ mod tests {
             settings: tokio::sync::watch::channel(settings::Settings::default()).0,
             data: dir.path().into(),
             public_url: "http://localhost:8080".into(),
+            issuer: tokio::sync::watch::channel("http://localhost:8080".into()).0,
             setup_token: "a secure and long setup token".into(),
             backup_passphrase: "a secure backup passphrase".into(),
             mounted: None,

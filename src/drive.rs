@@ -53,7 +53,7 @@ pub async fn connect(State(app): State<App>, headers: HeaderMap) -> Result<Json<
         ("client_id", s.drive.client_id.as_str()),
         (
             "redirect_uri",
-            &format!("{}/oauth/google/callback", app.public_url),
+            &format!("{}/oauth/google/callback", app.issuer()),
         ),
         ("response_type", "code"),
         ("scope", "https://www.googleapis.com/auth/drive.file"),
@@ -103,7 +103,7 @@ pub async fn callback(
             ),
             (
                 "redirect_uri",
-                &format!("{}/oauth/google/callback", app.public_url),
+                &format!("{}/oauth/google/callback", app.issuer()),
             ),
             ("grant_type", "authorization_code"),
         ])

@@ -52,6 +52,20 @@ pub fn settings_path() -> PathBuf {
 pub struct Settings {
     pub omni_origin: String,
     pub integration: Option<Integration>,
+    #[serde(default)]
+    pub accesses: Vec<AccessMethod>,
+}
+#[derive(Clone, Deserialize, Serialize)]
+pub struct AccessMethod {
+    pub integration: Integration,
+    pub verified_at: u64,
+}
+pub fn provider_path(profile: &Profile) -> PathBuf {
+    private_dir().join(match profile {
+        Profile::Lan => "lan-active.json",
+        Profile::Cloudflare => "cloudflare-active.json",
+        Profile::Tailscale => "tailscale-active.json",
+    })
 }
 pub fn settings() -> Settings {
     read_json(&settings_path()).unwrap_or_default()

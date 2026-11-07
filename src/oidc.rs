@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
 pub async fn discovery(State(app): State<App>) -> Json<Value> {
-    let p = app.public_url;
+    let p = app.issuer();
     Json(
         json!({"issuer":p,"authorization_endpoint":format!("{p}/oauth/authorize"),"token_endpoint":format!("{p}/oauth/token"),"userinfo_endpoint":format!("{p}/oauth/userinfo"),"jwks_uri":format!("{p}/oauth/jwks"),"response_types_supported":["code"],"grant_types_supported":["authorization_code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"],"scopes_supported":["openid","email","profile"],"token_endpoint_auth_methods_supported":["client_secret_basic","client_secret_post"],"code_challenge_methods_supported":["S256"],"claims_supported":["sub","iss","aud","exp","iat","nonce","email","email_verified","name"]}),
     )
@@ -72,7 +72,7 @@ pub async fn authorize(
     let u = match auth::user(&app, &headers).await {
         Ok(u) => u,
         Err(_) => {
-            let next: url::Url = format!("{}/", app.public_url).parse().unwrap();
+            let next: url::Url = format!("{}/", app.issuer()).parse().unwrap();
             let mut login = next;
             login
                 .query_pairs_mut()
@@ -80,12 +80,15 @@ pub async fn authorize(
             return Ok(Redirect::to(login.as_str()).into_response());
         }
     };
+    let guard = app.store.read().await;
+    validate(guard.as_ref().ok_or_else(denied)?, &q)?;
     let code = secret();
     let mut m = app.memory.lock().await;
     m.codes.retain(|_, c| c.expires > now());
     m.codes.insert(
         code.clone(),
         Code {
+            issuer: app.issuer(),
             user_id: u.id,
             redirect_uri: q.redirect_uri.clone(),
             nonce: q.nonce,
@@ -94,6 +97,7 @@ pub async fn authorize(
         },
     );
     drop(m);
+    drop(guard);
     let mut target = url::Url::parse(&q.redirect_uri).map_err(|_| bad("Invalid redirect URI"))?;
     target.query_pairs_mut().append_pair("code", &code);
     if let Some(state) = q.state {
@@ -143,7 +147,8 @@ pub async fn token(
         .codes
         .remove(&q.code)
         .ok_or_else(|| bad("Invalid or consumed authorization code"))?;
-    if code.expires <= now()
+    if code.issuer != app.issuer()
+        || code.expires <= now()
         || code.redirect_uri != q.redirect_uri
         || q.redirect_uri != s.redirect_uri
     {
@@ -165,7 +170,7 @@ pub async fn token(
         .iter()
         .find(|u| u.id == code.user_id)
         .ok_or_else(denied)?;
-    let mut claims = json!({"iss":app.public_url,"sub":u.id,"aud":s.client_id,"iat":now(),"exp":now()+300,"email":u.email,"email_verified":true,"name":u.name,"token_use":"id"});
+    let mut claims = json!({"iss":code.issuer,"sub":u.id,"aud":s.client_id,"iat":now(),"exp":now()+300,"email":u.email,"email_verified":true,"name":u.name,"token_use":"id"});
     if let Some(nonce) = code.nonce {
         claims["nonce"] = json!(nonce);
     }
@@ -195,7 +200,7 @@ pub async fn userinfo(State(app): State<App>, headers: HeaderMap) -> Result<Json
         jsonwebtoken::DecodingKey::from_rsa_components(&n, &e).map_err(anyhow::Error::from)?;
     let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::RS256);
     validation.set_audience(&[s.client_id]);
-    validation.set_issuer(&[app.public_url]);
+    validation.set_issuer(&[app.issuer()]);
     validation.leeway = 0;
     let claims = jsonwebtoken::decode::<Value>(token, &key, &validation)
         .map_err(|_| denied())?

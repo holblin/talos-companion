@@ -56,7 +56,15 @@ pub fn csrf(app: &App, headers: &HeaderMap) -> Result<()> {
         return Err(bad("Missing request header"));
     }
     if let Some(origin) = headers.get("origin")
+        && origin.to_str().ok() != Some(app.issuer().as_str())
         && origin.to_str().ok() != Some(app.public_url.as_str())
+        && !crate::connections::settings()
+            .accesses
+            .iter()
+            .any(|access| {
+                access.verified_at > 0
+                    && origin.to_str().ok() == Some(access.integration.companion_url.as_str())
+            })
         && !crate::connections::settings()
             .integration
             .is_some_and(|i| origin.to_str().ok() == Some(i.companion_url.as_str()))
@@ -122,7 +130,7 @@ pub async fn setup_check(State(app): State<App>, headers: HeaderMap) -> Result<J
         return Err(bad("Already initialized"));
     }
     Ok(Json(
-        json!({"public_url":app.public_url,"mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"settings":app.settings.borrow().clone(),"backup_passphrase":app.backup_passphrase}),
+        json!({"public_url":app.issuer(),"mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"settings":app.settings.borrow().clone(),"backup_passphrase":app.backup_passphrase}),
     ))
 }
 pub async fn setup(
@@ -247,7 +255,7 @@ pub async fn login(
     );
     drop(m);
     drop(guard);
-    let secure = if app.public_url.starts_with("https:")
+    let secure = if app.issuer().starts_with("https:")
         || headers
             .get(header::ORIGIN)
             .and_then(|v| v.to_str().ok())

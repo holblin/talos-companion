@@ -266,7 +266,8 @@ pub async fn download(
     authorize(&app, &headers).await?;
     let contents = format!(
         "Talos Companion backup recovery passphrase\n\nServer: {}\nBackup passphrase: {}\n\nUse this passphrase to restore .tcb recovery files created by this installation.\nKeep this file and the private key outside the server. It is not an account password or setup token.\n",
-        app.public_url, app.backup_passphrase
+        app.issuer(),
+        app.backup_passphrase
     );
     let encrypted =
         encrypt_copy(&input.recipients, contents.as_bytes()).map_err(|e| bad(&e.to_string()))?;

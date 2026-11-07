@@ -156,6 +156,7 @@ pub struct Session {
     pub expires: u64,
 }
 pub struct Code {
+    pub issuer: String,
     pub user_id: String,
     pub redirect_uri: String,
     pub nonce: Option<String>,
@@ -178,6 +179,7 @@ pub struct App {
     pub settings: tokio::sync::watch::Sender<crate::settings::Settings>,
     pub data: PathBuf,
     pub public_url: String,
+    pub issuer: tokio::sync::watch::Sender<String>,
     pub setup_token: String,
     pub backup_passphrase: String,
     pub mounted: Option<PathBuf>,
@@ -257,7 +259,11 @@ impl App {
             backup_lock: Arc::new(Mutex::new(())),
             settings: tokio::sync::watch::channel(crate::settings::Settings::load(&data)?).0,
             data,
-            public_url,
+            issuer: tokio::sync::watch::channel(public_url.clone()).0,
+            public_url: std::env::var("PUBLIC_URL")
+                .unwrap_or(public_url)
+                .trim_end_matches('/')
+                .to_owned(),
             setup_token,
             backup_passphrase,
             mounted: std::env::var("MOUNTED_BACKUP_DIR")
@@ -269,6 +275,9 @@ impl App {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
         })
+    }
+    pub fn issuer(&self) -> String {
+        self.issuer.borrow().clone()
     }
     pub fn persist(&self, store: &Store) -> anyhow::Result<()> {
         // Persist first, then publish the new state in memory. Tempfile gives atomic replacement on Windows and Unix.

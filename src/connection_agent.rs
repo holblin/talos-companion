@@ -326,10 +326,10 @@ pub fn authorization_url(line: &str) -> Option<String> {
 }
 
 #[derive(Clone)]
-struct Proxy {
-    dynamic: bool,
-    origin: url::Url,
-    client: reqwest::Client,
+pub(crate) struct Proxy {
+    pub dynamic: bool,
+    pub origin: url::Url,
+    pub client: reqwest::Client,
 }
 fn hop_header(name: &str) -> bool {
     matches!(
@@ -361,7 +361,7 @@ fn strip_hop_headers(headers: &mut hyper::HeaderMap) {
         headers.remove(name);
     }
 }
-async fn forward(
+pub(crate) async fn forward(
     axum::extract::State(proxy): axum::extract::State<Proxy>,
     request: axum::extract::Request,
 ) -> std::result::Result<axum::response::Response, hyper::StatusCode> {
@@ -416,6 +416,16 @@ async fn heartbeat(agent: std::sync::Arc<Agent>) -> anyhow::Result<()> {
         )?;
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
+}
+
+fn cloudflare_configured(state: &Path) -> bool {
+    ["cloudflare-active.json", "active.json"]
+        .iter()
+        .any(|name| {
+            read_json::<Integration>(&state.join(name))
+                .is_ok_and(|i| i.profile == Profile::Cloudflare)
+        })
+        || state.join("cloudflare.json").is_file()
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -491,11 +501,7 @@ pub async fn run() -> anyhow::Result<()> {
     // Heartbeat runs during browser authorization as well as while idle.
     let mut heartbeat = tokio::spawn(heartbeat(agent.clone()));
     let mut tunnel: Option<Child> = None;
-    let active: Option<Integration> = read_json(&agent.state.join("active.json")).ok();
-    if active
-        .as_ref()
-        .is_some_and(|i| i.profile == Profile::Cloudflare)
-    {
+    if cloudflare_configured(&agent.state) {
         tunnel = Some(agent.spawn_cloudflare(&agent.state.join("cloudflare.json"))?);
     }
     let mut last = read_json::<ConnectionStatus>(&control.join("status.json"))
@@ -550,6 +556,7 @@ pub async fn run() -> anyhow::Result<()> {
             };
             match result {
                 Ok(integration) => {
+                    write_json(&provider_path(&integration.profile), &integration)?;
                     write_json(&agent.state.join("active.json"), &integration)?;
                     agent.status(&request,"connected","Provider routes configured. Run live checks before applying Omni settings. Existing provider routes remain until removed in that provider.",None,Some(integration))?;
                 }
@@ -570,6 +577,23 @@ pub async fn run() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cloudflare_restart_is_independent_of_the_last_authorized_provider() {
+        let state = tempfile::tempdir().unwrap();
+        let tailscale = Integration {
+            profile: Profile::Tailscale,
+            ..Default::default()
+        };
+        write_json(&state.path().join("active.json"), &tailscale).unwrap();
+        assert!(!cloudflare_configured(state.path()));
+        // Older installations may have only the tunnel config plus the last Tailscale record.
+        write_json(
+            &state.path().join("cloudflare.json"),
+            &json!({"tunnel":"existing"}),
+        )
+        .unwrap();
+        assert!(cloudflare_configured(state.path()));
+    }
     #[tokio::test]
     async fn relay_preserves_signed_host_and_streams_before_the_upstream_finishes() {
         use tokio::io::AsyncWriteExt;

@@ -89,7 +89,7 @@ file selection, and recovery tables. Responsive layouts use S2's build-time
 and semantic content selectors. The macro plugin runs before React in Vite and
 emits one shared CSS bundle.
 
-TanStack Router provides `/`, `/backups`, `/identity`, `/accounts`, and `/settings`,
+TanStack Router provides `/`, `/backups`, `/access`, `/omni-configuration`, `/accounts`, and `/settings` (with `/identity` retained as an alias),
 including browser history and direct links. Spectrum's Provider delegates app
 links to the router. Rust explicitly serves the app with HTTP 200 for these
 frontend routes while keeping unknown paths at HTTP 404.
@@ -143,7 +143,7 @@ Local and mounted retention runs after a successful write. Drive retention runs 
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PUBLIC_URL` | `http://localhost:8080` | Exact browser origin and OIDC issuer; use HTTPS in deployment. |
+| `PUBLIC_URL` | `http://localhost:8080` | Initial browser origin and issuer. The in-app access wizard verifies and activates the HTTPS issuer without changing Docker settings. |
 | `SETUP_TOKEN` | generated on fresh installation | Optional override protecting setup and restore. Minimum 24 characters; otherwise persisted privately in `/data/setup-token`. |
 | `BACKUP_PASSPHRASE` | generated on fresh installation | Optional override encrypting new backups. Minimum 16 characters; otherwise persisted privately in `/data/backup-passphrase`. Save a separate recovery copy. |
 | `DATA_DIR` | `data` (`/data` in Docker) | State, S3 receiver files, and recovery files. |
@@ -168,4 +168,4 @@ Retention runs on backup creation, including scheduled backups. New archives inc
 
 Restore is permitted only on an uninitialized instance. The archive is decrypted and validated incrementally in staging before replacement. Absolute paths, traversal, links, special files, duplicate paths, unsupported versions, malformed identity state, oversized metadata fields, and archives with over one million entries are rejected. Archive byte size is not limited. Sessions and pending authorization codes live only in memory and are never backed up. New `PUBLIC_URL`, setup token, and backup passphrase values come from the replacement container environment.
 
-Keep `/data` private: active credentials and signing keys are stored there; encrypted export protects the recovery file, not the live data directory. Only trusted administrators should have access to backup/identity APIs. TLS belongs at your existing reverse proxy. The app has no public registration or email verification service: an administrator adding an account asserts ownership of its email address. Omni roles and ACLs remain managed in Omni. Password changes and removals revoke companion sessions; already issued tokens remain valid until expiry (five minutes), and Omni may retain its own sessions.
+Keep `/data` private: active credentials and signing keys are stored there; encrypted export protects the recovery file, not the live data directory. Only trusted administrators should have access to backup/identity APIs. Configure local HTTPS, Tailscale or Cloudflare in **Companion access**, then select a verified method in **Omni configuration**. An existing reverse proxy is also supported. The app has no public registration or email verification service: an administrator adding an account asserts ownership of its email address. Omni roles and ACLs remain managed in Omni. Password changes and removals revoke companion sessions; already issued tokens remain valid until expiry (five minutes), and Omni may retain its own sessions.

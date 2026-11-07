@@ -37,7 +37,16 @@ import { useTask } from "./useTask";
 import "./style.css";
 import { api, ApiError } from "./api";
 const SetupWizard = lazy(() => import("./SetupWizard"));
-const OmniSetup = lazy(() => import("./OmniSetup"));
+const OmniSetup = lazy(() =>
+  import("./AccessPages").then((module) => ({
+    default: module.OmniConfiguration,
+  })),
+);
+const CompanionAccess = lazy(() =>
+  import("./AccessPages").then((module) => ({
+    default: module.CompanionAccess,
+  })),
+);
 
 type User = { id: string; email: string; name: string; admin: boolean };
 type Backup = { name: string; bytes: number };
@@ -51,6 +60,7 @@ type Overview = {
   client_id: string;
   client_secret: string;
   redirect_uri: string;
+  s3_endpoint: string;
   s3_access_key: string;
   s3_secret_key: string;
   bucket: string;
@@ -62,7 +72,8 @@ type Overview = {
 const views: View[] = [
   "Overview",
   "Backups",
-  "Identity",
+  "Companion access",
+  "Omni configuration",
   "Accounts",
   "Settings",
 ];
@@ -154,8 +165,11 @@ export default function App() {
     select: (state) => state.location.pathname,
   });
   const view: View =
-    (Object.entries(destinations).find(([, path]) => path === pathname)?.[0] as
-      View | undefined) ?? "Overview";
+    (pathname === "/identity"
+      ? "Omni configuration"
+      : (Object.entries(destinations).find(
+          ([, path]) => path === pathname,
+        )?.[0] as View | undefined)) ?? "Overview";
   function setView(next: View) {
     void navigate({ to: destinations[next] });
   }
@@ -497,7 +511,8 @@ export default function App() {
   const titles: Record<View, string> = {
     Overview: "Everything in its place.",
     Backups: "A way back, always.",
-    Identity: "One identity. Your Omni.",
+    "Companion access": "Your companion. Within reach.",
+    "Omni configuration": "One identity. Your Omni.",
     Accounts: "The people you trust.",
     Settings: "Make yourself at home.",
   };
@@ -703,7 +718,7 @@ export default function App() {
                     </div>
                     <Button
                       onPress={() => {
-                        setView("Identity");
+                        setView("Omni configuration");
                       }}
                       type="button"
                       variant="secondary"
@@ -871,7 +886,19 @@ export default function App() {
                 </Card>
               </>
             )}
-            {user.admin && view === "Identity" && overview && (
+            {user.admin && view === "Companion access" && (
+              <Suspense
+                fallback={
+                  <ProgressCircle
+                    aria-label="Loading Companion access"
+                    isIndeterminate
+                  />
+                }
+              >
+                <CompanionAccess />
+              </Suspense>
+            )}
+            {user.admin && view === "Omni configuration" && overview && (
               <>
                 <Suspense
                   fallback={
@@ -881,85 +908,103 @@ export default function App() {
                     />
                   }
                 >
-                  <OmniSetup />
+                  <OmniSetup>
+                    <details className={classes("card")}>
+                      <summary>
+                        Advanced settings: identity and backup credentials
+                      </summary>
+                      <div className={classes("two-cols")}>
+                        <Card
+                          eyebrow="OPENID CONNECT"
+                          title="Give Omni a familiar face"
+                        >
+                          <p>
+                            Your companion is a dedicated identity provider for
+                            one Omni instance. Add Omni’s exact callback URL,
+                            then configure Omni with these values.
+                          </p>
+                          <dl>
+                            <dt>Issuer URL</dt>
+                            <dd>
+                              <code>{overview.issuer}</code>
+                            </dd>
+                            <dt>Client ID</dt>
+                            <dd>
+                              <code>{overview.client_id}</code>
+                            </dd>
+                          </dl>
+                          <Secret
+                            label="Client secret"
+                            value={overview.client_secret}
+                          />
+                          <Form
+                            isDisabled={busy}
+                            onSubmit={(e) => {
+                              const data = fields(e);
+                              void work(async () => {
+                                await api("/api/oidc", data);
+                                await refresh();
+                                setNotice("Omni callback URL saved.");
+                              });
+                            }}
+                          >
+                            <Input
+                              label="Omni callback URL"
+                              name="redirect_uri"
+                              type="url"
+                              placeholder="https://omni.example.com/oidc/consume"
+                              defaultValue={overview.redirect_uri}
+                            />
+                            <Button type="submit" variant="accent">
+                              Save callback URL
+                            </Button>
+                          </Form>
+                        </Card>
+                        <Card
+                          eyebrow="S3-COMPATIBLE RECEIVER"
+                          title="A home for Omni backups"
+                        >
+                          <p>
+                            Use the verified backup endpoint from the guided
+                            setup. The bucket is created automatically after
+                            account setup.
+                          </p>
+                          <dl>
+                            <dt>Bucket</dt>
+                            <dd>
+                              <code>omni</code>
+                            </dd>
+                            <dt>Region</dt>
+                            <dd>
+                              <code>us-east-1</code>
+                            </dd>
+                            <dt>Endpoint</dt>
+                            <dd>
+                              <code>
+                                {overview.s3_endpoint ||
+                                  "Complete the guided connection setup above."}
+                              </code>
+                            </dd>
+                          </dl>
+                          <Secret
+                            label="Access key"
+                            value={overview.s3_access_key}
+                          />
+                          <Secret
+                            label="Secret key"
+                            value={overview.s3_secret_key}
+                          />
+                          <p className={classes("hint")}>
+                            Configure Omni with S3 backups enabled. See
+                            docs/omni.md for the resource template and full
+                            setup instructions. Omni access roles are managed in
+                            Omni.
+                          </p>
+                        </Card>
+                      </div>
+                    </details>
+                  </OmniSetup>
                 </Suspense>
-                <div className={classes("two-cols")}>
-                  <Card
-                    eyebrow="OPENID CONNECT"
-                    title="Give Omni a familiar face"
-                  >
-                    <p>
-                      Your companion is a dedicated identity provider for one
-                      Omni instance. Add Omni’s exact callback URL, then
-                      configure Omni with these values.
-                    </p>
-                    <dl>
-                      <dt>Issuer URL</dt>
-                      <dd>
-                        <code>{overview.issuer}</code>
-                      </dd>
-                      <dt>Client ID</dt>
-                      <dd>
-                        <code>{overview.client_id}</code>
-                      </dd>
-                    </dl>
-                    <Secret
-                      label="Client secret"
-                      value={overview.client_secret}
-                    />
-                    <Form
-                      isDisabled={busy}
-                      onSubmit={(e) => {
-                        const data = fields(e);
-                        void work(async () => {
-                          await api("/api/oidc", data);
-                          await refresh();
-                          setNotice("Omni callback URL saved.");
-                        });
-                      }}
-                    >
-                      <Input
-                        label="Omni callback URL"
-                        name="redirect_uri"
-                        type="url"
-                        placeholder="https://omni.example.com/oidc/consume"
-                        defaultValue={overview.redirect_uri}
-                      />
-                      <Button type="submit" variant="accent">
-                        Save callback URL
-                      </Button>
-                    </Form>
-                  </Card>
-                  <Card
-                    eyebrow="S3-COMPATIBLE RECEIVER"
-                    title="A home for Omni backups"
-                  >
-                    <p>
-                      Point Omni’s S3 backup configuration to this server on
-                      port 9000. The bucket is created automatically after
-                      account setup.
-                    </p>
-                    <dl>
-                      <dt>Bucket</dt>
-                      <dd>
-                        <code>omni</code>
-                      </dd>
-                      <dt>Region</dt>
-                      <dd>
-                        <code>us-east-1</code>
-                      </dd>
-                      <dt>Endpoint</dt>
-                      <dd>Your server’s reachable address, port 9000</dd>
-                    </dl>
-                    <Secret label="Access key" value={overview.s3_access_key} />
-                    <Secret label="Secret key" value={overview.s3_secret_key} />
-                    <p className={classes("hint")}>
-                      Configure Omni with S3 backups enabled. See docs/omni.md
-                      for the resource template and full setup instructions.
-                      Omni access roles are managed in Omni.
-                    </p>
-                  </Card>
-                </div>
               </>
             )}
             {user.admin && view === "Accounts" && (

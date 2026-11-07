@@ -53,6 +53,9 @@ test('guided connections require admin/CSRF, bind jobs, and check receiver ident
     assert.equal((await request(port,'/api/login',{origin:'https://untrusted.example.test',body:{email:'connections@example.test',password:'initial connections password'}})).status,400);
     const savedPath=join(data,'connections','settings.json');const saved=JSON.parse(await readFile(savedPath,'utf8'));
     saved.integration.companion_url='https://verified-test-only.example.test';await writeFile(savedPath,JSON.stringify(saved));
+    const legacyAccess = await (await request(port,'/api/companion/access',{cookie})).json();
+    assert.equal(legacyAccess.accesses.length,1,'existing network settings are offered in the access catalogue');
+    assert.equal(legacyAccess.accesses[0].verified_at,0,'legacy addresses need verification before Omni selection');
     const secureLogin=await request(port,'/api/login',{origin:saved.integration.companion_url,body:{email:'connections@example.test',password:'initial connections password'}});assert.equal(secureLogin.status,200);assert.match(secureLogin.headers.get('set-cookie'),/; Secure/);
     const wrong=await(await request(port,'/api/omni/check',{cookie,body:{...integration,companion_url:fakeOrigin,s3_endpoint:fakeOrigin}})).json();
     assert.equal(wrong.checks.find(x=>x.service==='Companion').ok,false);assert.equal(wrong.checks.find(x=>x.service==='S3').ok,false);assert.equal(credentialRequests,0,'no signed S3 requests are sent to an unverified destination');

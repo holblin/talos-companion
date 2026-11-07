@@ -79,7 +79,9 @@ beforeEach(() => {
       else if (path === "/api/setup" || path === "/api/restore") {
         initialized = true;
         value = {};
-      } else if (path === "/api/settings") value = {};
+      } else if (path === "/api/companion/access")
+        value = { accesses: [], active_issuer: overview.issuer };
+      else if (path === "/api/settings") value = {};
       else {
         status = 404;
         value = { error: `Unexpected test request: ${path}` };
@@ -350,6 +352,36 @@ describe("Spectrum frontend workflows", () => {
       "test recovery passphrase",
     );
     expect(payload.has("account")).toBe(false);
+  });
+
+  it("offers separate access and Omni pages and keeps Omni gated until access is configured", async () => {
+    initialized = true;
+    authenticated = true;
+    const events = userEvent.setup();
+    mount();
+    const accessLink = await screen.findByRole("link", {
+      name: "Companion access",
+    });
+    expect(accessLink.getAttribute("href")).toBe("/access");
+    expect(
+      screen
+        .getByRole("link", { name: "Omni configuration" })
+        .getAttribute("href"),
+    ).toBe("/omni-configuration");
+    expect(screen.queryByRole("link", { name: "Identity" })).toBeNull();
+    await events.click(accessLink);
+    await screen.findByRole("heading", { name: "Companion access" });
+    await events.click(
+      within(screen.getByRole("complementary")).getByRole("link", {
+        name: "Omni configuration",
+      }),
+    );
+    await screen.findByRole("heading", {
+      name: "Configure Companion access first",
+    });
+    expect(
+      screen.queryByText("Advanced settings: identity and backup credentials"),
+    ).toBeNull();
   });
 
   it("offers a retry when the server is unreachable", async () => {

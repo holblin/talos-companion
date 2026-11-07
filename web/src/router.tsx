@@ -32,12 +32,13 @@ function Root() {
 }
 
 const rootRoute = createRootRoute({ component: Root });
-const routes = Object.values(destinations).map((path) =>
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path,
-    component: App,
-  }),
+const routes = [...Object.values(destinations), "/identity" as const].map(
+  (path) =>
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path,
+      component: App,
+    }),
 );
 
 export function createAppRouter(history?: RouterHistory) {
