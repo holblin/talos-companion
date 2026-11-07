@@ -13,7 +13,7 @@ CF_ZONE_ID=
 ACME_EMAIL=
 EULA_NAME=
 EULA_EMAIL=
-IMAGE=holblin/talos-companion:0.2.2
+IMAGE=holblin/talos-companion:0.3.0
 while (($#)); do
   case "$1" in
     --profile) PROFILE=$2; shift 2;;

@@ -1,5 +1,19 @@
+import FilePicker from "./FilePicker";
+import { useTask } from "./useTask";
+import { classes } from "./layout";
+import Field from "./Field";
+import {
+  RadioGroup,
+  Radio,
+  Form,
+  Checkbox,
+  Picker,
+  PickerItem,
+  Button,
+} from "@react-spectrum/s2";
+import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { useEffect, useRef, useState } from "react";
-import type { InputHTMLAttributes } from "react";
+
 import { api } from "./api";
 import RecoveryPassphrase from "./RecoveryPassphrase";
 
@@ -13,17 +27,6 @@ type Deployment = {
   mounted: string | null;
   settings: Settings;
 };
-function Field({
-  label,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
-  return (
-    <label className="field">
-      <span>{label}</span>
-      <input required {...props} />
-    </label>
-  );
-}
 export default function SetupWizard({
   onComplete,
 }: {
@@ -41,8 +44,7 @@ export default function SetupWizard({
   const [settings, setSettings] = useState<Settings | null>(null);
   const [savedPassphrase, setSavedPassphrase] = useState(false);
   const [recoveryConfirmation, setRecoveryConfirmation] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const { busy, error, setError, work } = useTask();
   const heading = useRef<HTMLHeadingElement>(null);
   const labels =
     mode === "create"
@@ -57,9 +59,7 @@ export default function SetupWizard({
     setAccount({ ...account, [name]: value });
   };
   async function next() {
-    setError("");
-    setBusy(true);
-    try {
+    await work(async () => {
       if (step === 1) {
         const result = await api<Deployment>("/api/setup/check", {}, "POST", {
           "x-setup-token": token,
@@ -129,15 +129,7 @@ export default function SetupWizard({
         setRecoveryConfirmation("");
       }
       setStep(step + 1);
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : "Setup could not continue. Please try again.",
-      );
-    } finally {
-      setBusy(false);
-    }
+    });
   }
   const accountFields = (
     <>
@@ -147,8 +139,8 @@ export default function SetupWizard({
         autoComplete="name"
         maxLength={100}
         value={account.name}
-        onChange={(e) => {
-          setAccountField("name", e.target.value);
+        onChange={(value) => {
+          setAccountField("name", value);
         }}
       />
       <Field
@@ -158,8 +150,8 @@ export default function SetupWizard({
         autoComplete="username"
         maxLength={254}
         value={account.email}
-        onChange={(e) => {
-          setAccountField("email", e.target.value);
+        onChange={(value) => {
+          setAccountField("email", value);
         }}
       />
       <Field
@@ -170,8 +162,8 @@ export default function SetupWizard({
         minLength={12}
         maxLength={256}
         value={account.password}
-        onChange={(e) => {
-          setAccountField("password", e.target.value);
+        onChange={(value) => {
+          setAccountField("password", value);
         }}
       />
       <Field
@@ -180,25 +172,25 @@ export default function SetupWizard({
         type="password"
         autoComplete="new-password"
         value={confirmation}
-        onChange={(e) => {
-          setConfirmation(e.target.value);
+        onChange={(value) => {
+          setConfirmation(value);
         }}
       />
     </>
   );
   return (
-    <div className="wizard-page">
-      <main className="wizard">
-        <div className="brand">
-          <span className="logo" aria-hidden="true">
+    <div className={classes("wizard-page")}>
+      <main className={classes("wizard")}>
+        <div className={classes("brand")}>
+          <span className={classes("logo")} aria-hidden="true">
             T<span>+</span>
           </span>{" "}
           talos companion
         </div>
-        <p className="eyebrow">
+        <p className={classes("eyebrow")}>
           FIRST-TIME SETUP · STEP {step + 1} OF {labels.length}
         </p>
-        <ol className="wizard-progress" aria-label="Setup progress">
+        <ol className={classes("wizard-progress")} aria-label="Setup progress">
           {labels.map((label, i) => (
             <li
               key={label}
@@ -226,12 +218,13 @@ export default function SetupWizard({
         </h1>
         <div aria-live="polite">
           {error && (
-            <div className="message error" role="alert">
+            <div className={classes("message error")} role="alert">
               {error}
             </div>
           )}
         </div>
-        <form
+        <Form
+          isDisabled={busy}
           onSubmit={(e) => {
             e.preventDefault();
             void next();
@@ -245,38 +238,23 @@ export default function SetupWizard({
                   recovery files together on your own server. We’ll guide you
                   through the essentials.
                 </p>
-                <div className="wizard-choices">
-                  <label>
-                    <input
-                      type="radio"
-                      name="mode"
-                      checked={mode === "create"}
-                      onChange={() => {
-                        setMode("create");
-                      }}
-                    />
-                    <strong>Start a new installation</strong>
-                    <span>
-                      Create an administrator and choose your backup routine.
-                    </span>
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      name="mode"
-                      checked={mode === "restore"}
-                      onChange={() => {
-                        setMode("restore");
-                      }}
-                    />
-                    <strong>Restore an existing companion</strong>
-                    <span>
-                      Recover accounts, identity keys, credentials, Omni
-                      snapshots, and settings from a .tcb file.
-                    </span>
-                  </label>
-                </div>
-                <div className="wizard-note">
+                <RadioGroup
+                  label="Installation"
+                  value={mode}
+                  onChange={(value) => {
+                    if (value === "create" || value === "restore")
+                      setMode(value);
+                  }}
+                >
+                  <Radio value="create">Start a new installation</Radio>
+                  <Radio value="restore">Restore an existing companion</Radio>
+                </RadioGroup>
+                <p className={classes("hint")}>
+                  {mode === "create"
+                    ? "Create an administrator and choose your backup routine."
+                    : "Recover accounts, identity keys, credentials, Omni snapshots, and settings from a .tcb file."}
+                </p>
+                <div className={classes("wizard-note")}>
                   <strong>Have these ready</strong>
                   <ul>
                     <li>
@@ -294,7 +272,7 @@ export default function SetupWizard({
                     </li>
                   </ul>
                 </div>
-                <p className="hint">
+                <p className={classes("hint")}>
                   Omni and Google Drive connections can be completed after
                   setup. You don’t need either to get started.
                 </p>
@@ -312,17 +290,17 @@ export default function SetupWizard({
                   type="password"
                   autoComplete="off"
                   value={token}
-                  onChange={(e) => {
-                    setToken(e.target.value);
+                  onChange={(value) => {
+                    setToken(value);
                   }}
                 />
-                <p className="hint">
+                <p className={classes("hint")}>
                   Find SETUP_TOKEN in your Unraid container settings or Docker
                   .env file. If no override was supplied, find the generated
                   token in the container's first-start logs or its private
                   /data/setup-token file.
                 </p>
-                <div className="wizard-note">
+                <div className={classes("wizard-note")}>
                   <strong>Before continuing</strong>
                   <p>
                     Use the address you intend to keep for this companion. Omni
@@ -342,7 +320,7 @@ export default function SetupWizard({
                       credentials, and backups. Public registration is disabled.
                     </p>
                     {accountFields}
-                    <p className="hint">
+                    <p className={classes("hint")}>
                       Choose an email you control. No verification email will be
                       sent.
                     </p>
@@ -354,19 +332,15 @@ export default function SetupWizard({
                       encrypted file is checked before accounts or data are
                       replaced.
                     </p>
-                    <label className="field">
-                      <span>Encrypted recovery file (.tcb)</span>
-                      <input
-                        type="file"
-                        accept=".tcb"
-                        onChange={(e) => {
-                          setFile(e.target.files?.[0] ?? null);
-                        }}
-                        required={!file}
-                      />
-                    </label>
+                    <FilePicker
+                      label="Choose encrypted recovery file (.tcb)"
+                      acceptedFileTypes={[".tcb"]}
+                      file={file}
+                      onChange={setFile}
+                      isDisabled={busy}
+                    />
                     {file && (
-                      <p className="hint">
+                      <p className={classes("hint")}>
                         Selected: {file.name} ·{" "}
                         {(file.size / 1024 / 1024).toFixed(2)} MiB
                       </p>
@@ -377,28 +351,27 @@ export default function SetupWizard({
                       type="password"
                       autoComplete="off"
                       value={passphrase}
-                      onChange={(e) => {
-                        setPassphrase(e.target.value);
+                      onChange={(value) => {
+                        setPassphrase(value);
                       }}
                     />
-                    <p className="hint">
+                    <p className={classes("hint")}>
                       Use the passphrase from when this backup was created. It
                       may differ from the passphrase configured on this
                       replacement server.
                     </p>
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={override}
-                        onChange={(e) => {
-                          setOverride(e.target.checked);
-                        }}
-                      />
+                    <Checkbox
+                      isSelected={override}
+                      onChange={(value) => {
+                        setOverride(value);
+                      }}
+                      styles={style({ width: "full", marginY: 12 })}
+                    >
                       Replace the first administrator’s login details
-                    </label>
+                    </Checkbox>
                     {override ? (
                       <>
-                        <p className="hint">
+                        <p className={classes("hint")}>
                           Useful if you’ve lost the original login. The
                           administrator’s identity ID and all other accounts are
                           preserved.
@@ -406,12 +379,12 @@ export default function SetupWizard({
                         {accountFields}
                       </>
                     ) : (
-                      <p className="hint">
+                      <p className={classes("hint")}>
                         You’ll sign in with an administrator account from the
                         backup.
                       </p>
                     )}
-                    <p className="hint">
+                    <p className={classes("hint")}>
                       Large restores can take several minutes. Keep this page
                       open. The server needs space for both the upload and its
                       extracted contents.
@@ -427,70 +400,67 @@ export default function SetupWizard({
                   a mounted destination. You can change all of these later in
                   Settings.
                 </p>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={settings.schedule.enabled}
-                    onChange={(e) => {
-                      setSettings({
-                        ...settings,
-                        schedule: {
-                          ...settings.schedule,
-                          enabled: e.target.checked,
-                        },
-                      });
-                    }}
-                  />
+                <Checkbox
+                  isSelected={settings.schedule.enabled}
+                  onChange={(value) => {
+                    setSettings({
+                      ...settings,
+                      schedule: {
+                        ...settings.schedule,
+                        enabled: value,
+                      },
+                    });
+                  }}
+                  styles={style({ width: "full", marginY: 12 })}
+                >
                   Enable scheduled backups
-                </label>
-                <label className="field">
-                  <span>Backup frequency</span>
-                  <select
-                    value={settings.schedule.interval_seconds}
-                    onChange={(e) => {
-                      setSettings({
-                        ...settings,
-                        schedule: {
-                          ...settings.schedule,
-                          interval_seconds: Number(e.target.value),
-                        },
-                      });
-                    }}
-                  >
-                    {![3600, 21600, 86400, 604800].includes(
-                      settings.schedule.interval_seconds,
-                    ) && (
-                      <option value={settings.schedule.interval_seconds}>
-                        Every {settings.schedule.interval_seconds} seconds
-                      </option>
-                    )}
-                    <option value={3600}>Every hour</option>
-                    <option value={21600}>Every 6 hours</option>
-                    <option value={86400}>Every day</option>
-                    <option value={604800}>Every week</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Scheduled destination</span>
-                  <select
-                    value={settings.schedule.destination}
-                    onChange={(e) => {
-                      setSettings({
-                        ...settings,
-                        schedule: {
-                          ...settings.schedule,
-                          destination: e.target.value,
-                        },
-                      });
-                    }}
-                  >
-                    <option value="local">Local storage</option>
-                    <option value="mounted" disabled={!deployment?.mounted}>
-                      Mounted NFS / SMB
-                    </option>
-                  </select>
-                </label>
-                <p className="hint">
+                </Checkbox>
+                <Picker
+                  label={<>Backup frequency</>}
+                  value={settings.schedule.interval_seconds}
+                  onChange={(value) => {
+                    setSettings({
+                      ...settings,
+                      schedule: {
+                        ...settings.schedule,
+                        interval_seconds: Number(value),
+                      },
+                    });
+                  }}
+                  styles={style({ width: "full", marginY: 12 })}
+                >
+                  {![3600, 21600, 86400, 604800].includes(
+                    settings.schedule.interval_seconds,
+                  ) && (
+                    <PickerItem id={settings.schedule.interval_seconds}>
+                      Every {settings.schedule.interval_seconds} seconds
+                    </PickerItem>
+                  )}
+                  <PickerItem id={3600}>Every hour</PickerItem>
+                  <PickerItem id={21600}>Every 6 hours</PickerItem>
+                  <PickerItem id={86400}>Every day</PickerItem>
+                  <PickerItem id={604800}>Every week</PickerItem>
+                </Picker>
+                <Picker
+                  label={<>Scheduled destination</>}
+                  value={settings.schedule.destination}
+                  onChange={(value) => {
+                    setSettings({
+                      ...settings,
+                      schedule: {
+                        ...settings.schedule,
+                        destination: String(value ?? "local"),
+                      },
+                    });
+                  }}
+                  styles={style({ width: "full", marginY: 12 })}
+                >
+                  <PickerItem id="local">Local storage</PickerItem>
+                  <PickerItem id="mounted" isDisabled={!deployment?.mounted}>
+                    Mounted NFS / SMB
+                  </PickerItem>
+                </Picker>
+                <p className={classes("hint")}>
                   Local backups are stored in /data/backups.{" "}
                   {deployment?.mounted
                     ? `Mounted destination: ${deployment.mounted}.`
@@ -504,12 +474,12 @@ export default function SetupWizard({
                   max={1000000}
                   step={1}
                   value={settings.retention.recovery_keep_last}
-                  onChange={(e) => {
+                  onChange={(value) => {
                     setSettings({
                       ...settings,
                       retention: {
                         ...settings.retention,
-                        recovery_keep_last: Number(e.target.value),
+                        recovery_keep_last: Number(value),
                       },
                     });
                   }}
@@ -521,17 +491,17 @@ export default function SetupWizard({
                   max={1000000}
                   step={1}
                   value={settings.retention.snapshot_keep_last}
-                  onChange={(e) => {
+                  onChange={(value) => {
                     setSettings({
                       ...settings,
                       retention: {
                         ...settings.retention,
-                        snapshot_keep_last: Number(e.target.value),
+                        snapshot_keep_last: Number(value),
                       },
                     });
                   }}
                 />
-                <p className="hint">
+                <p className={classes("hint")}>
                   0 keeps everything. Old files are pruned only after a
                   successful backup. Local storage alone won’t protect against
                   losing this server.
@@ -548,7 +518,7 @@ export default function SetupWizard({
                   . Save and verify the recovery details below before
                   continuing.
                 </p>
-                <dl className="wizard-review">
+                <dl className={classes("wizard-review")}>
                   <dt>Public address / OIDC issuer</dt>
                   <dd>{deployment?.public_url}</dd>
                   <dt>Installation</dt>
@@ -584,7 +554,7 @@ export default function SetupWizard({
                   )}
                 </dl>
                 {deployment?.public_url.startsWith("http:") && (
-                  <p className="hint">
+                  <p className={classes("hint")}>
                     The public address uses HTTP. For access outside your
                     trusted local network, configure HTTPS at your reverse proxy
                     and update PUBLIC_URL before connecting Omni.
@@ -601,7 +571,7 @@ export default function SetupWizard({
                     onConfirmation={setRecoveryConfirmation}
                   />
                 )}
-                <p className="hint">
+                <p className={classes("hint")}>
                   {mode === "restore"
                     ? "Recovered identities and integration credentials are preserved. Recheck external destinations on this replacement server after sign-in."
                     : settings?.schedule.enabled
@@ -618,7 +588,7 @@ export default function SetupWizard({
                     : "Your accounts, credentials, and backup configuration have been restored."}{" "}
                   Sign in to finish connecting your infrastructure.
                 </p>
-                <ol className="wizard-next">
+                <ol className={classes("wizard-next")}>
                   <li>
                     <strong>Connect Talos Omni</strong>
                     <span>
@@ -643,7 +613,7 @@ export default function SetupWizard({
                     </span>
                   </li>
                 </ol>
-                <p className="hint">
+                <p className={classes("hint")}>
                   {mode === "restore" && !override
                     ? "Use an administrator login from your backup."
                     : `Sign in as ${account.email}.`}{" "}
@@ -653,7 +623,7 @@ export default function SetupWizard({
               </>
             )}
             {busy && (
-              <p className="message" role="status">
+              <p className={classes("message")} role="status">
                 {reviewing
                   ? mode === "restore"
                     ? "Uploading, decrypting, and validating your recovery file. Keep this page open…"
@@ -661,24 +631,25 @@ export default function SetupWizard({
                   : "Checking your setup token…"}
               </p>
             )}
-            <div className="wizard-actions">
+            <div className={classes("wizard-actions")}>
               {step > 0 && step < last && (
-                <button
+                <Button
                   type="button"
-                  onClick={() => {
+                  onPress={() => {
                     setError("");
                     setStep(step - 1);
                   }}
+                  variant="secondary"
                 >
                   ← Back
-                </button>
+                </Button>
               )}
               {step === last ? (
-                <button type="button" className="primary" onClick={onComplete}>
+                <Button type="button" onPress={onComplete} variant="accent">
                   Continue to sign in →
-                </button>
+                </Button>
               ) : (
-                <button className="primary">
+                <Button type="submit" variant="accent">
                   {busy
                     ? "Please wait…"
                     : reviewing
@@ -686,11 +657,11 @@ export default function SetupWizard({
                         ? "Create companion"
                         : "Restore companion"
                       : "Continue →"}
-                </button>
+                </Button>
               )}
             </div>
           </fieldset>
-        </form>
+        </Form>
       </main>
     </div>
   );

@@ -25,6 +25,16 @@ use model::*;
 use serde_json::{Value, json};
 use tower_http::services::{ServeDir, ServeFile};
 
+// React Aria inserts two fixed styles for touch gestures and modal scrolling.
+// Hashes allow only those blocks, without permitting arbitrary inline styles.
+// web/tests/csp.test.tsx checks these against the pinned dependency source.
+const CONTENT_SECURITY_POLICY: &str = concat!(
+    "default-src 'self'; style-src 'self' ",
+    "'sha256-38RhXrc7EdReTKsOm23ZPOCUgniTUUcjky8QOOrQx6o=' ",
+    "'sha256-gYiS/BvZvRcK27JIXTuwhZ3hs2+VJ1X+2gUlE+farlg='; ",
+    "img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+);
+
 async fn overview(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     auth::admin(&app, &headers).await?;
     let guard = app.store.read().await;
@@ -41,12 +51,26 @@ async fn secure_headers(req: axum::extract::Request, next: Next) -> Response {
     headers.insert("x-content-type-options", "nosniff".parse().unwrap());
     headers.insert("x-frame-options", "DENY".parse().unwrap());
     headers.insert("referrer-policy", "no-referrer".parse().unwrap());
-    headers.insert("content-security-policy","default-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'".parse().unwrap());
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        CONTENT_SECURITY_POLICY.parse().unwrap(),
+    );
     response
 }
+fn frontend_routes<S: Clone + Send + Sync + 'static>(static_dir: &str) -> Router<S> {
+    let index = ServeFile::new(format!("{static_dir}/index.html"));
+    let routes = ["/backups", "/identity", "/accounts", "/settings"]
+        .into_iter()
+        .fold(Router::new(), |routes, path| {
+            routes.route_service(path, index.clone())
+        });
+    routes.fallback_service(ServeDir::new(static_dir).not_found_service(index))
+}
+
 fn router(app: App) -> Router {
     let static_dir = std::env::var("WEB_DIR").unwrap_or("web/dist".into());
     Router::new()
+        .merge(frontend_routes(&static_dir))
         .route("/healthz", get(|| async { Json(json!({"ok":true})) }))
         .route("/api/status", get(auth::status))
         .route("/api/setup", post(auth::setup))
@@ -97,10 +121,6 @@ fn router(app: App) -> Router {
         .route("/oauth/authorize", get(oidc::authorize))
         .route("/oauth/token", post(oidc::token))
         .route("/oauth/userinfo", get(oidc::userinfo))
-        .fallback_service(
-            ServeDir::new(&static_dir)
-                .not_found_service(ServeFile::new(format!("{static_dir}/index.html"))),
-        )
         .layer(middleware::from_fn(secure_headers))
         .with_state(app)
 }
@@ -156,6 +176,39 @@ fn healthcheck() -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use tower::ServiceExt;
+    #[tokio::test]
+    async fn frontend_deep_links_return_success_and_unknown_paths_remain_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "<title>Companion</title>").unwrap();
+        let routes = frontend_routes::<()>(dir.path().to_str().unwrap());
+        for path in ["/", "/backups", "/identity", "/accounts", "/settings"] {
+            let response = routes
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(path)
+                        .body(axum::body::Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), axum::http::StatusCode::OK, "{path}");
+            let body = axum::body::to_bytes(response.into_body(), 1024)
+                .await
+                .unwrap();
+            assert_eq!(&body[..], b"<title>Companion</title>");
+        }
+        let response = routes
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/unknown-file.js")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
     #[tokio::test]
     async fn setup_token_and_csrf_required() {
         let dir = tempfile::tempdir().unwrap();

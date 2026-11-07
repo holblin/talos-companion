@@ -30,7 +30,7 @@ run = ["cargo test --all-targets --locked", "cargo build --locked", "node --test
 
 [tasks."web:check"]
 dir = "web"
-run = ["npm run format:check", "npm run build"]
+run = ["npm run format:check", "npm run build", "npm test"]
 
 [tasks."web:fmt"]
 dir = "web"

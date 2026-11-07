@@ -1,4 +1,18 @@
-import { useEffect, useState } from "react";
+import FilePicker from "./FilePicker";
+import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "./query";
+import { useTask } from "./useTask";
+import { classes } from "./layout";
+import {
+  TextArea,
+  Picker,
+  PickerItem,
+  TextField,
+  Button,
+  Checkbox,
+} from "@react-spectrum/s2";
+import { style } from "@react-spectrum/s2/style" with { type: "macro" };
+import { useState } from "react";
 import { api } from "./api";
 
 type Profile = "lan" | "cloudflare" | "tailscale";
@@ -37,50 +51,36 @@ function download(name: string, content: string) {
   }, 0);
 }
 export default function OmniSetup() {
-  const [settings, setSettings] = useState<Integration>({
-    profile: "lan",
-    companion_url: `https://${location.hostname}:18443`,
-    omni_url: `https://${location.hostname}:19443`,
-    s3_endpoint: `https://${location.hostname}:19444`,
+  const integration = useQuery({
+    queryKey: ["omni"],
+    queryFn: () => api<Status>("/api/omni"),
   });
-  const [status, setStatus] = useState<Status | null>(null);
+  const status = integration.data ?? null;
+  const [draft, setSettings] = useState<Integration | null>(null);
+  const settings =
+    draft ??
+    (status?.integration.companion_url
+      ? status.integration
+      : {
+          profile: "lan",
+          companion_url: `https://${location.hostname}:18443`,
+          omni_url: `https://${location.hostname}:19443`,
+          s3_endpoint: `https://${location.hostname}:19444`,
+        });
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [source, setSource] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [accepted, setAccepted] = useState(false);
-  useEffect(() => {
-    void api<Status>("/api/omni")
-      .then((result) => {
-        setStatus(result);
-        if (result.integration.companion_url) setSettings(result.integration);
-      })
-      .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : "Could not load integration");
-      });
-  }, []);
+  const { busy, error, notice, setNotice, work } = useTask();
   function change(name: keyof Integration, value: string) {
-    setSettings((previous) => ({ ...previous, [name]: value }));
+    setSettings((previous) => ({ ...(previous ?? settings), [name]: value }));
     setPlan(null);
     setAccepted(false);
     setNotice("");
   }
-  async function work(action: () => Promise<void>) {
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      await action();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Operation failed");
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
-    <section className="card omni-setup">
-      <div className="eyebrow">OMNI SETUP & REPAIR</div>
+    <section className={classes("card omni-setup")}>
+      <div className={classes("eyebrow")}>OMNI SETUP & REPAIR</div>
       <h2>Connect a new or existing Omni</h2>
       <p>
         Choose how you reach your services. Import an existing configuration to
@@ -88,31 +88,29 @@ export default function OmniSetup() {
         separate overlay and preserve the original database, identity and
         encryption keys.
       </p>
-      <label className="field">
-        <span>Access profile</span>
-        <select
-          value={settings.profile}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (
-              value === "lan" ||
-              value === "cloudflare" ||
-              value === "tailscale"
-            )
-              change("profile", value);
-          }}
-        >
-          <option value="lan">LAN — generated private CA</option>
-          <option value="cloudflare">
-            Cloudflare — DNS-validated trusted certificates
-          </option>
-          <option value="tailscale">
-            Tailscale — private tailnet with trusted HTTPS
-          </option>
-        </select>
-      </label>
+      <Picker
+        label={<>Access profile</>}
+        value={settings.profile}
+        onChange={(value) => {
+          if (
+            value === "lan" ||
+            value === "cloudflare" ||
+            value === "tailscale"
+          )
+            change("profile", value);
+        }}
+        styles={style({ width: "full", marginY: 12 })}
+      >
+        <PickerItem id="lan">LAN — generated private CA</PickerItem>
+        <PickerItem id="cloudflare">
+          Cloudflare — DNS-validated trusted certificates
+        </PickerItem>
+        <PickerItem id="tailscale">
+          Tailscale — private tailnet with trusted HTTPS
+        </PickerItem>
+      </Picker>
       {settings.profile === "lan" && (
-        <p className="hint">
+        <p className={classes("hint")}>
           No domain or cloud account needed. The installer generates your LAN
           certificate authority. Install its public root certificate on each
           browser/client before switching to HTTPS. Keep the CA private key on
@@ -124,7 +122,7 @@ export default function OmniSetup() {
         </p>
       )}
       {settings.profile === "cloudflare" && (
-        <p className="hint">
+        <p className={classes("hint")}>
           Use a domain you control. The installer requests certificates using
           Cloudflare DNS validation and a narrowly scoped token entered on your
           server. DNS records remain unproxied; no ports are opened
@@ -133,7 +131,7 @@ export default function OmniSetup() {
         </p>
       )}
       {settings.profile === "tailscale" && (
-        <p className="hint">
+        <p className={classes("hint")}>
           Use your signed-in device’s .ts.net hostname. Enable HTTPS
           certificates in your tailnet. Every browser and Talos node needs a
           working route to the advertised services; Tailscale on your laptop
@@ -147,17 +145,17 @@ export default function OmniSetup() {
           ["s3_endpoint", "S3 receiver address reachable from Omni"],
         ] as const
       ).map(([name, label]) => (
-        <label className="field" key={name}>
-          <span>{label}</span>
-          <input
-            type="url"
-            value={settings[name]}
-            onChange={(e) => {
-              change(name, e.target.value);
-            }}
-            required
-          />
-        </label>
+        <TextField
+          key={name}
+          type="url"
+          label={<>{label}</>}
+          value={settings[name]}
+          onChange={(value) => {
+            change(name, value);
+          }}
+          isRequired
+          styles={style({ width: "full", marginY: 12 })}
+        ></TextField>
       ))}
       <details>
         <summary>Import / repair an existing instance</summary>
@@ -167,40 +165,36 @@ export default function OmniSetup() {
           only. Existing CLI flags or later config files can override these
           values.
         </p>
-        <label className="field">
-          <span>Existing Omni configuration (maximum 256 KiB)</span>
-          <input
-            type="file"
-            accept=".yaml,.yml,.json"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file)
-                void work(async () => {
-                  if (file.size > 262144)
-                    throw new Error("Configuration exceeds 256 KiB");
-                  setSource(await file.text());
-                  setPlan(null);
-                  setAccepted(false);
-                  setNotice(
-                    "Configuration imported for inspection. It has not been applied.",
-                  );
-                });
-            }}
-          />
-        </label>
-        <label className="field">
-          <span>Or paste configuration</span>
-          <textarea
-            value={source}
-            onChange={(e) => {
-              setSource(e.target.value);
-              setPlan(null);
-              setAccepted(false);
-            }}
-            rows={5}
-            spellCheck={false}
-          />
-        </label>
+        <FilePicker
+          label="Import Omni configuration (maximum 256 KiB)"
+          file={importFile}
+          acceptedFileTypes={[".yaml", ".yml", ".json"]}
+          isDisabled={busy}
+          onChange={(file) => {
+            if (file)
+              void work(async () => {
+                if (file.size > 262144)
+                  throw new Error("Configuration exceeds 256 KiB");
+                setSource(await file.text());
+                setImportFile(file);
+                setPlan(null);
+                setAccepted(false);
+                setNotice(
+                  "Configuration imported for inspection. It has not been applied.",
+                );
+              });
+          }}
+        />
+        <TextArea
+          label="Or paste configuration"
+          value={source}
+          onChange={(value) => {
+            setSource(value);
+            setPlan(null);
+            setAccepted(false);
+          }}
+          styles={style({ width: "full", marginY: 16 })}
+        />
       </details>
       <p>
         <a
@@ -218,9 +212,9 @@ export default function OmniSetup() {
           {status.active_issuer}.
         </p>
       )}
-      <button
-        disabled={busy}
-        onClick={() => {
+      <Button
+        isDisabled={busy}
+        onPress={() => {
           void work(async () => {
             const result = await api<{ message: string }>(
               "/api/omni/check",
@@ -229,13 +223,14 @@ export default function OmniSetup() {
             setNotice(result.message);
           });
         }}
+        type="button"
+        variant="secondary"
       >
         Check HTTPS reachability
-      </button>{" "}
-      <button
-        className="primary"
-        disabled={busy}
-        onClick={() => {
+      </Button>{" "}
+      <Button
+        isDisabled={busy}
+        onPress={() => {
           void work(async () => {
             setPlan(
               await api<Plan>("/api/omni/plan", {
@@ -246,11 +241,13 @@ export default function OmniSetup() {
             setAccepted(false);
           });
         }}
+        type="button"
+        variant="accent"
       >
         Check configuration & preview
-      </button>
+      </Button>
       {plan && (
-        <div className="recovery-box">
+        <div className={classes("recovery-box")}>
           <h3>
             {plan.changes.length
               ? `${String(plan.changes.length)} managed settings need adjustment`
@@ -273,43 +270,46 @@ export default function OmniSetup() {
             Callback: <code>{plan.callback}</code>
           </p>
           <p>{plan.note}</p>
-          <p className="hint">
+          <p className={classes("hint")}>
             Downloads contain credentials. Store them privately. TLS, storage,
             account UUID, initial administrator roles and EULA acceptance are
             not rewritten by this repair.
           </p>
-          <button
-            disabled={busy}
-            onClick={() => {
+          <Button
+            isDisabled={busy}
+            onPress={() => {
               download("companion-overlay.yaml", plan.overlay);
             }}
+            type="button"
+            variant="secondary"
           >
             Download Omni overlay
-          </button>{" "}
-          <button
-            disabled={busy}
-            onClick={() => {
+          </Button>{" "}
+          <Button
+            isDisabled={busy}
+            onPress={() => {
               download("companion-s3.yaml", plan.s3_resource);
             }}
+            type="button"
+            variant="secondary"
           >
             Download S3 resource
-          </button>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={accepted}
-              onChange={(e) => {
-                setAccepted(e.target.checked);
-              }}
-            />{" "}
+          </Button>
+          <Checkbox
+            isSelected={accepted}
+            onChange={(value) => {
+              setAccepted(value);
+            }}
+            styles={style({ width: "full", marginY: 12 })}
+          >
+            {" "}
             Switch Omni sign-in to this Companion, enable S3 backups, and
             register the shown callback. I have prepared HTTPS and a recovery
             copy.
-          </label>
-          <button
-            className="primary"
-            disabled={busy || !accepted || !plan.mounted}
-            onClick={() => {
+          </Checkbox>
+          <Button
+            isDisabled={busy || !accepted || !plan.mounted}
+            onPress={() => {
               void work(async () => {
                 await api("/api/omni/apply", {
                   integration: settings,
@@ -317,17 +317,19 @@ export default function OmniSetup() {
                   revision: plan.revision,
                 });
                 setPlan(null);
-                setStatus(await api<Status>("/api/omni"));
+                await queryClient.invalidateQueries({ queryKey: ["omni"] });
                 setNotice(
                   "Overlay saved. Restart Omni after activating it and apply the downloaded S3 resource. Restart Companion after HTTPS is ready.",
                 );
               });
             }}
+            type="button"
+            variant="accent"
           >
             Apply managed overlay & save migration
-          </button>
+          </Button>
           {!plan.mounted && (
-            <p className="hint">
+            <p className={classes("hint")}>
               Direct repair requires the dedicated /omni-managed mount. Use the
               home installer to add it. Download mode works without host access.
             </p>

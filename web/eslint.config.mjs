@@ -3,7 +3,12 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig({
-  files: ["src/**/*.{ts,tsx}", "vite.config.ts"],
+  files: [
+    "src/**/*.{ts,tsx}",
+    "tests/**/*.{ts,tsx}",
+    "vite.config.ts",
+    "vitest.config.ts",
+  ],
   extends: [js.configs.recommended, tseslint.configs.strictTypeChecked],
   linterOptions: {
     noInlineConfig: true,

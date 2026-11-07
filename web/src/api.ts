@@ -1,3 +1,13 @@
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export async function api<T>(
   path: string,
   body?: unknown,
@@ -23,7 +33,7 @@ export async function api<T>(
       typeof value.error === "string"
         ? value.error
         : `Request failed (${String(response.status)})`;
-    throw new Error(message);
+    throw new ApiError(message, response.status);
   }
   return value as T;
 }

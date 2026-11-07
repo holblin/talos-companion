@@ -16,6 +16,7 @@ WORKDIR /src
 COPY mise.toml mise.lock ./
 RUN mise trust && mise install && mise exec -- rustup target add x86_64-unknown-linux-musl
 COPY web/package.json web/package-lock.json ./web/
+COPY web/scripts ./web/scripts
 RUN mise exec -- npm ci --prefix web
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src

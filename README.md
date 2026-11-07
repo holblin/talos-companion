@@ -81,6 +81,34 @@ mise run docker:build
 
 CI uses mise for the same checks and verifies the built image has exactly one layer. It also checks the scratch container can serve the frontend and run its own health probe.
 
+## Frontend
+
+The interface uses React Spectrum S2 for accessible controls, forms, navigation,
+file selection, and recovery tables. Responsive layouts use S2's build-time
+`style()` macro in `web/src/layout.ts`; `style.css` contains document typography
+and semantic content selectors. The macro plugin runs before React in Vite and
+emits one shared CSS bundle.
+
+TanStack Router provides `/`, `/backups`, `/identity`, `/accounts`, and `/settings`,
+including browser history and direct links. Spectrum's Provider delegates app
+links to the router. Rust explicitly serves the app with HTTP 200 for these
+frontend routes while keeping unknown paths at HTTP 404.
+TanStack Query owns setup status, the session, administrator data, Omni settings,
+and mutations. Successful writes invalidate affected queries; logout removes
+cached administrator data. Setup and Omni configuration are loaded on demand.
+
+`mise run web:check` runs formatting, strict lint/type checks, the production
+build, and Vitest DOM integration tests with the real S2 controls. Tests exercise
+setup and passphrase confirmation, login, navigation, backup creation, settings
+serialization, and logout. They do not replace visual browser checks.
+
+`npm ci` applies narrow declaration-only compatibility fixes for React Aria's
+duplicate DOM properties under `exactOptionalPropertyTypes` and the macro
+plugin's unused bundler types. See `web/scripts/patch-dependency-types.mjs` when
+upgrading these dependencies. `skipLibCheck` remains disabled.
+The server CSP permits React Aria's two fixed runtime style blocks by hash;
+frontend tests verify those hashes against the installed dependency.
+
 ## Language safety checks
 
 Project-owned Rust code forbids `unsafe` in every target, including tests. Compiler warnings and Clippy's standard lint group are errors. This policy does not ban unsafe implementation details inside the Rust standard library or third-party crates.

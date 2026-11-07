@@ -1,3 +1,8 @@
+import { useTask } from "./useTask";
+import { classes } from "./layout";
+import type { TextFieldRef } from "@react-spectrum/s2";
+import { TextArea, TextField, Button, Checkbox } from "@react-spectrum/s2";
+import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { useRef, useState } from "react";
 import { api } from "./api";
 
@@ -30,12 +35,10 @@ export default function RecoveryPassphrase({
   onSaved: (saved: boolean) => void;
   onConfirmation: (value: string) => void;
 }) {
-  const input = useRef<HTMLInputElement>(null);
+  const input = useRef<TextFieldRef>(null);
   const [recipients, setRecipients] = useState("");
   const [githubUser, setGithubUser] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const { busy, error, notice, setError, setNotice, work } = useTask();
   async function copy() {
     input.current?.select();
     try {
@@ -56,10 +59,7 @@ export default function RecoveryPassphrase({
     }
   }
   async function protect() {
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
+    await work(async () => {
       const result = await api<{ file_name: string; encrypted_file: string }>(
         "/api/setup/recovery-key",
         { recipients },
@@ -70,19 +70,10 @@ export default function RecoveryPassphrase({
       setNotice(
         "Encrypted recovery note downloaded. Keep it outside this server and retain the matching private key.",
       );
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Could not encrypt the recovery note",
-      );
-    } finally {
-      setBusy(false);
-    }
+    });
   }
   async function importGithub() {
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
+    await work(async () => {
       const result = await api<{ recipients: string; omitted: number }>(
         "/api/setup/github-keys",
         { username: githubUser },
@@ -93,15 +84,11 @@ export default function RecoveryPassphrase({
       setNotice(
         `GitHub public keys loaded. Review the keys below and confirm you retain a matching private key.${result.omitted ? ` ${String(result.omitted)} unsupported or excess keys omitted.` : ""}`,
       );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not import public keys");
-    } finally {
-      setBusy(false);
-    }
+    });
   }
   return (
     <section
-      className="wizard-note recovery-passphrase"
+      className={classes("wizard-note recovery-passphrase")}
       aria-labelledby="recovery-title"
     >
       <h2 id="recovery-title">Save your backup passphrase</h2>
@@ -111,39 +98,37 @@ export default function RecoveryPassphrase({
         Losing the server and this passphrase means losing access to those
         backups.
       </p>
-      <p className="hint">
+      <p className={classes("hint")}>
         This is separate from your account password and setup token. On a
         replacement server, it protects future backups; older files still need
         their original passphrase.
       </p>
       {!saved && (
         <>
-          <label className="field">
-            <span>Backup passphrase — save this exact value</span>
-            <input
-              ref={input}
-              type="text"
-              readOnly
-              value={passphrase}
-              autoComplete="off"
-              spellCheck={false}
-              onFocus={(e) => {
-                e.currentTarget.select();
-              }}
-            />
-          </label>
-          <div className="wizard-actions">
-            <button
+          <TextField
+            label={<>Backup passphrase — save this exact value</>}
+            ref={input}
+            isReadOnly
+            value={passphrase}
+            autoComplete="off"
+            onFocus={(e) => {
+              e.currentTarget.select();
+            }}
+            styles={style({ width: "full", marginY: 12 })}
+          ></TextField>
+          <div className={classes("wizard-actions")}>
+            <Button
               type="button"
-              onClick={() => {
+              onPress={() => {
                 void copy();
               }}
+              variant="secondary"
             >
               Copy passphrase
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              onClick={() => {
+              onPress={() => {
                 saveFile(
                   "talos-companion-recovery.txt",
                   `Talos Companion recovery note\nServer: ${issuer}\nBackup passphrase: ${passphrase}\n\nKeep this note outside the server. Use the passphrase with .tcb recovery files created here.\n`,
@@ -152,9 +137,10 @@ export default function RecoveryPassphrase({
                   "Recovery note downloaded as plain text. Store it securely outside this server.",
                 );
               }}
+              variant="secondary"
             >
               Download recovery note
-            </button>
+            </Button>
           </div>
           <details>
             <summary>
@@ -167,59 +153,53 @@ export default function RecoveryPassphrase({
               GitHub.
             </p>
             <fieldset disabled={busy}>
-              <label className="field">
-                <span>GitHub username (optional)</span>
-                <input
-                  value={githubUser}
-                  onChange={(e) => {
-                    setGithubUser(e.target.value);
-                  }}
-                  autoComplete="off"
-                  maxLength={39}
-                />
-              </label>
-              <button
+              <TextField
+                label={<>GitHub username (optional)</>}
+                value={githubUser}
+                onChange={(value) => {
+                  setGithubUser(value);
+                }}
+                autoComplete="off"
+                maxLength={39}
+                styles={style({ width: "full", marginY: 12 })}
+              ></TextField>
+              <Button
                 type="button"
-                disabled={!githubUser.trim()}
-                onClick={() => {
+                isDisabled={!githubUser.trim()}
+                onPress={() => {
                   void importGithub();
                 }}
+                variant="secondary"
               >
                 Load GitHub public keys
-              </button>
-              <label className="field">
-                <span>
-                  Public keys — one age1, ssh-ed25519, or ssh-rsa key per line
-                </span>
-                <textarea
-                  rows={5}
-                  maxLength={32768}
-                  value={recipients}
-                  onChange={(e) => {
-                    setRecipients(e.target.value);
-                  }}
-                  spellCheck={false}
-                />
-              </label>
-              <button
+              </Button>
+              <TextArea
+                label="Public keys — one age1, ssh-ed25519, or ssh-rsa key per line"
+                maxLength={32768}
+                value={recipients}
+                onChange={setRecipients}
+                styles={style({ width: "full", marginY: 16 })}
+              />
+              <Button
                 type="button"
-                disabled={!recipients.trim()}
-                onClick={() => {
+                isDisabled={!recipients.trim()}
+                onPress={() => {
                   void protect();
                 }}
+                variant="secondary"
               >
                 {busy ? "Working…" : "Download encrypted recovery note (.age)"}
-              </button>
+              </Button>
             </fieldset>
-            <p className="hint">
+            <p className={classes("hint")}>
               Private keys stay on your computer. Hardware-backed SSH keys are
               not supported. Keep the matching private key long-term, even if
               you remove its public key from GitHub.
             </p>
-            <code className="block">
+            <code className={classes("block")}>
               age -d -i /path/to/private-key talos-companion-recovery.txt.age
             </code>
-            <p className="hint">
+            <p className={classes("hint")}>
               This recovers the passphrase note; use that passphrase to restore
               the .tcb backup. The encrypted note is an extra recovery copy, not
               a replacement for the backup itself.
@@ -228,44 +208,41 @@ export default function RecoveryPassphrase({
         </>
       )}
       <div aria-live="polite">
-        {notice && <p className="hint">{notice}</p>}
+        {notice && <p className={classes("hint")}>{notice}</p>}
         {error && (
-          <p className="message error" role="alert">
+          <p className={classes("message error")} role="alert">
             {error}
           </p>
         )}
       </div>
-      <label className="check">
-        <input
-          type="checkbox"
-          required
-          checked={saved}
-          onChange={(e) => {
-            onSaved(e.target.checked);
-            onConfirmation("");
-            setNotice("");
-            setError("");
-          }}
-        />
+      <Checkbox
+        isRequired
+        isSelected={saved}
+        onChange={(value) => {
+          onSaved(value);
+          onConfirmation("");
+          setNotice("");
+          setError("");
+        }}
+        styles={style({ width: "full", marginY: 12 })}
+      >
         I have saved this backup passphrase outside this server.
-      </label>
+      </Checkbox>
       {saved && (
         <>
-          <label className="field">
-            <span>Re-enter the saved backup passphrase</span>
-            <input
-              type="password"
-              required
-              value={confirmation}
-              onChange={(e) => {
-                onConfirmation(e.target.value);
-              }}
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={4096}
-            />
-          </label>
-          <p className="hint">
+          <TextField
+            type="password"
+            label={<>Re-enter the saved backup passphrase</>}
+            isRequired
+            value={confirmation}
+            onChange={(value) => {
+              onConfirmation(value);
+            }}
+            autoComplete="off"
+            maxLength={4096}
+            styles={style({ width: "full", marginY: 12 })}
+          ></TextField>
+          <p className={classes("hint")}>
             Paste it from the place where you saved it. To see the original
             again, uncheck the box above.
           </p>
