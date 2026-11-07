@@ -6,7 +6,7 @@ import {
   useRouter,
 } from "@tanstack/react-router";
 import type { RouterHistory } from "@tanstack/react-router";
-import { Provider } from "@react-spectrum/s2";
+import { Provider, ToastContainer } from "@react-spectrum/s2";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import App from "./App";
 import { destinations } from "./navigation";
@@ -26,6 +26,7 @@ function Root() {
       styles={style({ minHeight: "screen", font: "body" })}
     >
       <Outlet />
+      <ToastContainer placement="bottom" />
     </Provider>
   );
 }

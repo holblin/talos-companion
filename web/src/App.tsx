@@ -22,9 +22,10 @@ import {
   Checkbox,
   Picker,
   PickerItem,
+  ToastQueue,
 } from "@react-spectrum/s2";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { SubmitEvent, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
@@ -201,10 +202,15 @@ export default function App() {
   const backups = dashboard.data?.backups ?? [];
   const users = dashboard.data?.users ?? [];
   const vault = dashboard.data?.vault ?? [];
-  const { busy, error, notice, setNotice, work } = useTask();
+  const { busy, notice, setNotice, work } = useTask({ toastErrors: true });
   const loadError = status.error ?? session.error ?? dashboard.error;
   const [credentialFile, setCredentialFile] = useState<File | null>(null);
   const [recoveryExpires, setRecoveryExpires] = useState<number | null>(null);
+  const [recovering, setRecovering] = useState(false);
+  const signInHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    signInHeading.current?.focus();
+  }, [recovering]);
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["admin"] });
   }
@@ -220,9 +226,9 @@ export default function App() {
   }
   const messages = (
     <div aria-live="polite">
-      {(error || loadError) && (
+      {loadError && (
         <div className={classes("message error")} role="alert">
-          {error || loadError?.message}
+          {loadError.message}
         </div>
       )}
       {notice && <div className={classes("message")}>{notice}</div>}
@@ -238,7 +244,7 @@ export default function App() {
             isIndeterminate
           />
         )}
-        <p>{error || loadError?.message || "Connecting to your companion…"}</p>
+        <p>{loadError?.message || "Connecting to your companion…"}</p>
         {loadError && (
           <Button
             variant="secondary"
@@ -306,148 +312,181 @@ export default function App() {
         <main className={classes("welcome-form")}>
           <div className={classes("onboarding")}>
             <span className={classes("eyebrow")}>WELCOME BACK</span>
-            <h2>Sign in to your companion</h2>
+            <h2 ref={signInHeading} tabIndex={-1}>
+              {recovering
+                ? "Recover administrator access"
+                : "Sign in to your companion"}
+            </h2>
             <p className={classes("muted")}>
-              Use your companion account to continue.
+              {recovering
+                ? "Reset your administrator password using a recovery code."
+                : "Use your companion account to continue."}
             </p>
             {messages}
-            <fieldset disabled={busy}>
-              <Form
-                isDisabled={busy}
-                onSubmit={(e) => {
-                  const data = fields(e);
-                  void work(async () => {
-                    const u = await api<User>("/api/login", data);
-                    const next = new URLSearchParams(location.search).get(
-                      "next",
-                    );
-                    if (next?.startsWith("/oauth/authorize?"))
-                      location.assign(next);
-                    else setUser(u);
-                  });
-                }}
-              >
-                <Input
-                  label="Email address"
-                  name="email"
-                  type="email"
-                  autoComplete="username"
-                />
-                <Input
-                  label="Password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                />
-                <Button type="submit" variant="accent">
-                  {busy ? "Signing in…" : "Sign in →"}
-                </Button>
-              </Form>
-            </fieldset>
-            <details>
-              <summary>Forgot the administrator password?</summary>
-              <p className={classes("hint")}>
-                The server owner can recover access without losing accounts,
-                identity or backups. Request a code here, then read it in
-                Companion’s server logs. No command or restart is needed.
-              </p>
-              <Button
-                isDisabled={busy}
-                onPress={() => {
-                  void work(async () => {
-                    const result = await api<{ expires_at: number }>(
-                      "/api/password/recovery-code",
-                      {},
-                    );
-                    setRecoveryExpires(result.expires_at);
-                  });
-                }}
-                type="button"
-                variant="accent"
-              >
-                Print recovery code to server logs
-              </Button>
-              {recoveryExpires !== null && (
-                <div className={classes("message")} role="status">
-                  Look for “Password recovery code:” in Companion’s server logs.
-                  This code expires at{" "}
-                  {new Date(recoveryExpires * 1000).toLocaleString()}. Repeated
-                  requests keep the same active code; it is printed only once.
-                </div>
-              )}
-              <p className={classes("hint")}>
-                On Unraid, open Docker → talos-companion → Logs. For other
-                installations, use the service’s logs or terminal output. Find
-                the latest “Password recovery code:” entry. It is valid for 15
-                minutes and one successful reset, with at most five failed
-                verification attempts. Repeated requests do not replace an
-                active log code or extend its expiry, even after a restart.
-              </p>
-              <p className={classes("hint")}>
-                Your current password keeps working until you finish below. The
-                code cannot sign in to Companion or Omni. Anyone who can read
-                these logs can recover the administrator account. Keep logs
-                private and exclude recovery entries from shared log exports.
-              </p>
-              <fieldset disabled={busy}>
-                <Form
-                  isDisabled={busy}
-                  onSubmit={(e) => {
-                    const form = e.currentTarget;
-                    const data = fields(e);
-                    void work(async () => {
-                      if (data["password"] !== data["confirmation"])
-                        throw new Error(
-                          "New password confirmation does not match.",
+            {!recovering ? (
+              <>
+                <fieldset disabled={busy}>
+                  <Form
+                    isDisabled={busy}
+                    onSubmit={(e) => {
+                      const data = fields(e);
+                      void work(async () => {
+                        const u = await api<User>("/api/login", data);
+                        const next = new URLSearchParams(location.search).get(
+                          "next",
                         );
-                      await api("/api/password/recover", data);
-                      form.reset();
-                      setRecoveryExpires(null);
-                      setNotice(
-                        "Password updated. Your recovery code has been used. Sign in with your new password.",
-                      );
-                    });
+                        if (next?.startsWith("/oauth/authorize?"))
+                          location.assign(next);
+                        else setUser(u);
+                      });
+                    }}
+                  >
+                    <Input
+                      label="Email address"
+                      name="email"
+                      type="email"
+                      autoComplete="username"
+                    />
+                    <Input
+                      label="Password"
+                      name="password"
+                      type="password"
+                      autoComplete="current-password"
+                    />
+                    <Button type="submit" variant="accent">
+                      {busy ? "Signing in…" : "Sign in →"}
+                    </Button>
+                  </Form>
+                </fieldset>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  isDisabled={busy}
+                  onPress={() => {
+                    setRecovering(true);
                   }}
                 >
-                  <Input
-                    label="Administrator email"
-                    name="email"
-                    type="email"
-                    autoComplete="username"
-                  />
-                  <Input
-                    label="Recovery code from server"
-                    name="code"
-                    type="password"
-                    autoComplete="off"
-                  />
-                  <Input
-                    label="New password"
-                    name="password"
-                    type="password"
-                    minLength={12}
-                    autoComplete="new-password"
-                  />
-                  <Input
-                    label="Confirm new password"
-                    name="confirmation"
-                    type="password"
-                    minLength={12}
-                    autoComplete="new-password"
-                  />
-                  <Button type="submit" variant="accent">
-                    Reset password using recovery code
-                  </Button>
-                </Form>
-              </fieldset>
-              <a
-                href="https://github.com/holblin/talos-companion/blob/main/docs/home-setup.md#recover-a-forgotten-administrator-password"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Recovery instructions ↗
-              </a>
-            </details>
+                  Forgot the administrator password?
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  isDisabled={busy}
+                  onPress={() => {
+                    setRecovering(false);
+                  }}
+                >
+                  Back to sign in
+                </Button>
+                <p className={classes("hint")}>
+                  The server owner can recover access without losing accounts,
+                  identity or backups. Request a code here, then read it in
+                  Companion’s server logs. No command or restart is needed.
+                </p>
+                <Button
+                  isDisabled={busy}
+                  onPress={() => {
+                    void work(async () => {
+                      const result = await api<{ expires_at: number }>(
+                        "/api/password/recovery-code",
+                        {},
+                      );
+                      setRecoveryExpires(result.expires_at);
+                    });
+                  }}
+                  type="button"
+                  variant="accent"
+                >
+                  Print recovery code to server logs
+                </Button>
+                {recoveryExpires !== null && (
+                  <div className={classes("message")} role="status">
+                    Look for “Password recovery code:” in Companion’s server
+                    logs. This code expires at{" "}
+                    {new Date(recoveryExpires * 1000).toLocaleString()}.
+                    Repeated requests keep the same active code; it is printed
+                    only once.
+                  </div>
+                )}
+                <p className={classes("hint")}>
+                  On Unraid, open Docker → talos-companion → Logs. For other
+                  installations, use the service’s logs or terminal output. Find
+                  the latest “Password recovery code:” entry. It is valid for 15
+                  minutes and one successful reset, with at most five failed
+                  verification attempts. Repeated requests do not replace an
+                  active log code or extend its expiry, even after a restart.
+                </p>
+                <p className={classes("hint")}>
+                  Your current password keeps working until you finish below.
+                  The code cannot sign in to Companion or Omni. Anyone who can
+                  read these logs can recover the administrator account. Keep
+                  logs private and exclude recovery entries from shared log
+                  exports.
+                </p>
+                <fieldset disabled={busy}>
+                  <Form
+                    isDisabled={busy}
+                    onSubmit={(e) => {
+                      const form = e.currentTarget;
+                      const data = fields(e);
+                      void work(async () => {
+                        if (data["password"] !== data["confirmation"])
+                          throw new Error(
+                            "New password confirmation does not match.",
+                          );
+                        await api("/api/password/recover", data);
+                        form.reset();
+                        setRecoveryExpires(null);
+                        setRecovering(false);
+                        ToastQueue.positive(
+                          "Password updated. Your recovery code has been used. Sign in with your new password.",
+                        );
+                      });
+                    }}
+                  >
+                    <Input
+                      label="Administrator email"
+                      name="email"
+                      type="email"
+                      autoComplete="username"
+                    />
+                    <Input
+                      label="Recovery code from server"
+                      name="code"
+                      type="password"
+                      autoComplete="off"
+                    />
+                    <Input
+                      label="New password"
+                      name="password"
+                      type="password"
+                      minLength={12}
+                      autoComplete="new-password"
+                    />
+                    <Input
+                      label="Confirm new password"
+                      name="confirmation"
+                      type="password"
+                      minLength={12}
+                      autoComplete="new-password"
+                    />
+                    <Button type="submit" variant="accent">
+                      Reset password using recovery code
+                    </Button>
+                  </Form>
+                </fieldset>
+                <a
+                  href="https://github.com/holblin/talos-companion/blob/main/docs/home-setup.md#recover-a-forgotten-administrator-password"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Recovery instructions ↗
+                </a>
+              </>
+            )}
           </div>
         </main>
       </div>

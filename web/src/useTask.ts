@@ -1,7 +1,8 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { ToastQueue } from "@react-spectrum/s2";
 
-export function useTask() {
+export function useTask({ toastErrors = false } = {}) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const mutation = useMutation({
@@ -11,7 +12,8 @@ export function useTask() {
       setNotice("");
     },
     onError: (error: Error) => {
-      setError(error.message);
+      if (toastErrors) ToastQueue.negative(error.message);
+      else setError(error.message);
     },
   });
   async function work(action: () => Promise<void>) {

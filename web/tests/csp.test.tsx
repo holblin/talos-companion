@@ -6,6 +6,26 @@ import { expect, it } from "vitest";
 
 const directory = dirname(fileURLToPath(import.meta.url));
 
+it("allows Spectrum fonts only from the bundled stylesheet's font host", () => {
+  const css = readFileSync(
+    resolve(
+      directory,
+      "../node_modules/@react-spectrum/s2/dist/private/font-faces.css",
+    ),
+    "utf8",
+  );
+  const origins = [
+    ...new Set(
+      [...css.matchAll(/url\("(https:[^"]+)"\)/g)].map(
+        (match) => new URL(match[1] ?? "").origin,
+      ),
+    ),
+  ];
+  expect(origins).toEqual(["https://use.typekit.net"]);
+  const server = readFileSync(resolve(directory, "../../src/main.rs"), "utf8");
+  expect(server).toContain(`font-src 'self' ${origins.join(" ")};`);
+});
+
 it.each(["interactions/usePress", "overlays/usePreventScroll"])(
   "allows the fixed React Aria %s style under the server CSP",
   (module) => {
