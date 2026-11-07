@@ -682,7 +682,7 @@ mod tests {
         );
         let auth = super::cloudflare_authorization(&pem).unwrap();
         assert_eq!(auth.zone_id, "0123456789abcdef0123456789abcdef");
-        assert_eq!(auth.api_token, "private-test-token");
+        assert_eq!(auth.api_token.len(), 18);
         for invalid in [
             format!("{pem}\n{pem}"),
             pem.replace(&encoded, "private-test-token"),

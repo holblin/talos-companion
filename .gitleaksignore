@@ -1,0 +1,3 @@
+# Historical parser-test assertion with the literal dummy value private-test-token.
+# Exact finding only; production credential scanning remains enabled.
+9b149dfa55000ee98ad59c96e3b6c0a0fc9f3a4b:src/connection_agent.rs:generic-api-key:684
