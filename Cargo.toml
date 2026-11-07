@@ -1,6 +1,6 @@
 [package]
 name = "talos-companion"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 rust-version = "1.98"
 publish = false
@@ -20,11 +20,12 @@ argon2 = "0.5"
 axum = { version = "0.8", features = ["multipart", "macros"] }
 base64 = "0.22"
 hex = "0.4"
+hmac = "0.12"
 hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["server-auto", "tokio", "http1", "http2"] }
 jsonwebtoken = "9"
 rand = "0.8"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "socks", "rustls-tls-webpki-roots"] }
 rsa = { version = "0.9", features = ["pem"] }
 s3s = "0.17.0"
 s3s-fs = "0.17.0"
@@ -35,6 +36,7 @@ sha2 = "0.10"
 subtle = "2"
 tar = "0.4"
 tempfile = "3"
+time = "0.3"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io"] }
 tower-http = { version = "0.6", features = ["fs", "trace", "set-header"] }

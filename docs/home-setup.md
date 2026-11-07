@@ -7,6 +7,11 @@ screenshots of real credentials or private configuration.
 
 ## Choose an access profile
 
+For browser-guided Cloudflare Tunnel or Tailscale authorization, use the
+[guided connection flow](connections.md). The owner-run installer profiles below
+remain available for manual provisioning; its Cloudflare DNS/certificate profile
+is separate from the bundled Cloudflare Tunnel wizard.
+
 | Profile | What you need | Certificates and network |
 | --- | --- | --- |
 | LAN | Unraid's stable LAN IP | Helper creates a private CA and a one-year server certificate. Import the public root on clients and Talos nodes. No cloud account or domain. |
@@ -103,9 +108,11 @@ a running container alone is not proof that sign-in or backups work.
 
 ## Check and repair from Companion
 
-Open **Identity > Omni setup & repair**. Select a profile and enter the three origins.
-The HTTPS reachability check validates TLS and an HTTP response, including the mounted
-LAN public root. It does not claim successful OIDC sign-in or a real cluster backup.
+Open **Identity > Omni setup & repair**. Choose a connection method and review the
+discovered/generated addresses. Manual origin overrides are in **Advanced settings**.
+**Run live checks** checks Companion identity, Omni HTTP reachability and authenticated
+S3 bucket access separately, using the mounted LAN public root when applicable.
+Checks run from Companion and do not claim successful Omni sign-in or a real cluster backup.
 
 ![LAN access profile](assets/home-lan.png)
 
@@ -255,7 +262,7 @@ a server-log code can replace a privately issued command code. This is optional 
 independent of the deployment platform. The old `--reset-admin-password` is refused.
 
 If you cannot see the new button, update to 0.2.2 or later and refresh the sign-in page.
-The Unraid repository is `holblin/talos-companion:0.3.1` for a pinned image.
+The Unraid repository is `holblin/talos-companion:0.3.2` for a pinned image.
 
 ## Verify before relying on the deployment
 

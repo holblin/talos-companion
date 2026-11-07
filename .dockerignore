@@ -3,6 +3,7 @@ target
 web/node_modules
 web/dist
 data
+connections
 .env
 .env.*
 *.key

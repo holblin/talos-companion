@@ -21,7 +21,7 @@ This is an initial implementation. The S3 backend uses the upstream experimental
 
 ## Run on Unraid
 
-The image is available on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion): `holblin/talos-companion:0.3.1` or `holblin/talos-companion:latest`. Use `deploy/compose.hub.yaml` to run it without a source build. The generated Unraid template is ready for manual installation; Community Apps publication remains deferred. See [Unraid instructions](docs/unraid.md).
+The image is available on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion): `holblin/talos-companion:0.3.2` or `holblin/talos-companion:latest`. Use `deploy/compose.hub.yaml` to run it without a source build. The generated Unraid template is ready for manual installation; Community Apps publication remains deferred. See [Unraid instructions](docs/unraid.md).
 
 The application source, templates and documentation use the [MIT license](LICENSE).
 Public Unraid templates for both Companion and Omni are available in
@@ -108,6 +108,11 @@ plugin's unused bundler types. See `web/scripts/patch-dependency-types.mjs` when
 upgrading these dependencies. `skipLibCheck` remains disabled.
 The server CSP permits React Aria's two fixed runtime style blocks by hash;
 frontend tests verify those hashes against the installed dependency.
+
+The Identity screen includes a [guided connection wizard](docs/connections.md).
+Cloudflare and Tailscale are included in the normal image: authorize them in the UI,
+confirm Omni’s address, and let Companion configure and verify the service routes.
+There is no separate connector installation or connection-specific Docker setting.
 
 ## Language safety checks
 

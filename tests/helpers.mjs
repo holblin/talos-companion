@@ -19,7 +19,7 @@ const setupToken = "integration-setup-token-not-a-real-secret";
 export const passphrase = "integration recovery passphrase";
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const hmac = (key, value) => createHmac("sha256", key).update(value).digest();
-export async function server(port, data) {
+export async function server(port, data, extraEnv = {}) {
   await mkdir(join(data, "mounted"), { recursive: true });
   let logs = "";
   const child = spawn(binary, {
@@ -33,6 +33,7 @@ export async function server(port, data) {
       SETUP_TOKEN: setupToken,
       BACKUP_PASSPHRASE: passphrase,
       MOUNTED_BACKUP_DIR: join(data, "mounted"),
+      ...extraEnv,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

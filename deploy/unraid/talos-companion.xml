@@ -7,7 +7,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/holblin/talos-companion/issues</Support>
   <Project>https://github.com/holblin/talos-companion</Project>
-  <Overview>Self-hosted identity and encrypted recovery for Talos Omni. Build the local image before installing this template.</Overview>
+  <Overview>Self-hosted identity and encrypted recovery for Talos Omni. Includes a browser wizard for Cloudflare and Tailscale authorization. Provider clients use the existing appdata mount; no additional container or Docker options are needed.</Overview>
   <Category>Tools:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <ExtraParams>--user 99:100 --read-only --cap-drop ALL --security-opt no-new-privileges:true</ExtraParams>

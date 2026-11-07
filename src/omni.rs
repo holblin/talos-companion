@@ -169,12 +169,43 @@ fn atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     tmp.persist(path).map_err(anyhow::Error::from)?;
     Ok(())
 }
+fn defaults(app: &App, store: &Store) -> Integration {
+    if let Some(saved) = crate::connections::settings().integration {
+        return saved;
+    }
+    if !store.integration.companion_url.is_empty() {
+        return store.integration.clone();
+    }
+    let agent = crate::connections::agent_info();
+    let omni = url::Url::parse(&store.redirect_uri)
+        .ok()
+        .map(|url| url.origin().ascii_serialization())
+        .unwrap_or_default();
+    Integration {
+        profile: Profile::Lan,
+        companion_url: app.public_url.clone(),
+        omni_url: if omni.is_empty() {
+            agent
+                .as_ref()
+                .and_then(|v| v["omni_origin"].as_str())
+                .unwrap_or("")
+                .into()
+        } else {
+            omni
+        },
+        s3_endpoint: std::env::var("S3_PUBLIC_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| agent.and_then(|v| v["s3_origin"].as_str().map(str::to_owned)))
+            .unwrap_or_default(),
+    }
+}
 pub async fn status(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     auth::admin(&app, &headers).await?;
     let store = app.store.read().await;
     let s = store.as_ref().ok_or_else(denied)?;
     Ok(Json(
-        json!({"integration":s.integration,"active_issuer":app.public_url,"mounted":Path::new(MANAGED).is_dir(),"restart_pending":!s.integration.companion_url.is_empty() && s.integration.companion_url!=app.public_url}),
+        json!({"integration":s.integration,"active_issuer":app.public_url,"mounted":Path::new(MANAGED).is_dir(),"restart_pending":!s.integration.companion_url.is_empty() && s.integration.companion_url!=app.public_url,"defaults":defaults(&app,s)}),
     ))
 }
 pub async fn preview(
@@ -191,6 +222,25 @@ pub async fn preview(
         Path::new(MANAGED),
     )?))
 }
+#[derive(Deserialize)]
+pub struct Discover {
+    primary_config: String,
+}
+pub async fn discover(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<Discover>,
+) -> Result<Json<Value>> {
+    auth::csrf(&app, &headers)?;
+    auth::admin(&app, &headers).await?;
+    let value = parse(&input.primary_config)?;
+    let url = value
+        .pointer("/services/api/advertisedURL")
+        .and_then(Value::as_str)
+        .map(origin)
+        .transpose()?;
+    Ok(Json(json!({"omni_url":url})))
+}
 pub async fn apply(
     State(app): State<App>,
     headers: HeaderMap,
@@ -198,15 +248,29 @@ pub async fn apply(
 ) -> Result<Json<Value>> {
     auth::csrf(&app, &headers)?;
     auth::admin(&app, &headers).await?;
-    let _serial = app.backup_lock.lock().await;
-    let mut guard = app.store.write().await;
-    let mut store = guard.clone().ok_or_else(denied)?;
     let directory = Path::new(MANAGED);
     if !directory.is_dir() {
         return Err(bad(
             "Map the dedicated managed-overlay directory before applying; download the files instead",
         ));
     }
+    let checks = crate::endpoint_checks::run(
+        State(app.clone()),
+        headers.clone(),
+        Json(req.integration.clone()),
+    )
+    .await?
+    .0;
+    if !checks["checks"].as_array().is_some_and(|results| {
+        results.len() == 3 && results.iter().all(|result| result["ok"] == true)
+    }) {
+        return Err(bad(
+            "Live endpoint verification failed. Check Companion, Omni and S3 before applying the migration.",
+        ));
+    }
+    let _serial = app.backup_lock.lock().await;
+    let mut guard = app.store.write().await;
+    let mut store = guard.clone().ok_or_else(denied)?;
     let planned = plan(&store, &req, directory)?;
     if req.revision.as_deref() != planned["revision"].as_str() {
         return Err(bad("Configuration changed. Preview again before applying"));
@@ -260,34 +324,6 @@ pub async fn ca() -> Result<impl IntoResponse> {
             ),
         ],
         bytes,
-    ))
-}
-
-pub async fn check(
-    State(app): State<App>,
-    headers: HeaderMap,
-    Json(integration): Json<Integration>,
-) -> Result<Json<Value>> {
-    auth::csrf(&app, &headers)?;
-    auth::admin(&app, &headers).await?;
-    validate(&integration)?;
-    let mut builder = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .redirect(reqwest::redirect::Policy::none());
-    if integration.profile == Profile::Lan {
-        let bytes = read_optional(&Path::new(MANAGED).join("root-ca.crt"))?;
-        if !bytes.is_empty() {
-            builder = builder.add_root_certificate(
-                reqwest::Certificate::from_pem(&bytes)
-                    .map_err(|_| bad("Invalid mounted LAN public root certificate"))?,
-            );
-        }
-    }
-    let client = builder.build().map_err(anyhow::Error::from)?;
-    let response = client.get(origin(&integration.omni_url)?).send().await;
-    let reachable = response.is_ok_and(|r| r.status().is_success() || r.status().is_redirection());
-    Ok(Json(
-        json!({"https_reachable":reachable,"checked_at":now(),"message":if reachable {"HTTPS certificate and HTTP response verified. Sign-in, startup flags and a real cluster backup still need verification."} else {"HTTPS could not be verified. Check hostname, certificate trust, routing, proxy and listener ports."}}),
     ))
 }
 

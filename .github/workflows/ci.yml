@@ -21,6 +21,8 @@ jobs:
       - name: Generate and validate template-only repository contents
         shell: pwsh
         run: ./scripts/prepare-unraid.ps1 -DockerHubNamespace holblin -TemplateRepository holblin/talos-companion-unraid -OutputDirectory dist/community-apps
+      - name: Keep user setup in the app wizard
+        run: node --test tests/docker-interface.mjs
       - name: Check owner provisioning shell
         run: bash -n scripts/home-setup.sh
   application:
@@ -71,9 +73,20 @@ jobs:
             test "$(sudo stat -c '%a:%u:%g' "/tmp/companion-auto/$name")" = '600:99:100'
           done
           docker rm -f companion-auto
+      - name: Verify bundled connection service
+        run: |
+          docker run --rm --entrypoint /usr/local/bin/cloudflared talos-companion:ci version
+          docker run --rm --entrypoint /usr/local/bin/tailscale talos-companion:ci version
+          docker run -d --name connections-ci --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges talos-companion:ci
+          sleep 5
+          docker exec connections-ci /talos-companion --connection-agent-healthcheck
+          test "$(docker inspect connections-ci --format '{{.Config.User}}')" = '99:100'
+          docker rm -f connections-ci
       - name: Package the verified image for the private release workflow
         if: github.event_name == 'workflow_dispatch'
-        run: gzip -c /tmp/companion-image.tar > /tmp/companion-image.tar.gz
+        run: |
+          gzip -c /tmp/companion-image.tar > /tmp/companion-image.tar.gz
       - uses: actions/upload-artifact@v7.0.2
         if: github.event_name == 'workflow_dispatch'
         with:

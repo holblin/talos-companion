@@ -15,8 +15,9 @@ with tarfile.open(sys.argv[1]) as image:
                 continue
             assert member.isfile(), f"Unexpected special file: {member.name}"
             name = member.name.removeprefix("./")
-            assert name == "talos-companion" or name.startswith("web/"), name
+            assert name in {"talos-companion", "usr/local/bin/cloudflared", "usr/local/bin/tailscale", "usr/local/bin/tailscaled", "etc/ssl/certs/ca-certificates.crt", "etc/passwd", "etc/group"} or name.startswith("web/"), name
             files.append(name)
         assert "talos-companion" in files
         assert "web/index.html" in files
-        print(f"Verified one layer: Rust binary and {len(files) - 1} frontend files")
+        assert {"usr/local/bin/cloudflared", "usr/local/bin/tailscale", "usr/local/bin/tailscaled", "etc/ssl/certs/ca-certificates.crt"}.issubset(files)
+        print("Verified one layer: Companion, frontend, pinned provider clients and public CA bundle")

@@ -57,6 +57,9 @@ pub fn csrf(app: &App, headers: &HeaderMap) -> Result<()> {
     }
     if let Some(origin) = headers.get("origin")
         && origin.to_str().ok() != Some(app.public_url.as_str())
+        && !crate::connections::settings()
+            .integration
+            .is_some_and(|i| origin.to_str().ok() == Some(i.companion_url.as_str()))
     {
         return Err(bad("Origin does not match PUBLIC_URL"));
     }
@@ -244,7 +247,12 @@ pub async fn login(
     );
     drop(m);
     drop(guard);
-    let secure = if app.public_url.starts_with("https:") {
+    let secure = if app.public_url.starts_with("https:")
+        || headers
+            .get(header::ORIGIN)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|origin| origin.starts_with("https://"))
+    {
         "; Secure"
     } else {
         ""

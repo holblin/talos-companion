@@ -26,7 +26,7 @@ $template.Container.Repository = "${image}:latest"
 $template.Container.Registry = "https://hub.docker.com/r/$image"
 $template.Container.Support = "$publicBase/issues"
 $template.Container.Project = "$publicBase#talos-companion"
-$template.Container.Overview = 'Identity, accounts, and encrypted recovery for Talos Omni. Guided first launch supports a new administrator or recovery with optional credential replacement. Includes an S3 receiver, credential vault, backup scheduling, browser downloads, Google Drive, and host-mounted NFS/SMB destinations. Runs without privileged mode as UID 99 with a read-only root filesystem. Pre-create appdata with ownership 99:100 and keep the backup passphrase separately. This is an independent companion, not an official Sidero Labs product.'
+$template.Container.Overview = 'Identity, accounts, and encrypted recovery for Talos Omni. Guided first launch supports a new administrator or recovery with optional credential replacement. Includes a built-in Cloudflare/Tailscale connection wizard, S3 receiver, credential vault, backup scheduling, browser downloads, Google Drive, and host-mounted NFS/SMB destinations. Runs without privileged mode as UID 99 with a read-only root filesystem. Pre-create appdata with ownership 99:100 and keep the backup passphrase separately. This is an independent companion, not an official Sidero Labs product.'
 $template.Container.Category = 'Tools:Utilities'
 foreach ($entry in @{
     TemplateURL = "$rawBase/templates/talos-companion.xml"
@@ -114,7 +114,7 @@ not mean the templates already appear in its catalog.
 Docker Hub: https://hub.docker.com/r/$image
 
 Image: ``${image}:latest``. Linux amd64 only. The image has exactly one filesystem
-layer containing a static Rust binary and compiled frontend files.
+layer containing Companion, compiled frontend files, pinned Cloudflare/Tailscale clients and public CA certificates.
 Version and ``sha-<commit>`` tags are available for published versions.
 
 ## Install on Unraid

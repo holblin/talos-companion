@@ -3,7 +3,10 @@
 mod auth;
 mod backup;
 mod backup_format;
+mod connection_agent;
+mod connections;
 mod drive;
+mod endpoint_checks;
 mod model;
 mod oidc;
 mod omni;
@@ -97,9 +100,22 @@ fn router(app: App) -> Router {
         .route("/api/settings", get(settings::get).post(settings::update))
         .route("/api/oidc", post(oidc::configure))
         .route("/api/omni", get(omni::status))
+        .route(
+            "/api/omni/connection",
+            get(connections::get)
+                .post(connections::start)
+                .delete(connections::cancel),
+        )
+        .route(
+            "/api/omni/identity",
+            get(endpoint_checks::companion_identity),
+        )
         .route("/api/omni/plan", post(omni::preview))
+        .route("/api/omni/discover", post(omni::discover))
+        .route("/api/omni/location", post(connections::location))
+        .route("/api/omni/connection/finish", post(connections::finish))
         .route("/api/omni/apply", post(omni::apply))
-        .route("/api/omni/check", post(omni::check))
+        .route("/api/omni/check", post(endpoint_checks::run))
         .route("/api/omni/ca", get(omni::ca))
         .route("/api/omni/talos-ca", get(omni::talos_ca))
         .route("/api/backups", get(backup::list).post(backup::make))
@@ -127,6 +143,16 @@ fn router(app: App) -> Router {
 }
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if std::env::args().any(|a| a == "--connection-agent-healthcheck") {
+        anyhow::ensure!(
+            connections::agent_info().is_some(),
+            "Connector heartbeat is stale"
+        );
+        return Ok(());
+    }
+    if std::env::args().any(|a| a == "--connection-agent") {
+        return connection_agent::run().await;
+    }
     if std::env::args().any(|a| a == "--reset-admin-password") {
         anyhow::bail!(
             "Direct password reset was removed. Use --generate-password-reset-code, then choose a password on the sign-in page."
@@ -152,7 +178,7 @@ async fn main() -> anyhow::Result<()> {
     let address = std::env::var("LISTEN_ADDR").unwrap_or("0.0.0.0:8080".into());
     let listener = tokio::net::TcpListener::bind(&address).await?;
     tracing::info!(%address,"Companion listening");
-    tokio::select! {result=axum::serve(listener,router(app.clone())).with_graceful_shutdown(async{let _=tokio::signal::ctrl_c().await;}).into_future()=>{result?;},result=receiver=>{result?;},_=scheduled=>{}}
+    tokio::select! {result=axum::serve(listener,router(app.clone())).with_graceful_shutdown(async{let _=tokio::signal::ctrl_c().await;}).into_future()=>{result?;},result=receiver=>{result?;},_=scheduled=>{},_=connections::supervise()=>{}}
     Ok(())
 }
 fn healthcheck() -> anyhow::Result<()> {
