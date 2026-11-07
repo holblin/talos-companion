@@ -215,41 +215,42 @@ mod tests {
         assert_eq!(api.status().await.unwrap()["BackendState"], "Running");
         assert_eq!(api.enable_https().await.unwrap()["Complete"], true);
         api.serve("companion.example.ts.net").await.unwrap();
-        let requests = seen.lock().unwrap();
-        assert_eq!(requests[0].1, "/localapi/v0/start");
-        assert_eq!(
-            requests[0].3,
-            json!({}),
-            "starting must not reset saved identity"
-        );
-        assert_eq!(requests[1].0, Method::PATCH);
-        assert_eq!(
-            requests[1].3,
-            json!({
-                "WantRunning":true,"WantRunningSet":true,"Hostname":"talos-companion","HostnameSet":true,
-                "CorpDNS":false,"CorpDNSSet":true,"RouteAll":false,"RouteAllSet":true
-            })
-        );
-        assert_eq!(requests[2].1, "/localapi/v0/login-interactive");
-        assert_eq!(requests[3].1, "/localapi/v0/status?peers=false");
-        assert_eq!(requests[4].1, "/localapi/v0/query-feature?feature=serve");
-        let (_, _, headers, config) = requests.last().unwrap();
-        assert_eq!(headers["if-match"], "\"saved-config\"");
-        for (port, origin) in [(443, 18081), (8443, 18082), (10000, 18083)] {
-            assert_eq!(config["TCP"][port.to_string()], json!({"HTTPS":true}));
+        {
+            let requests = seen.lock().unwrap();
+            assert_eq!(requests[0].1, "/localapi/v0/start");
             assert_eq!(
-                config["Web"][format!("companion.example.ts.net:{port}")]["Handlers"]["/"]["Proxy"],
-                format!("http://127.0.0.1:{origin}")
+                requests[0].3,
+                json!({}),
+                "starting must not reset saved identity"
+            );
+            assert_eq!(requests[1].0, Method::PATCH);
+            assert_eq!(
+                requests[1].3,
+                json!({
+                    "WantRunning":true,"WantRunningSet":true,"Hostname":"talos-companion","HostnameSet":true,
+                    "CorpDNS":false,"CorpDNSSet":true,"RouteAll":false,"RouteAllSet":true
+                })
+            );
+            assert_eq!(requests[2].1, "/localapi/v0/login-interactive");
+            assert_eq!(requests[3].1, "/localapi/v0/status?peers=false");
+            assert_eq!(requests[4].1, "/localapi/v0/query-feature?feature=serve");
+            let (_, _, headers, config) = requests.last().unwrap();
+            assert_eq!(headers["if-match"], "\"saved-config\"");
+            for (port, origin) in [(443, 18081), (8443, 18082), (10000, 18083)] {
+                assert_eq!(config["TCP"][port.to_string()], json!({"HTTPS":true}));
+                assert_eq!(
+                    config["Web"][format!("companion.example.ts.net:{port}")]["Handlers"]["/"]["Proxy"],
+                    format!("http://127.0.0.1:{origin}")
+                );
+            }
+            assert_eq!(config["TCP"]["9443"]["HTTPS"], true);
+            assert_eq!(config["AllowFunnel"]["other.example.ts.net:9443"], true);
+            assert!(
+                config["AllowFunnel"]
+                    .get("companion.example.ts.net:443")
+                    .is_none()
             );
         }
-        assert_eq!(config["TCP"]["9443"]["HTTPS"], true);
-        assert_eq!(config["AllowFunnel"]["other.example.ts.net:9443"], true);
-        assert!(
-            config["AllowFunnel"]
-                .get("companion.example.ts.net:443")
-                .is_none()
-        );
-        drop(requests);
         api.set_hostname("renamed-companion").await.unwrap();
         {
             let requests = seen.lock().unwrap();
