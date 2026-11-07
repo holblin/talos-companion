@@ -220,8 +220,12 @@ export default function BackupDestinations({
   const [editing, setEditing] = useState<"drive" | "mounted" | null>(null);
   const [checkedPath, setCheckedPath] = useState<string | null>(null);
   const setupHeading = useRef<HTMLHeadingElement>(null);
+  const setupTrigger = useRef<HTMLElement | null>(null);
+  const wasEditing = useRef(false);
   useEffect(() => {
-    setupHeading.current?.focus();
+    if (editing) setupHeading.current?.focus();
+    else if (wasEditing.current) setupTrigger.current?.focus();
+    wasEditing.current = editing !== null;
   }, [editing]);
   const { busy, error, work } = useTask();
   const verified = !!overview.mounted && checkedPath === overview.mounted;
@@ -229,13 +233,12 @@ export default function BackupDestinations({
     <>
       <div className={classes("three-cols")}>
         <section className={classes("card")} aria-label="Local storage">
-          <div className={classes("eyebrow")}>ON THIS SERVER</div>
           <h2 className={documentClass("h2")}>Local storage</h2>
           <p className={documentClass("p")}>
             Save an encrypted recovery file in the persistent data directory.
             Download it whenever you need it.
           </p>
-          <StatusLight variant="positive">Ready</StatusLight>
+          <StatusLight variant="neutral">Local archive destination</StatusLight>
           <Button
             variant="secondary"
             onPress={() => void createBackup("local")}
@@ -244,7 +247,6 @@ export default function BackupDestinations({
           </Button>
         </section>
         <section className={classes("card")} aria-label="Google Drive">
-          <div className={classes("eyebrow")}>OFF-SITE</div>
           <h2 className={documentClass("h2")}>Google Drive</h2>
           <p className={documentClass("p")}>
             Send an encrypted copy to Google Drive. A local copy is always kept
@@ -261,7 +263,9 @@ export default function BackupDestinations({
           </StatusLight>
           <Button
             variant={overview.drive.connected ? "secondary" : "accent"}
-            onPress={() => {
+            onPress={(event) => {
+              if (event.target instanceof HTMLElement)
+                setupTrigger.current = event.target;
               setEditing(editing === "drive" ? null : "drive");
             }}
           >
@@ -279,7 +283,6 @@ export default function BackupDestinations({
           )}
         </section>
         <section className={classes("card")} aria-label="NFS / SMB">
-          <div className={classes("eyebrow")}>ON YOUR NETWORK</div>
           <h2 className={documentClass("h2")}>NFS / SMB</h2>
           <p className={documentClass("p")}>
             Save an encrypted copy on your NAS or network share.
@@ -293,7 +296,9 @@ export default function BackupDestinations({
           </StatusLight>
           <Button
             variant={overview.mounted ? "secondary" : "accent"}
-            onPress={() => {
+            onPress={(event) => {
+              if (event.target instanceof HTMLElement)
+                setupTrigger.current = event.target;
               setEditing(editing === "mounted" ? null : "mounted");
             }}
           >

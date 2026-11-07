@@ -105,6 +105,90 @@ function mount() {
 }
 
 describe("Spectrum frontend workflows", () => {
+  it("preserves recovery data when accounts fail and retries only the failed section", async () => {
+    initialized = true;
+    authenticated = true;
+    let failed = true;
+    const fetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) => {
+        if (input === "/api/users" && failed)
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ error: "Accounts service unavailable" }),
+              { status: 503 },
+            ),
+          );
+        return fetch(input, init);
+      }),
+    );
+    const events = userEvent.setup();
+    mount();
+    await screen.findByRole("button", { name: "Retry accounts" });
+    await screen.findByText("1 encrypted");
+    expect(screen.queryByText("0 encrypted")).toBeNull();
+    expect(screen.queryByText("Needs setup")).toBeNull();
+    expect(screen.queryByText("Your first backup starts here.")).toBeNull();
+    expect(screen.getByText("Some data unavailable")).toBeTruthy();
+    const backupRequests = requests.filter(
+      (request) => request.path === "/api/backups",
+    ).length;
+    failed = false;
+    await events.click(screen.getByRole("button", { name: "Retry accounts" }));
+    await screen.findByText("1 account");
+    expect(
+      requests.filter((request) => request.path === "/api/backups"),
+    ).toHaveLength(backupRequests);
+  });
+
+  it("does not present pending recovery files as empty", async () => {
+    initialized = true;
+    authenticated = true;
+    const fetch = globalThis.fetch;
+    let resolveBackups: ((value: Response) => void) | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) => {
+        if (input === "/api/backups")
+          return new Promise<Response>((resolve) => {
+            resolveBackups = resolve;
+          });
+        return fetch(input, init);
+      }),
+    );
+    mount();
+    await screen.findByText("Loading recovery files…");
+    expect(screen.queryByText("Your first backup starts here.")).toBeNull();
+    expect(screen.queryByText("0 encrypted")).toBeNull();
+    expect(screen.queryByText("No recovery file yet")).toBeNull();
+    if (!resolveBackups) throw new Error("Recovery request was not started");
+    resolveBackups(new Response(JSON.stringify(backups)));
+    await screen.findByText("1 encrypted");
+  });
+
+  it("focuses route headings and links directly to Google Drive setup", async () => {
+    initialized = true;
+    authenticated = true;
+    const events = userEvent.setup();
+    mount();
+    await screen.findByRole("button", {
+      name: "Connect Google Drive",
+    });
+    await events.click(screen.getByRole("link", { name: "Backups" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "A way back, always." }),
+    );
+    await events.click(screen.getByRole("link", { name: "Overview" }));
+    await events.click(
+      screen.getByRole("button", { name: "Connect Google Drive" }),
+    );
+    await screen.findByRole("heading", { name: "Connect Google Drive" });
+    expect(router.state.location.pathname).toBe("/settings");
+    expect(router.state.location.hash).toBe("google-drive");
+    expect(document.activeElement?.id).toBe("google-drive");
+  });
+
   it("shows recovery errors in a dismissible S2 toast and allows retry", async () => {
     initialized = true;
     const events = userEvent.setup();
@@ -272,7 +356,7 @@ describe("Spectrum frontend workflows", () => {
     await screen.findByRole("heading", { name: "Your recovery files" });
     await screen.findByRole("grid", { name: "Encrypted recovery files" });
     await events.click(
-      screen.getByRole("button", { name: "Create local backup →" }),
+      screen.getByRole("button", { name: "Create local backup" }),
     );
     await screen.findByText("Backup saved: new-test-recovery.tcb");
     expect(
@@ -297,7 +381,9 @@ describe("Spectrum frontend workflows", () => {
       screen.getByRole("button", { name: /Test Admin.*Sign out/ }),
     );
     await screen.findByRole("heading", { name: "Sign in to your companion" });
-    expect(queryClient.getQueryData(["admin", user.id])).toBeUndefined();
+    expect(
+      queryClient.getQueryCache().findAll({ queryKey: ["admin", user.id] }),
+    ).toHaveLength(0);
   });
 
   it("streams a selected recovery file with its original passphrase", async () => {

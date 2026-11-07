@@ -9,20 +9,12 @@ import { classes, layout } from "./layout";
 import Input from "./Field";
 import Cloud from "@react-spectrum/s2/icons/Cloud";
 import People from "@react-spectrum/s2/icons/People";
-import Download from "@react-spectrum/s2/icons/Download";
 import {
   SideNav,
   SideNavItem,
   SideNavItemContent,
   SideNavItemLink,
   Text,
-  TableView,
-  TableHeader,
-  Column,
-  TableBody,
-  Row,
-  Cell,
-  Link,
   Form,
   ProgressCircle,
   StatusLight,
@@ -33,6 +25,9 @@ import {
   ToastQueue,
   ActionMenu,
   MenuItem,
+  Disclosure,
+  DisclosureTitle,
+  DisclosurePanel,
 } from "@react-spectrum/s2";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
@@ -43,6 +38,9 @@ import { destinations, type View } from "./navigation";
 import { queryClient } from "./query";
 import { useTask } from "./useTask";
 import { api, ApiError } from "./api";
+import QueryNotice from "./QueryNotice";
+import RecoveryReadiness from "./RecoveryReadiness";
+import { type Backup } from "./backupPresentation";
 const SetupWizard = lazy(() => import("./SetupWizard"));
 const OmniSetup = lazy(() =>
   import("./AccessPages").then((module) => ({
@@ -56,7 +54,6 @@ const CompanionAccess = lazy(() =>
 );
 
 type User = { id: string; email: string; name: string; admin: boolean };
-type Backup = { name: string; bytes: number };
 type Settings = {
   retention: { recovery_keep_last: number; snapshot_keep_last: number };
   schedule: { enabled: boolean; interval_seconds: number; destination: string };
@@ -108,13 +105,20 @@ function Card({
   title,
   children,
   className = "",
+  id,
 }: {
   title?: string;
   children: ReactNode;
   className?: string;
+  id?: string;
 }) {
   return (
-    <section className={classes(`card ${className}`)} aria-label={title}>
+    <section
+      className={classes(`card ${className}`)}
+      aria-label={title}
+      id={id}
+      tabIndex={id ? -1 : undefined}
+    >
       {title && <h2 className={documentClass("h2")}>{title}</h2>}
       {children}
     </section>
@@ -170,6 +174,7 @@ export default function App() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
+  const hash = useRouterState({ select: (state) => state.location.hash });
   const view: View =
     (pathname === "/identity"
       ? "Omni configuration"
@@ -207,32 +212,56 @@ export default function App() {
   function setInitialized(value: boolean) {
     queryClient.setQueryData(["status"], { initialized: value });
   }
-  const dashboard = useQuery({
-    queryKey: ["admin", user?.id],
+  const overviewQuery = useQuery({
+    queryKey: ["admin", user?.id, "overview"],
     enabled: user?.admin === true,
-    queryFn: async () => {
-      const [overview, backups, users, vault] = await Promise.all([
-        api<Overview>("/api/overview"),
-        api<Backup[]>("/api/backups"),
-        api<User[]>("/api/users"),
-        api<string[]>("/api/vault"),
-      ]);
-      return { overview, backups, users, vault };
-    },
+    queryFn: () => api<Overview>("/api/overview"),
   });
-  const overview = dashboard.data?.overview ?? null;
-  const backups = dashboard.data?.backups ?? [];
-  const users = dashboard.data?.users ?? [];
-  const vault = dashboard.data?.vault ?? [];
+  const backupsQuery = useQuery({
+    queryKey: ["admin", user?.id, "backups"],
+    enabled: user?.admin === true,
+    queryFn: () => api<Backup[]>("/api/backups"),
+  });
+  const usersQuery = useQuery({
+    queryKey: ["admin", user?.id, "users"],
+    enabled: user?.admin === true,
+    queryFn: () => api<User[]>("/api/users"),
+  });
+  const vaultQuery = useQuery({
+    queryKey: ["admin", user?.id, "vault"],
+    enabled: user?.admin === true,
+    queryFn: () => api<string[]>("/api/vault"),
+  });
+  const overview = overviewQuery.data ?? null;
+  const backups = backupsQuery.data ?? [];
+  const users = usersQuery.data ?? [];
+  const vault = vaultQuery.data ?? [];
   const { busy, notice, setNotice, work } = useTask({ toastErrors: true });
-  const loadError = status.error ?? session.error ?? dashboard.error;
+  const loadError = status.error ?? session.error;
+  const adminError =
+    overviewQuery.error ??
+    backupsQuery.error ??
+    usersQuery.error ??
+    vaultQuery.error;
+  const adminLoading =
+    overviewQuery.isPending ||
+    backupsQuery.isPending ||
+    usersQuery.isPending ||
+    vaultQuery.isPending;
   const [credentialFile, setCredentialFile] = useState<File | null>(null);
   const [recoveryExpires, setRecoveryExpires] = useState<number | null>(null);
   const [recovering, setRecovering] = useState(false);
   const signInHeading = useRef<HTMLHeadingElement>(null);
+  const pageHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     signInHeading.current?.focus();
   }, [recovering]);
+  useEffect(() => {
+    if (!user) return;
+    const target = hash ? document.getElementById(hash) : null;
+    (target ?? pageHeading.current)?.focus();
+    document.title = `${view} · Talos Companion`;
+  }, [view, user, hash]);
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["admin"] });
   }
@@ -574,8 +603,10 @@ export default function App() {
             Google Drive
           </PickerItem>
         </Picker>
-        <details>
-          <summary>Retention settings</summary>
+        <details className={documentClass("details")}>
+          <summary className={documentClass("summary")}>
+            Retention settings
+          </summary>
           <Input
             label="Recovery files to keep per destination"
             name="recovery_keep_last"
@@ -611,6 +642,16 @@ export default function App() {
   );
   return (
     <div className={classes("shell")}>
+      <a
+        className={layout.skipLink}
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault();
+          pageHeading.current?.focus();
+        }}
+      >
+        Skip to main content
+      </a>
       <aside className={classes("sidebar")}>
         <div className={classes("brand-row")}>
           <div className={classes("brand")}>
@@ -676,7 +717,7 @@ export default function App() {
           </div>
         </div>
       </aside>
-      <main className={classes("main")}>
+      <main className={classes("main")} id="main-content">
         <header className={classes("topbar")}>
           <span className={classes("desktop-only")}>
             Workspace <b>/</b> {view}
@@ -699,17 +740,31 @@ export default function App() {
                 ))}
             </Picker>
           </div>
-          <StatusLight variant="positive">Companion online</StatusLight>
+          <StatusLight
+            variant={user.admin && adminError ? "notice" : "neutral"}
+          >
+            {user.admin
+              ? adminError
+                ? "Some data unavailable"
+                : adminLoading
+                  ? "Loading workspace"
+                  : "Workspace data loaded"
+              : "Signed in"}
+          </StatusLight>
         </header>
         <div className={classes("content")}>
           <div className={classes("page-title")}>
             <div>
-              <h1 className={documentClass("h1")}>
+              <h1
+                className={documentClass("h1")}
+                ref={pageHeading}
+                tabIndex={-1}
+              >
                 {user.admin ? titles[view] : "Your account."}
               </h1>
               <p className={documentClass("p", layout.subtitle)}>
                 {view === "Overview"
-                  ? "A little clarity for the infrastructure you call home."
+                  ? "Check your recovery files, backup routine, and connections."
                   : "Identity and recovery, under your control."}
               </p>
             </div>
@@ -720,11 +775,26 @@ export default function App() {
                 type="button"
                 variant="accent"
               >
-                ＋ Create backup
+                {busy ? "Working…" : "Create local backup"}
               </Button>
             )}
           </div>
           {messages}
+          {user.admin && (
+            <>
+              <QueryNotice
+                label="Infrastructure and settings"
+                query={overviewQuery}
+              />
+              <QueryNotice label="Recovery files" query={backupsQuery} />
+              {view === "Accounts" || view === "Overview" ? (
+                <QueryNotice label="Accounts" query={usersQuery} />
+              ) : null}
+              {view === "Backups" ? (
+                <QueryNotice label="Recovery material" query={vaultQuery} />
+              ) : null}
+            </>
+          )}
           <fieldset className={documentClass("fieldset")} disabled={busy}>
             {user.admin && view === "Overview" && (
               <>
@@ -734,8 +804,10 @@ export default function App() {
                       Identity provider
                     </dt>
                     <dd className={documentClass("dd", layout.summaryValue)}>
-                      {dashboard.isPending
-                        ? "Loading…"
+                      {overviewQuery.data === undefined
+                        ? overviewQuery.isPending
+                          ? "Loading…"
+                          : "Unavailable"
                         : overview?.redirect_uri
                           ? "Configured"
                           : "Needs setup"}
@@ -746,8 +818,10 @@ export default function App() {
                       Recovery files
                     </dt>
                     <dd className={documentClass("dd", layout.summaryValue)}>
-                      {dashboard.isPending
-                        ? "Loading…"
+                      {backupsQuery.data === undefined
+                        ? backupsQuery.isPending
+                          ? "Loading…"
+                          : "Unavailable"
                         : `${String(backups.length)} encrypted`}
                     </dd>
                   </div>
@@ -756,8 +830,10 @@ export default function App() {
                       Your people
                     </dt>
                     <dd className={documentClass("dd", layout.summaryValue)}>
-                      {dashboard.isPending
-                        ? "Loading…"
+                      {usersQuery.data === undefined
+                        ? usersQuery.isPending
+                          ? "Loading…"
+                          : "Unavailable"
                         : `${String(users.length)} ${users.length === 1 ? "account" : "accounts"}`}
                     </dd>
                   </div>
@@ -765,22 +841,18 @@ export default function App() {
                 <div className={classes("overview-grid")}>
                   <Card
                     className={classes("recovery-card")}
-                    title="Keep a way back."
+                    title="Recovery readiness"
                   >
-                    <p className={documentClass("p")}>
-                      Your accounts, identity keys, integration credentials, and
-                      received Omni backups. Together in one encrypted recovery
-                      file.
-                    </p>
-                    <Button
-                      onPress={() => {
+                    <RecoveryReadiness
+                      overview={overview}
+                      backups={backupsQuery.data}
+                      onManage={() => {
                         setView("Backups");
                       }}
-                      type="button"
-                      variant="accent"
-                    >
-                      Manage your backups ↗
-                    </Button>
+                      onSettings={() => {
+                        setView("Settings");
+                      }}
+                    />
                   </Card>
                   <Card title="Your infrastructure">
                     <div className={classes("service")}>
@@ -806,8 +878,22 @@ export default function App() {
                           overview?.redirect_uri ? "positive" : "neutral"
                         }
                       >
-                        {overview?.redirect_uri ? "Configured" : "Set up"}
+                        {overview
+                          ? overview.redirect_uri
+                            ? "Configured"
+                            : "Not configured"
+                          : overviewQuery.isPending
+                            ? "Loading…"
+                            : "Unavailable"}
                       </StatusLight>
+                      <Button
+                        variant="secondary"
+                        onPress={() => {
+                          setView("Omni configuration");
+                        }}
+                      >
+                        Configure Omni
+                      </Button>
                     </div>
                     <div className={classes("service")}>
                       <span
@@ -832,24 +918,32 @@ export default function App() {
                           overview?.drive.connected ? "positive" : "neutral"
                         }
                       >
-                        {overview?.drive.connected
-                          ? "Connected"
-                          : "Not connected"}
+                        {overview === null
+                          ? overviewQuery.isPending
+                            ? "Loading…"
+                            : "Unavailable"
+                          : overview.drive.connected
+                            ? "Connected"
+                            : "Not connected"}
                       </StatusLight>
+                      <Button
+                        variant="secondary"
+                        onPress={() => {
+                          void navigate({
+                            to: "/settings",
+                            hash: "google-drive",
+                          });
+                        }}
+                      >
+                        Connect Google Drive
+                      </Button>
                     </div>
-                    <Button
-                      onPress={() => {
-                        setView("Omni configuration");
-                      }}
-                      type="button"
-                      variant="secondary"
-                    >
-                      Connection settings →
-                    </Button>
                   </Card>
                 </div>
                 <Card title="Recent recovery files">
-                  <BackupTable backups={backups.slice(0, 3)} />
+                  {backupsQuery.data !== undefined && (
+                    <RecoveryFiles backups={backups.slice(0, 3)} />
+                  )}
                 </Card>
                 <div className={classes("footnote")}>
                   Small footprint. Important job.{" "}
@@ -859,117 +953,144 @@ export default function App() {
             )}
             {user.admin && view === "Backups" && (
               <>
-                {overview && (
-                  <BackupDestinations
-                    overview={overview}
-                    createBackup={createBackup}
-                    refresh={refresh}
-                  />
-                )}
-                {backupSettings}
                 <Card title="Your recovery files">
-                  <BackupTable backups={backups} />
-                  <p className={documentClass("p", classes("hint"))}>
-                    Recovery files contain password hashes and identity keys.
-                    Encryption uses your BACKUP_PASSPHRASE. Recovery files
-                    stream without a fixed size cap. Retention:{" "}
-                    {overview?.retention.recovery_keep_last
-                      ? `newest ${String(overview.retention.recovery_keep_last)} recovery files per destination`
-                      : "all recovery files"}
-                    {"; "}
-                    {overview?.retention.snapshot_keep_last
-                      ? `newest ${String(overview.retention.snapshot_keep_last)} Omni snapshots per cluster`
-                      : "all received Omni snapshots"}
-                    .
-                  </p>
+                  {backupsQuery.data !== undefined && (
+                    <RecoveryFiles backups={backups} />
+                  )}
+                  {overview && (
+                    <p className={documentClass("p", classes("hint"))}>
+                      Recovery files contain password hashes and identity keys.
+                      Encryption uses your BACKUP_PASSPHRASE. Recovery files
+                      stream without a fixed size cap. Retention:{" "}
+                      {overview.retention.recovery_keep_last
+                        ? `newest ${String(overview.retention.recovery_keep_last)} recovery files per destination`
+                        : "all recovery files"}
+                      {"; "}
+                      {overview.retention.snapshot_keep_last
+                        ? `newest ${String(overview.retention.snapshot_keep_last)} Omni snapshots per cluster`
+                        : "all received Omni snapshots"}
+                      .
+                    </p>
+                  )}
                 </Card>
-                <Card title="Omni credentials and recovery material">
-                  <p className={documentClass("p")}>
-                    Add your Omni configuration, encryption keys, or other
-                    recovery files here. These files stay private to
-                    administrators and are included in encrypted recovery
-                    backups.
-                  </p>
-                  <Form
-                    isDisabled={busy}
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const form = e.currentTarget;
-                      const data = new FormData(form);
-                      void work(async () => {
-                        if (!credentialFile)
-                          throw new Error(
-                            "Choose a credential file to upload.",
-                          );
-                        if (credentialFile.size > 16 * 1024 * 1024)
-                          throw new Error("Credential file exceeds 16 MiB.");
-                        data.set("file", credentialFile);
-                        await api("/api/vault", data);
-                        setCredentialFile(null);
-                        form.reset();
-                        await refresh();
-                        setNotice(
-                          "Credential file saved. Create a backup to include it in a recovery file.",
-                        );
-                      });
-                    }}
-                  >
-                    <FilePicker
-                      label="Choose credential file (up to 16 MiB)"
-                      file={credentialFile}
-                      onChange={setCredentialFile}
-                      isDisabled={busy}
-                    />
-                    <Button type="submit" variant="secondary">
-                      Save credential file →
-                    </Button>
-                  </Form>
-                  {vault.map((name) => (
-                    <div className={classes("account")} key={name}>
-                      <code className={documentClass("code")}>{name}</code>
-                      <a
-                        className={documentClass("a", classes("download"))}
-                        href={`/api/vault/${encodeURIComponent(name)}`}
-                      >
-                        Download ↓
-                      </a>
-                      <RemoveAction
-                        title="Remove credential file?"
+                <Disclosure>
+                  <DisclosureTitle>
+                    Backup destinations and schedule
+                  </DisclosureTitle>
+                  <DisclosurePanel>
+                    {overview && (
+                      <BackupDestinations
+                        overview={overview}
+                        createBackup={createBackup}
+                        refresh={refresh}
+                      />
+                    )}
+                    {backupSettings}
+                  </DisclosurePanel>
+                </Disclosure>
+                <Disclosure>
+                  <DisclosureTitle>
+                    Omni credentials and recovery material
+                  </DisclosureTitle>
+                  <DisclosurePanel>
+                    <div className={layout.disclosureContent}>
+                      <p className={documentClass("p")}>
+                        Add your Omni configuration, encryption keys, or other
+                        recovery files here. These files stay private to
+                        administrators and are included in encrypted recovery
+                        backups.
+                      </p>
+                      <Form
                         isDisabled={busy}
-                        onRemove={() => {
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const form = e.currentTarget;
+                          const data = new FormData(form);
                           void work(async () => {
-                            await api(
-                              `/api/vault/${encodeURIComponent(name)}`,
-                              undefined,
-                              "DELETE",
-                            );
+                            if (!credentialFile)
+                              throw new Error(
+                                "Choose a credential file to upload.",
+                              );
+                            if (credentialFile.size > 16 * 1024 * 1024)
+                              throw new Error(
+                                "Credential file exceeds 16 MiB.",
+                              );
+                            data.set("file", credentialFile);
+                            await api("/api/vault", data);
+                            setCredentialFile(null);
+                            form.reset();
                             await refresh();
+                            setNotice(
+                              "Credential file saved. Create a backup to include it in a recovery file.",
+                            );
                           });
                         }}
                       >
-                        {`Remove ${name} from live storage? Existing recovery files will retain it.`}
-                      </RemoveAction>
+                        <FilePicker
+                          label="Choose credential file (up to 16 MiB)"
+                          file={credentialFile}
+                          onChange={setCredentialFile}
+                          isDisabled={busy}
+                        />
+                        <Button type="submit" variant="secondary">
+                          Save credential file →
+                        </Button>
+                      </Form>
+                      {vault.map((name) => (
+                        <div className={classes("account")} key={name}>
+                          <code className={documentClass("code")}>{name}</code>
+                          <a
+                            className={documentClass("a", classes("download"))}
+                            href={`/api/vault/${encodeURIComponent(name)}`}
+                          >
+                            Download ↓
+                          </a>
+                          <RemoveAction
+                            title="Remove credential file?"
+                            isDisabled={busy}
+                            onRemove={() => {
+                              void work(async () => {
+                                await api(
+                                  `/api/vault/${encodeURIComponent(name)}`,
+                                  undefined,
+                                  "DELETE",
+                                );
+                                await refresh();
+                              });
+                            }}
+                          >
+                            {`Remove ${name} from live storage? Existing recovery files will retain it.`}
+                          </RemoveAction>
+                        </div>
+                      ))}
+                      <p className={documentClass("p", classes("hint"))}>
+                        Uploading a file with the same name replaces the
+                        previous version. Companion does not automatically
+                        collect Omni’s own database or encryption material.
+                      </p>
                     </div>
-                  ))}
-                  <p className={documentClass("p", classes("hint"))}>
-                    Uploading a file with the same name replaces the previous
-                    version. Companion does not automatically collect Omni’s own
-                    database or encryption material.
-                  </p>
-                </Card>
-                <Card title="Restore on a fresh instance">
-                  <p className={documentClass("p")}>
-                    Start a new container with an empty data directory. Choose
-                    “Restore a backup” on the first-launch screen. Supply your
-                    original passphrase, and optionally replace the first
-                    administrator’s credentials.
-                  </p>
-                  <p className={documentClass("p", classes("hint"))}>
-                    Cluster backups received over S3 are separate from Omni’s
-                    own database and encryption-key backups. Include those
-                    separately using the documented recovery procedure.
-                  </p>
-                </Card>
+                  </DisclosurePanel>
+                </Disclosure>
+                <Disclosure>
+                  <DisclosureTitle>Restore on a fresh instance</DisclosureTitle>
+                  <DisclosurePanel>
+                    <div className={layout.disclosureContent}>
+                      <p className={documentClass("p")}>
+                        Start a new container with an empty data directory.
+                        Choose “Restore an existing companion” on the
+                        first-launch screen. Supply your original passphrase,
+                        and optionally replace the first administrator’s
+                        credentials.
+                      </p>
+                      <p className={documentClass("p", classes("hint"))}>
+                        Cluster backups received over S3 are separate from
+                        Omni’s own database and encryption-key backups. Include
+                        those separately using the documented recovery
+                        procedure.
+                      </p>
+                    </div>
+                  </DisclosurePanel>
+                </Disclosure>
               </>
             )}
             {user.admin && view === "Companion access" && (
@@ -1216,7 +1337,7 @@ export default function App() {
                   </p>
                 </Card>
                 {user.admin && (
-                  <Card title="Connect Google Drive">
+                  <Card title="Connect Google Drive" id="google-drive">
                     {overview && (
                       <GoogleDriveSetup
                         issuer={overview.issuer}
@@ -1233,74 +1354,16 @@ export default function App() {
     </div>
   );
 }
-function BackupTable({ backups }: { backups: Backup[] }) {
-  return backups.length ? (
-    <>
-      <ul className={layout.backupList} aria-label="Recovery file downloads">
-        {backups.map((backup) => (
-          <li key={backup.name} className={layout.backupItem}>
-            <code className={documentClass("code")}>{backup.name}</code>
-            <Text>
-              {(backup.bytes / 1024 / 1024).toFixed(2)} MB · Encrypted
-            </Text>
-            <Link
-              href={`/api/backups/${encodeURIComponent(backup.name)}`}
-              download
-            >
-              Download
-            </Link>
-          </li>
-        ))}
-      </ul>
-      <div className={layout.backupTable}>
-        <TableView
-          aria-label="Encrypted recovery files"
-          overflowMode="wrap"
-          styles={style({ width: "full", height: "auto" })}
-        >
-          <TableHeader>
-            <Column id="name" width="2fr" minWidth={280} isRowHeader>
-              Recovery file
-            </Column>
-            <Column id="size" minWidth={90}>
-              Size
-            </Column>
-            <Column id="protection" minWidth={110}>
-              Protection
-            </Column>
-            <Column id="download" minWidth={110}>
-              Download
-            </Column>
-          </TableHeader>
-          <TableBody items={backups}>
-            {(backup) => (
-              <Row id={backup.name}>
-                <Cell>
-                  <code className={documentClass("code")}>{backup.name}</code>
-                </Cell>
-                <Cell>{(backup.bytes / 1024 / 1024).toFixed(2)} MB</Cell>
-                <Cell>Encrypted</Cell>
-                <Cell>
-                  <Link
-                    href={`/api/backups/${encodeURIComponent(backup.name)}`}
-                    download
-                  >
-                    Download
-                  </Link>
-                </Cell>
-              </Row>
-            )}
-          </TableBody>
-        </TableView>
-      </div>
-    </>
-  ) : (
-    <div className={classes("empty")}>
-      <Download styles={style({ marginBottom: 16 })} />
-      <h3 className={documentClass("h3")}>Your first backup starts here.</h3>
-      <p className={documentClass("p")}>
-        Create a recovery file to keep your accounts and infrastructure safe.
-      </p>
-    </div>
+
+const BackupTable = lazy(() => import("./BackupTable"));
+function RecoveryFiles({ backups }: { backups: Backup[] }) {
+  return (
+    <Suspense
+      fallback={
+        <ProgressCircle aria-label="Loading recovery files" isIndeterminate />
+      }
+    >
+      <BackupTable backups={backups} />
+    </Suspense>
   );
 }

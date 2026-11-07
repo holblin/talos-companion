@@ -6,8 +6,9 @@ from PIL import Image, ImageChops, ImageStat
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ffmpeg", default="ffmpeg")
+parser.add_argument("--directory", type=Path, help="Directory containing both phases")
 args = parser.parse_args()
-out = Path(__file__).resolve().parents[1] / "dist" / "ui-review"
+out = args.directory.resolve() if args.directory else Path(__file__).resolve().parents[1] / "dist" / "ui-review"
 font = "C\\:/Windows/Fonts/segoeui.ttf"
 
 def content_start(device, phase):

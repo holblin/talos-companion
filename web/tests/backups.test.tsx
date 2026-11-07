@@ -93,6 +93,18 @@ it("offers setup directly on unconfigured backup cards and saves Google credenti
   expect(fetch.mock.calls[2]?.[0]).toBe("/api/drive/connect");
 });
 
+it("returns keyboard focus to the setup trigger when the panel closes", async () => {
+  const events = userEvent.setup();
+  mount();
+  const trigger = screen.getByRole("button", { name: "Set up Google Drive" });
+  await events.click(trigger);
+  expect(document.activeElement).toBe(
+    screen.getByRole("heading", { name: "Connect Google Drive" }),
+  );
+  await events.click(screen.getByRole("button", { name: "Close setup" }));
+  expect(document.activeElement).toBe(trigger);
+});
+
 it("reconnects an existing Google application without overwriting its credentials", async () => {
   const events = userEvent.setup();
   const fetch = vi.fn(() =>
