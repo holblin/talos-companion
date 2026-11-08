@@ -12,16 +12,9 @@ services:
       PUBLIC_URL: "${PUBLIC_URL:?Set PUBLIC_URL in .env}"
       SETUP_TOKEN: "${SETUP_TOKEN:-}"
       BACKUP_PASSPHRASE: "${BACKUP_PASSPHRASE:-}"
-      MOUNTED_BACKUP_DIR: /destinations/network
       RUST_LOG: talos_companion=info
     volumes:
       - "${DATA_PATH:-./data}:/data"
-      # This path must already be a mounted Unraid share. See docs/unraid.md.
-      - type: bind
-        source: "${NETWORK_BACKUP_PATH:-./network-backups}"
-        target: /destinations/network
-        bind:
-          create_host_path: false
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]

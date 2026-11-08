@@ -1,6 +1,6 @@
 # Deploy on Unraid
 
-The Linux amd64 image is published on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion). Use `holblin/talos-companion:0.3.8` for a pinned version, or `holblin/talos-companion:latest` for the current stable release. `deploy/compose.hub.yaml` runs the registry image without a local build. Source builds using the main `compose.yaml` remain available.
+The Linux amd64 image is published on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion). Use `holblin/talos-companion:0.3.9` for a pinned version, or `holblin/talos-companion:latest` for the current stable release. `deploy/compose.hub.yaml` runs the registry image without a local build. Source builds using the main `compose.yaml` remain available.
 
 The repository includes a build/publish workflow and a template-only bundle generator. Public templates for Companion and Omni are available in [talos-companion-unraid](https://github.com/holblin/talos-companion-unraid). See [publishing instructions](publishing.md) for registry-only Compose installation and Community Apps catalog review, which is separate from public template availability.
 
@@ -16,7 +16,7 @@ existing Omni container. Omni has separate licensing, EULA, TLS and networking p
 | Container path/port | Unraid mapping |
 | --- | --- |
 | `/data` | `/mnt/user/appdata/talos-companion` (read/write) |
-| `/destinations/network` | Your existing mounted backup share (read/write) |
+| `/data/backups` | Optional host-mounted backup directory (read/write), used by Local storage |
 | `8080/tcp` | Web/API/OIDC, typically behind your HTTPS proxy |
 | `9000/tcp` | S3 receiver, reachable from Omni |
 
@@ -47,17 +47,13 @@ and Tailscale do not use the public DNS fallback.
 
 ## NFS and SMB
 
-Mount NFS/SMB **on the Unraid host**, for example using Unassigned Devices or an administrator-managed mount. Pass the mounted directory into the container as `/destinations/network`. Set `MOUNTED_BACKUP_DIR=/destinations/network`.
+Open **Backups → Set up NFS / SMB** to connect directly to a remote server. Choose SMB and enter the hostname, share name, directory, username, and password, or choose NFSv3 and enter the hostname, export path, directory, and numeric UID/GID. The directory must already exist. NFS exports must allow the container's source IP and connections from unprivileged ports. No Docker mount, privileged mode, or additional container packages are required.
 
-Companion needs only filesystem access. It does not need SMB/NFS packages, share credentials, privileged mode, host networking, or mount capabilities inside its scratch image. The share credentials remain managed by Unraid.
+**Check access and save** creates, reads, and removes a temporary file before storing the destination. Credentials are stored privately with the application state and included in encrypted recovery files; the API never returns the SMB password. A blank password preserves the existing password only for the same server, share, and username.
 
-The destination root must exist. The app and Compose configuration deliberately avoid creating it if it is absent. A failed transfer retains the local backup and reports an error. An existing directory alone does not prove a network filesystem is mounted: configure Unraid so the container stops or fails closed when the share disappears. Avoid an ordinary empty directory at the same path silently substituting for your network mount.
+Choose **Remote NFS / SMB** in **Backup settings** for scheduled copies, or **Back up to share** for an immediate backup. Uploads stream to a temporary remote file and are renamed after completion. Remote retention runs only after a successful transfer; failures preserve the local recovery file and report a warning. Use a dedicated remote directory for this instance.
 
-Open **Backups → Set up NFS / SMB** for the guided host mount and container mapping steps. After applying the container changes, use **Manage NFS / SMB → Check share access**. The check writes, reads, and removes a temporary file in the configured destination; it does not prove that the host has mounted a network filesystem there.
-
-Choose **Mounted NFS / SMB** in **Backups → Backup settings** for scheduled copies. Choose an hourly, daily, weekly, or custom interval. Expand **Retention settings** to control recovery retention (default seven files per destination) and Omni snapshot retention (default 30 per cluster); zero disables pruning. These controls are also available in Settings. Changes persist in `/data/config.json` and apply immediately. Pruning happens only after a successful backup. Use a dedicated destination directory.
-
-Large backups stream through bounded buffers; they have no fixed byte-size cap. Restore needs temporary disk space for both the encrypted upload and extracted files. Configure proxy upload limits/timeouts accordingly. S3 operations pause while a consistent source snapshot is archived, so Omni's timeouts must allow for the time spent reading and encrypting the retained data.
+If you prefer managing NFS/SMB mounts on the host, map that folder to **/data/backups** and select **Local storage**. Docker mounts are a local filesystem deployment choice and are not part of the NFS/SMB setup flow. The legacy MOUNTED_BACKUP_DIR destination remains supported for existing configurations.
 
 ## First launch and restore
 

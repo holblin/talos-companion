@@ -135,7 +135,7 @@ it("reconnects an existing Google application without overwriting its credential
   );
 });
 
-it("reports a failed share check and supports a successful retry without claiming a NAS mount is verified", async () => {
+it("checks and saves a native SMB destination, retaining entered details on failure", async () => {
   const events = userEvent.setup();
   const fetch = vi
     .fn()
@@ -144,30 +144,84 @@ it("reports a failed share check and supports a successful retry without claimin
         status: 400,
       }),
     )
-    .mockResolvedValueOnce(
-      new Response(JSON.stringify({ path: "/destinations/network" })),
-    );
+    .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
   vi.stubGlobal("fetch", fetch);
-  const { refresh } = mount({
-    ...overview,
-    mounted: "/destinations/network",
-  });
-  await events.click(screen.getByRole("button", { name: "Manage NFS / SMB" }));
+  const { refresh } = mount();
+  await events.click(screen.getByRole("button", { name: "Set up NFS / SMB" }));
+  expect(screen.queryByText("MOUNTED_BACKUP_DIR")).toBeNull();
+  await events.type(
+    screen.getByLabelText(/Server hostname/),
+    "nas.example.test",
+  );
+  await events.type(screen.getByLabelText(/SMB share name/), "Backups");
+  await events.type(screen.getByLabelText(/SMB username/), "backup-user");
+  await events.type(screen.getByLabelText(/SMB password/), "share-secret");
   await events.click(
-    screen.getByRole("button", { name: "Check share access" }),
+    screen.getByRole("button", { name: "Check access and save" }),
   );
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Share is unavailable",
   );
-  expect(screen.queryByText("Write check passed")).toBeNull();
+  expect(refresh).not.toHaveBeenCalled();
   await events.click(
-    screen.getByRole("button", { name: "Check share access" }),
+    screen.getByRole("button", { name: "Check access and save" }),
   );
-  await screen.findByText("Write check passed");
+  await screen.findByRole("status");
   expect(refresh).toHaveBeenCalledOnce();
   expect(fetch).toHaveBeenLastCalledWith(
-    "/api/backups/mounted/check",
-    expect.anything(),
+    "/api/backups/network",
+    expect.objectContaining({
+      body: JSON.stringify({
+        protocol: "smb",
+        host: "nas.example.test",
+        share: "Backups",
+        directory: "",
+        username: "backup-user",
+        password: "share-secret",
+        uid: 99,
+        gid: 100,
+      }),
+    }),
+  );
+});
+
+it("switches the native setup to NFS export and identity fields", async () => {
+  const events = userEvent.setup();
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+  vi.stubGlobal("fetch", fetch);
+  mount();
+  await events.click(screen.getByRole("button", { name: "Set up NFS / SMB" }));
+  await events.click(screen.getByRole("button", { name: /Share protocol/ }));
+  await events.click(screen.getByRole("option", { name: "NFSv3" }));
+  expect(screen.queryByLabelText(/SMB password/)).toBeNull();
+  await events.type(
+    screen.getByLabelText(/Server hostname/),
+    "nas.example.test",
+  );
+  await events.type(
+    screen.getByLabelText(/NFS export path/),
+    "/exports/backups",
+  );
+  await events.click(
+    screen.getByRole("button", { name: "Check access and save" }),
+  );
+  await screen.findByRole("status");
+  expect(fetch).toHaveBeenLastCalledWith(
+    "/api/backups/network",
+    expect.objectContaining({
+      body: JSON.stringify({
+        protocol: "nfs",
+        host: "nas.example.test",
+        share: "/exports/backups",
+        directory: "",
+        username: "",
+        password: "",
+        uid: 99,
+        gid: 100,
+      }),
+    }),
   );
 });
 

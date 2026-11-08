@@ -12,7 +12,21 @@ import { classes, documentClass } from "./layout";
 import { useTask } from "./useTask";
 
 type Drive = { client_id: string; folder_id: string; connected: boolean };
-type DestinationInfo = { issuer: string; mounted: string | null; drive: Drive };
+export type NetworkShare = {
+  protocol: "nfs" | "smb";
+  host: string;
+  share: string;
+  directory: string;
+  username: string;
+  uid: number;
+  gid: number;
+};
+type DestinationInfo = {
+  issuer: string;
+  mounted: string | null;
+  drive: Drive;
+  network?: NetworkShare | null;
+};
 
 export function BackupFrequency({ seconds }: { seconds: number }) {
   const [frequency, setFrequency] = useState(
@@ -208,6 +222,160 @@ export function GoogleDriveSetup({
   );
 }
 
+export function NetworkShareSetup({
+  configured,
+  refresh,
+}: {
+  configured?: NetworkShare | null | undefined;
+  refresh: () => Promise<void>;
+}) {
+  const [protocol, setProtocol] = useState(configured?.protocol ?? "smb");
+  const [saved, setSaved] = useState(false);
+  const { busy, error, work } = useTask();
+  return (
+    <>
+      <p className={documentClass("p")}>
+        Connect directly to your NAS. No host mount or Docker volume is needed.
+        The check creates, reads, and removes a temporary file before saving
+        this destination.
+      </p>
+      <Form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const data = Object.fromEntries(new FormData(event.currentTarget));
+          setSaved(false);
+          void work(async () => {
+            await api("/api/backups/network", {
+              protocol,
+              host: data["host"],
+              share: data["share"],
+              directory: data["directory"],
+              username: protocol === "smb" ? data["username"] : "",
+              password: protocol === "smb" ? data["password"] : "",
+              uid:
+                protocol === "nfs"
+                  ? Number(
+                      typeof data["uid"] === "string"
+                        ? data["uid"].replaceAll(",", "")
+                        : NaN,
+                    )
+                  : 99,
+              gid:
+                protocol === "nfs"
+                  ? Number(
+                      typeof data["gid"] === "string"
+                        ? data["gid"].replaceAll(",", "")
+                        : NaN,
+                    )
+                  : 100,
+            });
+            setSaved(true);
+            await refresh();
+          });
+        }}
+      >
+        <Picker
+          label="Share protocol"
+          value={protocol}
+          onChange={(value) => {
+            setProtocol(value === "nfs" ? "nfs" : "smb");
+            setSaved(false);
+          }}
+        >
+          <PickerItem id="smb">SMB</PickerItem>
+          <PickerItem id="nfs">NFSv3</PickerItem>
+        </Picker>
+        <Input
+          label="Server hostname or IP address"
+          name="host"
+          defaultValue={configured?.host ?? ""}
+        />
+        <Input
+          key={protocol}
+          label={protocol === "nfs" ? "NFS export path" : "SMB share name"}
+          name="share"
+          defaultValue={
+            configured?.protocol === protocol ? configured.share : ""
+          }
+          placeholder={protocol === "nfs" ? "/exports/backups" : "Backups"}
+        />
+        <Input
+          label="Directory within share (optional)"
+          name="directory"
+          required={false}
+          defaultValue={configured?.directory ?? ""}
+        />
+        <p className={documentClass("p")}>
+          Use an existing, dedicated directory for this instance. Leave the
+          directory empty to use the share root.
+        </p>
+        {protocol === "smb" ? (
+          <>
+            <Input
+              label="SMB username"
+              name="username"
+              defaultValue={configured?.username ?? ""}
+            />
+            <Input
+              label="SMB password"
+              name="password"
+              type="password"
+              required={!configured || configured.protocol !== "smb"}
+              autoComplete="new-password"
+            />
+            {configured?.protocol === "smb" && (
+              <p className={documentClass("p")}>
+                Leave the password empty to keep it for the same server, share,
+                and username.
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <Input
+              label="NFS user ID (UID)"
+              name="uid"
+              type="number"
+              min={0}
+              max={4294967295}
+              step={1}
+              defaultValue={configured?.uid ?? 99}
+            />
+            <Input
+              label="NFS group ID (GID)"
+              name="gid"
+              type="number"
+              min={0}
+              max={4294967295}
+              step={1}
+              defaultValue={configured?.gid ?? 100}
+            />
+            <p className={documentClass("p")}>
+              NFSv3 uses export permissions and numeric user/group IDs. Allow
+              this server’s IP on your NAS, including connections from
+              unprivileged ports.
+            </p>
+          </>
+        )}
+        {error && (
+          <p className={documentClass("p")} role="alert">
+            {error}
+          </p>
+        )}
+        {saved && (
+          <p className={documentClass("p")} role="status">
+            Share access verified and destination saved. You can back up now or
+            select Remote NFS / SMB for scheduled backups.
+          </p>
+        )}
+        <Button type="submit" variant="accent" isDisabled={busy}>
+          {busy ? "Checking share…" : "Check access and save"}
+        </Button>
+      </Form>
+    </>
+  );
+}
+
 export default function BackupDestinations({
   overview,
   createBackup,
@@ -217,8 +385,8 @@ export default function BackupDestinations({
   createBackup: (destination: string) => Promise<void>;
   refresh: () => Promise<void>;
 }) {
-  const [editing, setEditing] = useState<"drive" | "mounted" | null>(null);
-  const [checkedPath, setCheckedPath] = useState<string | null>(null);
+  const [editing, setEditing] = useState<"drive" | "network" | null>(null);
+
   const setupHeading = useRef<HTMLHeadingElement>(null);
   const setupTrigger = useRef<HTMLElement | null>(null);
   const wasEditing = useRef(false);
@@ -227,8 +395,7 @@ export default function BackupDestinations({
     else if (wasEditing.current) setupTrigger.current?.focus();
     wasEditing.current = editing !== null;
   }, [editing]);
-  const { busy, error, work } = useTask();
-  const verified = !!overview.mounted && checkedPath === overview.mounted;
+
   return (
     <>
       <div className={classes("three-cols")}>
@@ -236,7 +403,8 @@ export default function BackupDestinations({
           <h2 className={documentClass("h2")}>Local storage</h2>
           <p className={documentClass("p")}>
             Save an encrypted recovery file in the persistent data directory.
-            Download it whenever you need it.
+            Download it whenever you need it. For a host or Docker mounted
+            folder, map it to /data/backups and use Local storage.
           </p>
           <StatusLight variant="neutral">Local archive destination</StatusLight>
           <Button
@@ -287,27 +455,25 @@ export default function BackupDestinations({
           <p className={documentClass("p")}>
             Save an encrypted copy on your NAS or network share.
           </p>
-          <StatusLight variant={verified ? "positive" : "neutral"}>
-            {verified
-              ? "Write check passed"
-              : overview.mounted
-                ? "Configured · check access"
-                : "Set up to get started"}
+          <StatusLight variant={overview.network ? "positive" : "neutral"}>
+            {overview.network
+              ? `Connected via ${overview.network.protocol.toUpperCase()}`
+              : "Set up to get started"}
           </StatusLight>
           <Button
-            variant={overview.mounted ? "secondary" : "accent"}
+            variant={overview.network ? "secondary" : "accent"}
             onPress={(event) => {
               if (event.target instanceof HTMLElement)
                 setupTrigger.current = event.target;
-              setEditing(editing === "mounted" ? null : "mounted");
+              setEditing(editing === "network" ? null : "network");
             }}
           >
-            {overview.mounted ? "Manage NFS / SMB" : "Set up NFS / SMB"}
+            {overview.network ? "Manage NFS / SMB" : "Set up NFS / SMB"}
           </Button>
-          {overview.mounted && (
+          {overview.network && (
             <Button
               variant="secondary"
-              onPress={() => void createBackup("mounted")}
+              onPress={() => void createBackup("network")}
             >
               Back up to share →
             </Button>
@@ -326,7 +492,7 @@ export default function BackupDestinations({
           </h2>
           <Button
             variant="secondary"
-            isDisabled={busy}
+
             onPress={() => {
               setEditing(null);
             }}
@@ -336,95 +502,10 @@ export default function BackupDestinations({
           {editing === "drive" ? (
             <GoogleDriveSetup issuer={overview.issuer} drive={overview.drive} />
           ) : (
-            <>
-              <p className={documentClass("p")}>
-                Mount your share once on the host, then check it here. Companion
-                runs without host mount privileges, so NAS credentials stay with
-                the host.
-              </p>
-              <ol>
-                <li>
-                  In Unraid, use Unassigned Devices to add your NFS or SMB share
-                  and enable automatic mounting. Enter any share credentials
-                  there.
-                </li>
-                <li>
-                  In the Companion container settings, add a Path from that
-                  mounted host folder to{" "}
-                  <code className={documentClass("code")}>
-                    /destinations/network
-                  </code>
-                  , with Read/Write access.
-                </li>
-                <li>
-                  Add the variable{" "}
-                  <code className={documentClass("code")}>
-                    MOUNTED_BACKUP_DIR
-                  </code>{" "}
-                  with value{" "}
-                  <code className={documentClass("code")}>
-                    /destinations/network
-                  </code>
-                  , then apply the container changes and return to this page.
-                </li>
-              </ol>
-              <details className={documentClass("details")}>
-                <summary className={documentClass("summary")}>
-                  Using Docker Compose instead?
-                </summary>
-                <p className={documentClass("p")}>
-                  Mount the share on your Docker host first. Add these entries
-                  to the Companion service, keeping its existing environment and
-                  volumes:
-                </p>
-                <pre className={documentClass("pre")}>
-                  <code className={documentClass("code")}>
-                    {
-                      "environment:\n  MOUNTED_BACKUP_DIR: /destinations/network\nvolumes:\n  - /path/to/mounted/share:/destinations/network"
-                    }
-                  </code>
-                </pre>
-              </details>
-              <p className={documentClass("p")}>
-                Container destination:{" "}
-                <code className={documentClass("code")}>
-                  {overview.mounted ?? "Not detected yet"}
-                </code>
-              </p>
-              <p className={documentClass("p")}>
-                The check creates, reads, and removes a small temporary file.
-                Confirm on the host that this folder is the mounted share; a
-                writable folder alone cannot prove the NAS is mounted.
-              </p>
-              {error && (
-                <p className={documentClass("p")} role="alert">
-                  {error}
-                </p>
-              )}
-              {verified && (
-                <p className={documentClass("p")} role="status">
-                  Share write check passed. You can back up now or choose NFS /
-                  SMB in Backup settings below.
-                </p>
-              )}
-              <Button
-                variant="accent"
-                isDisabled={busy}
-                onPress={() => {
-                  setCheckedPath(null);
-                  void work(async () => {
-                    const result = await api<{ path: string }>(
-                      "/api/backups/mounted/check",
-                      {},
-                    );
-                    await refresh();
-                    setCheckedPath(result.path);
-                  });
-                }}
-              >
-                {busy ? "Checking share…" : "Check share access"}
-              </Button>
-            </>
+            <NetworkShareSetup
+              configured={overview.network}
+              refresh={refresh}
+            />
           )}
         </section>
       )}

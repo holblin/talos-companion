@@ -12,7 +12,7 @@ const read=path=>readFileSync(resolve(root,path),'utf8');
 const sorted=values=>[...values].sort();
 
 for(const [file,variables,environment] of [
-  ['compose.yaml',['PUID','PGID','WEB_PORT','S3_PORT','PUBLIC_URL','SETUP_TOKEN','BACKUP_PASSPHRASE','DATA_PATH','NETWORK_BACKUP_PATH'],['PUBLIC_URL','SETUP_TOKEN','BACKUP_PASSPHRASE','MOUNTED_BACKUP_DIR','RUST_LOG']],
+  ['compose.yaml',['PUID','PGID','WEB_PORT','S3_PORT','PUBLIC_URL','SETUP_TOKEN','BACKUP_PASSPHRASE','DATA_PATH'],['PUBLIC_URL','SETUP_TOKEN','BACKUP_PASSPHRASE','RUST_LOG']],
   ['deploy/compose.hub.yaml',['TALOS_COMPANION_IMAGE','PUID','PGID','WEB_PORT','S3_PORT','PUBLIC_URL','SETUP_TOKEN','BACKUP_PASSPHRASE','DATA_PATH'],['PUBLIC_URL','SETUP_TOKEN','BACKUP_PASSPHRASE']],
 ]) test(`${file} keeps the existing Docker setup contract`,()=>{
   const source=read(file);
@@ -24,7 +24,7 @@ for(const [file,variables,environment] of [
   assert.equal(lines.length,keys.length,reason);
   assert.deepEqual(sorted(keys),sorted(environment),reason);
   assert.deepEqual(sorted([...source.matchAll(/^      - "([^"]+)"/gm)].map(m=>m[1])),sorted(['${WEB_PORT:-8080}:8080','${S3_PORT:-9000}:9000','${DATA_PATH:-./data}:/data']),reason);
-  assert.deepEqual([...source.matchAll(/^        target: (.+)$/gm)].map(m=>m[1].trim()),file==='compose.yaml'?['/destinations/network']:[],reason);
+  assert.deepEqual([...source.matchAll(/^        target: (.+)$/gm)].map(m=>m[1].trim()),[],reason);
 });
 
 for(const file of ['deploy/unraid/talos-companion.xml','dist/community-apps/templates/talos-companion.xml'].filter(path=>existsSync(resolve(root,path)))) {
@@ -34,7 +34,7 @@ for(const file of ['deploy/unraid/talos-companion.xml','dist/community-apps/temp
       const attr=name=>new RegExp(`${name}="([^"]*)"`).exec(attrs)?.[1];
       return `${attr('Type')}:${attr('Target')}`;
     });
-    assert.deepEqual(sorted(parameters),sorted(['Port:8080','Port:9000','Path:/data','Path:/omni-managed','Path:/destinations/network','Variable:PUBLIC_URL','Variable:SETUP_TOKEN','Variable:BACKUP_PASSPHRASE','Variable:MOUNTED_BACKUP_DIR']),reason);
+    assert.deepEqual(sorted(parameters),sorted(['Port:8080','Port:9000','Path:/data','Path:/omni-managed','Variable:PUBLIC_URL','Variable:SETUP_TOKEN','Variable:BACKUP_PASSPHRASE']),reason);
     assert.equal(/<ExtraParams>([^<]*)<\/ExtraParams>/.exec(source)?.[1],'--user 99:100 --read-only --cap-drop ALL --security-opt no-new-privileges:true',reason);
     assert.match(source,/<Privileged>false<\/Privileged>/,reason);
   });

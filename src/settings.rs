@@ -40,7 +40,7 @@ impl Settings {
         anyhow::ensure!(
             matches!(
                 self.schedule.destination.as_str(),
-                "local" | "mounted" | "drive"
+                "local" | "mounted" | "drive" | "network"
             ),
             "Unknown scheduled destination"
         );
@@ -86,6 +86,16 @@ pub async fn update(
     auth::admin(&app, &headers).await?;
     settings.validate().map_err(|e| bad(&e.to_string()))?;
     if settings.schedule.enabled {
+        if settings.schedule.destination == "network"
+            && app
+                .store
+                .read()
+                .await
+                .as_ref()
+                .is_none_or(|s| s.network.is_none())
+        {
+            return Err(bad("Connect a network share before scheduling it"));
+        }
         if settings.schedule.destination == "mounted" && app.mounted.is_none() {
             return Err(bad("Configure a mounted destination before scheduling it"));
         }

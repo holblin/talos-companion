@@ -260,6 +260,7 @@ mod tests {
             s3_access_key: String::new(),
             s3_secret_key: String::new(),
             drive: Drive::default(),
+            network: None,
             integration: Default::default(),
         };
         let mut q = Authorize {

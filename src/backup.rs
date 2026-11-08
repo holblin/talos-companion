@@ -134,11 +134,21 @@ pub async fn create(app: &App, destination: &str) -> Result<Value> {
 async fn create_inner(app: &App, destination: &str) -> Result<Value> {
     let _serial = app.backup_lock.lock().await;
     let settings = app.settings.borrow().clone();
-    if !matches!(destination, "local" | "mounted" | "drive") {
+    if !matches!(destination, "local" | "mounted" | "drive" | "network") {
         return Err(bad("Unknown destination"));
     }
     if destination == "mounted" && app.mounted.is_none() {
         return Err(bad("No mounted destination configured"));
+    }
+    if destination == "network"
+        && app
+            .store
+            .read()
+            .await
+            .as_ref()
+            .is_none_or(|s| s.network.is_none())
+    {
+        return Err(bad("Connect a network share first"));
     }
     let io_guard = app.io.clone().write_owned().await;
     let state = app.store.read().await.clone().ok_or_else(denied)?;
@@ -177,6 +187,7 @@ async fn create_inner(app: &App, destination: &str) -> Result<Value> {
             .await
             .map_err(anyhow::Error::from)?
         }
+        "network" => crate::network_backup::upload(app, &name, &target, keep).await,
         "drive" => crate::drive::upload(app, &name, &target, keep).await,
         _ => Ok(()),
     };

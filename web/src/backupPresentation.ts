@@ -30,7 +30,7 @@ export function scheduleFrequency(seconds: number) {
 export function destinationName(destination: string) {
   return destination === "drive"
     ? "Google Drive"
-    : destination === "mounted"
+    : destination === "network"
       ? "NFS / SMB"
       : "Local storage";
 }

@@ -14,7 +14,7 @@ Version and commit tags use the same suffixes. All variants retain the same depl
 - Command-free password recovery: request a one-time, 15-minute code on the sign-in page and read it in private server logs. Log readers can recover the administrator account.
 - Authenticated S3 receiver for Omni backups, plus a credential and recovery-material vault.
 - Encrypted recovery files, configurable scheduling and retention, local storage, browser downloads,
-  Google Drive, and host-mounted NFS/SMB destinations.
+  Google Drive, and native remote NFSv3/SMB destinations.
 - Unprivileged UID 99:100, read-only root filesystem, no privileged mode or mount capabilities.
 
 Map persistent storage to `/data` with ownership `99:100`. Expose web port `8080` through
@@ -28,8 +28,9 @@ public keys, can encrypt a downloadable recovery note; private keys stay on your
 The first launch wizard guides account creation or restore. Backup policies are managed
 in Settings and saved in `/data/config.json`.
 
-For NFS/SMB, mount the share on the host and bind it into the container, then set
-`MOUNTED_BACKUP_DIR` to the container path. The container does not mount shares itself.
+For NFS/SMB, use **Backups → Set up NFS / SMB** to connect directly to your NAS.
+The wizard checks access before saving; no host mount or extra container options are needed.
+For a host-mounted folder, bind it to `/data/backups` and select **Local storage**.
 
 Upload Omni recovery keys/configuration explicitly. This application does not automatically
 collect Omni's encryption keys or snapshot Omni's own database. Configure Omni to send its

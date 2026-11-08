@@ -12,7 +12,7 @@ A small, self-hosted Rust + React application for Talos Omni identity and recove
 - Accounts: administrators can create/remove accounts; members can change their own password and sign in to Omni.
 - Receiver: authenticated S3 API, including multipart uploads, backed by the Rust `s3s`/`s3s-fs` libraries. Omni’s bucket is created automatically.
 - Recovery: encrypted snapshots include accounts, password hashes, signing keys, client credentials, Google tokens, uploaded Omni recovery material, and all received S3 data and metadata.
-- Destinations: persistent local storage, authenticated browser download, Google Drive, and host-mounted NFS/SMB shares. Every remote transfer retains a local copy.
+- Destinations: persistent local storage, authenticated browser download, Google Drive, and native remote NFSv3/SMB shares. Every remote transfer retains a local copy.
 - Scheduling: daily by default, configurable in the administrator UI and persisted configuration file.
 - Omni setup and repair: LAN/private-CA, Cloudflare DNS/ACME and Tailscale profiles, scoped configuration previews/overlays, HTTPS reachability checks, and an owner-run provisioning/migration helper. See the [home setup tutorial](docs/home-setup.md).
 - Owner recovery: request a single-use, 15-minute code from the sign-in page, read it in private server logs, and choose a new password. No command or restart is needed. Access to logs is recovery authority. See the [recovery guide](docs/home-setup.md#recover-a-forgotten-administrator-password).
@@ -21,7 +21,7 @@ This is an initial implementation. The S3 backend uses the upstream experimental
 
 ## Run on Unraid
 
-The image is available on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion): `holblin/talos-companion:0.3.8` or `holblin/talos-companion:latest`. Use `deploy/compose.hub.yaml` to run it without a source build. The generated Unraid template is ready for manual installation; Community Apps publication remains deferred. See [Unraid instructions](docs/unraid.md).
+The image is available on [Docker Hub](https://hub.docker.com/r/holblin/talos-companion): `holblin/talos-companion:0.3.9` or `holblin/talos-companion:latest`. Use `deploy/compose.hub.yaml` to run it without a source build. The generated Unraid template is ready for manual installation; Community Apps publication remains deferred. See [Unraid instructions](docs/unraid.md).
 
 The application source, templates and documentation use the [MIT license](LICENSE).
 Public Unraid templates for both Companion and Omni are available in
@@ -31,12 +31,12 @@ To build from source instead:
 
 1. Clone this repository onto your build host.
 2. Copy `.env.example` to `.env` and set your public URL. Leave the secret overrides empty to generate private persistent secrets automatically, or supply your own independent random values.
-3. Pre-create the data and destination directories with ownership matching `PUID:PGID` (default `99:100`). For a local trial on Linux:
+3. Pre-create the data directory with ownership matching `PUID:PGID` (default `99:100`). For a local trial on Linux:
 
    ```sh
-   mkdir -p data network-backups
-   sudo chown 99:100 data network-backups
-   chmod 700 data network-backups
+   mkdir -p data
+   sudo chown 99:100 data
+   chmod 700 data
    ```
 
 4. Run `docker compose up -d --build` (or `mise run up`).
@@ -174,7 +174,9 @@ The UI atomically saves settings in `/data/config.json`. To edit the file manual
 }
 ```
 
-Intervals range from 60 seconds to one year; destinations are `local`, `mounted`, or `drive`. Saving resets the schedule timer. An active backup finishes using the settings it started with. Recovery files include this configuration and restore it with your accounts. Deployment paths and startup secrets still come from the replacement container.
+Intervals range from 60 seconds to one year; destinations are `local`, `network`, or `drive` (`mounted` remains supported for legacy configurations). Saving resets the schedule timer. An active backup finishes using the settings it started with. Recovery files include this configuration and restore it with your accounts. Deployment paths and startup secrets still come from the replacement container.
+
+Native NFSv3 and SMB connections are configured in **Backups → Set up NFS / SMB**. Enter the remote server and share details, then check access and save. No host or Docker mount is required. For host-mounted storage, map the folder to `/data/backups` and use **Local storage**.
 
 Local and mounted retention runs after a successful write. Drive retention runs after a successful upload and moves expired application-tagged recovery files in its configured folder to Trash. Remote failures preserve the new local recovery file and appear in the UI/logs. Use dedicated destination directories/folders for this instance.
 
@@ -187,7 +189,7 @@ Local and mounted retention runs after a successful write. Drive retention runs 
 | `WEB_DIR` | `web/dist` (`/web` in Docker) | Compiled frontend. |
 | `LISTEN_ADDR` | `0.0.0.0:8080` | Web/API listener. |
 | `S3_LISTEN_ADDR` | `0.0.0.0:9000` | Authenticated S3 listener, starts after setup. |
-| `MOUNTED_BACKUP_DIR` | unset | Existing directory for NFS/SMB/local copies. |
+| `MOUNTED_BACKUP_DIR` | unset | Legacy additional local directory; new host mounts should use /data/backups with Local storage. |
 
 ## Recovery and limits
 

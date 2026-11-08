@@ -149,6 +149,8 @@ pub struct Store {
     pub s3_secret_key: String,
     pub drive: Drive,
     #[serde(default)]
+    pub network: Option<crate::network_backup::Config>,
+    #[serde(default)]
     pub integration: crate::omni::Integration,
 }
 pub struct Session {

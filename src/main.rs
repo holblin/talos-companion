@@ -10,6 +10,7 @@ mod connections;
 mod drive;
 mod endpoint_checks;
 mod model;
+mod network_backup;
 mod oidc;
 mod omni;
 mod receiver;
@@ -48,7 +49,7 @@ async fn overview(State(app): State<App>, headers: HeaderMap) -> Result<Json<Val
     let s = guard.as_ref().ok_or_else(denied)?;
     let settings = app.settings.borrow().clone();
     Ok(Json(
-        json!({"issuer":app.issuer(),"client_id":s.client_id,"client_secret":s.client_secret,"redirect_uri":s.redirect_uri,"s3_endpoint":omni::defaults(&app,s).s3_endpoint,"s3_access_key":s.s3_access_key,"s3_secret_key":s.s3_secret_key,"bucket":"omni","mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"drive":{"client_id":s.drive.client_id,"folder_id":s.drive.folder_id,"connected":!s.drive.refresh_token.is_empty()},"streaming_backups":true,"retention":settings.retention,"settings":settings}),
+        json!({"issuer":app.issuer(),"client_id":s.client_id,"client_secret":s.client_secret,"redirect_uri":s.redirect_uri,"s3_endpoint":omni::defaults(&app,s).s3_endpoint,"s3_access_key":s.s3_access_key,"s3_secret_key":s.s3_secret_key,"bucket":"omni","mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"drive":{"client_id":s.drive.client_id,"folder_id":s.drive.folder_id,"connected":!s.drive.refresh_token.is_empty()},"network":s.network.as_ref().map(|c|c.summary()),"streaming_backups":true,"retention":settings.retention,"settings":settings}),
     ))
 }
 async fn secure_headers(req: axum::extract::Request, next: Next) -> Response {
@@ -148,6 +149,7 @@ fn router(app: App) -> Router {
         .route("/api/omni/talos-ca", get(omni::talos_ca))
         .route("/api/backups", get(backup::list).post(backup::make))
         .route("/api/backups/mounted/check", post(backup::check_mounted))
+        .route("/api/backups/network", post(network_backup::configure))
         .route("/api/backups/{name}", get(backup::download))
         .route(
             "/api/vault",

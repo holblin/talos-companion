@@ -152,7 +152,7 @@ pub async fn setup(
     let settings = input.settings.unwrap_or_else(|| previous.clone());
     settings.validate().map_err(|e| bad(&e.to_string()))?;
     if settings.schedule.enabled
-        && (settings.schedule.destination == "drive"
+        && (matches!(settings.schedule.destination.as_str(), "drive" | "network")
             || (settings.schedule.destination == "mounted" && app.mounted.is_none()))
     {
         return Err(bad(
@@ -173,6 +173,7 @@ pub async fn setup(
         s3_access_key: secret(),
         s3_secret_key: secret(),
         drive: Drive::default(),
+        network: None,
         integration: Default::default(),
     };
     settings.persist(&app.data)?;

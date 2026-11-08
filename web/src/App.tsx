@@ -69,6 +69,7 @@ type Overview = {
   s3_secret_key: string;
   bucket: string;
   mounted: string | null;
+  network?: import("./BackupSetup").NetworkShare | null;
   drive: { client_id: string; folder_id: string; connected: boolean };
   streaming_backups: boolean;
   retention: { recovery_keep_last: number; snapshot_keep_last: number };
@@ -596,9 +597,14 @@ export default function App() {
           styles={style({ width: "full", marginY: 12 })}
         >
           <PickerItem id="local">Local storage</PickerItem>
-          <PickerItem id="mounted" isDisabled={!overview.mounted}>
-            Mounted NFS / SMB
+          <PickerItem id="network" isDisabled={!overview.network}>
+            Remote NFS / SMB
           </PickerItem>
+          {overview.settings.schedule.destination === "mounted" && (
+            <PickerItem id="mounted">
+              Local storage (legacy directory)
+            </PickerItem>
+          )}
           <PickerItem id="drive" isDisabled={!overview.drive.connected}>
             Google Drive
           </PickerItem>

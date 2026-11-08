@@ -408,8 +408,8 @@ export default function SetupWizard({
               <>
                 <p className={documentClass("p")}>
                   Start with daily encrypted backups to local storage, or choose
-                  a mounted destination. You can change all of these later in
-                  Settings.
+                  a remote NFS or SMB share after sign-in. You can change all of
+                  these later in Settings.
                 </p>
                 <Checkbox
                   isSelected={settings.schedule.enabled}
@@ -467,15 +467,12 @@ export default function SetupWizard({
                   styles={style({ width: "full", marginY: 12 })}
                 >
                   <PickerItem id="local">Local storage</PickerItem>
-                  <PickerItem id="mounted" isDisabled={!deployment?.mounted}>
-                    Mounted NFS / SMB
-                  </PickerItem>
                 </Picker>
                 <p className={documentClass("p", classes("hint"))}>
                   Local backups are stored in /data/backups.{" "}
-                  {deployment?.mounted
-                    ? `Mounted destination: ${deployment.mounted}.`
-                    : "To use NFS / SMB, mount the share in Unraid and map it into the container."}{" "}
+                  {
+                    "Connect a remote NFS or SMB share from Backups after sign-in. For host or Docker mounted storage, use Local storage with the folder mapped to /data/backups."
+                  }{" "}
                   Google Drive can be connected after sign-in.
                 </p>
                 <Field
@@ -615,8 +612,8 @@ export default function SetupWizard({
                     <strong>Check your backup destination</strong>
                     <span>
                       Open Settings to connect Google Drive or review your
-                      schedule. Confirm any NFS / SMB share is mounted on this
-                      host.
+                      schedule. Reconnect any remote NFS / SMB share from
+                      Backups on this host.
                     </span>
                   </li>
                   <li>

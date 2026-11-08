@@ -26,7 +26,7 @@ $template.Container.Repository = "${image}:latest"
 $template.Container.Registry = "https://hub.docker.com/r/$image"
 $template.Container.Support = "$publicBase/issues"
 $template.Container.Project = "$publicBase#talos-companion"
-$template.Container.Overview = 'Identity, accounts, and encrypted recovery for Talos Omni. Guided first launch supports a new administrator or recovery with optional credential replacement. Includes a built-in Cloudflare/Tailscale connection wizard, S3 receiver, credential vault, backup scheduling, browser downloads, Google Drive, and host-mounted NFS/SMB destinations. Runs without privileged mode as UID 99 with a read-only root filesystem. Pre-create appdata with ownership 99:100 and keep the backup passphrase separately. This is an independent companion, not an official Sidero Labs product.'
+$template.Container.Overview = 'Identity, accounts, and encrypted recovery for Talos Omni. Guided first launch supports a new administrator or recovery with optional credential replacement. Includes a built-in Cloudflare/Tailscale connection wizard, S3 receiver, credential vault, backup scheduling, browser downloads, Google Drive, and native remote NFSv3/SMB destinations. Runs without privileged mode as UID 99 with a read-only root filesystem. Pre-create appdata with ownership 99:100 and keep the backup passphrase separately. This is an independent companion, not an official Sidero Labs product.'
 $template.Container.Category = 'Tools:Utilities'
 foreach ($entry in @{
     TemplateURL = "$rawBase/templates/talos-companion.xml"
@@ -36,10 +36,6 @@ foreach ($entry in @{
     $node.InnerText = $entry.Value
     [void]$template.Container.AppendChild($node)
 }
-# The network share is optional. Enable this variable only after mapping a real host mount.
-$mountedSetting = $template.Container.Config | Where-Object Target -eq 'MOUNTED_BACKUP_DIR'
-$mountedSetting.Default = ''
-$mountedSetting.InnerText = ''
 $template.Save((Join-Path $templatePath 'talos-companion.xml'))
 [xml]$omniTemplate = Get-Content -LiteralPath (Join-Path $projectRoot 'deploy/unraid/omni.xml') -Raw
 $omniTemplate.Container.Support = "$publicBase/issues"
@@ -153,10 +149,10 @@ Decrypt the note locally with age, then use its recovered passphrase with the .t
 
 ## Optional NFS / SMB destination
 
-Mount the share on the Unraid host and map that existing mount to ``/destinations/network``.
-Only then set MOUNTED_BACKUP_DIR to ``/destinations/network``. The container requires
-no mount privileges or SMB/NFS utilities. Confirm the host mount is actually available;
-an empty directory at the mountpoint does not prove the share is connected.
+Open **Backups → Set up NFS / SMB** after sign-in to configure a direct remote connection.
+Choose SMB credentials or an NFSv3 export and UID/GID, then check access and save.
+No host mount or extra Docker options are required. For host-mounted storage,
+map the folder to ``/data/backups`` and choose **Local storage**.
 
 ## Recovery
 

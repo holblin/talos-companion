@@ -15,9 +15,7 @@
   <Config Name="S3 port" Target="9000" Default="9000" Mode="tcp" Description="Omni S3 receiver" Type="Port" Display="always" Required="true" Mask="false">9000</Config>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/talos-companion" Mode="rw" Description="Pre-create with ownership 99:100" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/talos-companion</Config>
   <Config Name="Omni managed configuration" Target="/omni-managed" Default="" Mode="rw" Description="Optional dedicated overlay directory prepared by the home installer. Never mount Omni keys or its database here." Type="Path" Display="advanced" Required="false" Mask="false"></Config>
-  <Config Name="Network backup share" Target="/destinations/network" Default="" Mode="rw" Description="Existing NFS or SMB mount managed by Unraid" Type="Path" Display="always" Required="false" Mask="false"></Config>
   <Config Name="Public URL" Target="PUBLIC_URL" Default="" Mode="" Description="Exact public HTTPS origin" Type="Variable" Display="always" Required="true" Mask="false"></Config>
   <Config Name="Setup token override" Target="SETUP_TOKEN" Default="" Mode="" Description="Optional 24+ characters. Blank generates a private token shown in first-start container logs." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="Backup passphrase override" Target="BACKUP_PASSPHRASE" Default="" Mode="" Description="Optional 16+ characters. Blank generates a persistent private passphrase; save it from the setup wizard." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
-  <Config Name="Mounted destination" Target="MOUNTED_BACKUP_DIR" Default="/destinations/network" Mode="" Description="Use only with a real host mount" Type="Variable" Display="advanced" Required="false" Mask="false">/destinations/network</Config>
 </Container>

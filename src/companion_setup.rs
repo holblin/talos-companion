@@ -476,6 +476,7 @@ mod tests {
             s3_access_key: String::new(),
             s3_secret_key: "test-instance-secret".into(),
             drive: Default::default(),
+            network: None,
             integration: Default::default(),
         };
         let app = App {
