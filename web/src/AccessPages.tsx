@@ -17,6 +17,7 @@ import {
   type CompanionVerification,
 } from "./verifyCompanion";
 import SetupFlow, { type Integration, type Profile } from "./OmniSetup";
+import ContextHelp from "./ContextHelp";
 
 export type AccessMethod = {
   integration: Integration;
@@ -73,10 +74,12 @@ export function CompanionAccess() {
   return (
     <section className={classes("card")}>
       <h2 className={documentClass("h2")}>Companion access</h2>
-      <p className={documentClass("p")}>
-        Configure any or all three methods. Adding access keeps your existing
-        methods running and does not change Omni’s identity provider.
-      </p>
+      <ContextHelp title="How Companion access methods work">
+        <p className={documentClass("p")}>
+          Configure any or all three methods. Adding access keeps your existing
+          methods running and does not change Omni’s identity provider.
+        </p>
+      </ContextHelp>
       {catalog.data && (
         <p className={documentClass("p")}>
           Omni’s canonical issuer:{" "}
@@ -278,10 +281,12 @@ export function OmniConfiguration({ children }: { children?: ReactNode } = {}) {
             <p className={documentClass("p")}>
               Step 1 of 3 · Choose the access method Omni will use
             </p>
-            <p className={documentClass("p")}>
-              All configured access methods remain available. Companion
-              advertises one canonical OpenID Connect issuer.
-            </p>
+            <ContextHelp title="How Omni uses Companion access">
+              <p className={documentClass("p")}>
+                All configured access methods remain available. Companion
+                advertises one canonical OpenID Connect issuer.
+              </p>
+            </ContextHelp>
             <p className={documentClass("p")}>
               Active identity-provider URL:{" "}
               <code className={documentClass("code")}>

@@ -40,6 +40,7 @@ import { useTask } from "./useTask";
 import { api, ApiError } from "./api";
 import QueryNotice from "./QueryNotice";
 import RecoveryReadiness from "./RecoveryReadiness";
+import ContextHelp from "./ContextHelp";
 import { type Backup } from "./backupPresentation";
 const SetupWizard = lazy(() => import("./SetupWizard"));
 const OmniSetup = lazy(() =>
@@ -640,10 +641,13 @@ export default function App() {
           Save backup settings
         </Button>
       </Form>
-      <p className={documentClass("p", classes("hint"))}>
-        Saved in /data/config.json and included in recovery backups. Changes
-        apply immediately. An active backup finishes with its original settings.
-      </p>
+      <ContextHelp title="How backup settings apply">
+        <p className={documentClass("p")}>
+          Saved in /data/config.json and included in recovery backups. Changes
+          apply immediately. An active backup finishes with its original
+          settings. Saving resets the schedule timer.
+        </p>
+      </ContextHelp>
     </Card>
   );
   return (
@@ -746,17 +750,11 @@ export default function App() {
                 ))}
             </Picker>
           </div>
-          <StatusLight
-            variant={user.admin && adminError ? "notice" : "neutral"}
-          >
-            {user.admin
-              ? adminError
-                ? "Some data unavailable"
-                : adminLoading
-                  ? "Loading workspace"
-                  : "Workspace data loaded"
-              : "Signed in"}
-          </StatusLight>
+          {user.admin && (adminError || adminLoading) && (
+            <StatusLight variant={adminError ? "notice" : "neutral"}>
+              {adminError ? "Some data unavailable" : "Loading workspace"}
+            </StatusLight>
+          )}
         </header>
         <div className={classes("content")}>
           <div className={classes("page-title")}>
@@ -768,13 +766,8 @@ export default function App() {
               >
                 {user.admin ? titles[view] : "Your account."}
               </h1>
-              <p className={documentClass("p", layout.subtitle)}>
-                {view === "Overview"
-                  ? "Check your recovery files, backup routine, and connections."
-                  : "Identity and recovery, under your control."}
-              </p>
             </div>
-            {user.admin && (
+            {user.admin && view === "Backups" && (
               <Button
                 isDisabled={busy}
                 onPress={() => void createBackup("local")}
@@ -964,19 +957,21 @@ export default function App() {
                     <RecoveryFiles backups={backups} />
                   )}
                   {overview && (
-                    <p className={documentClass("p", classes("hint"))}>
-                      Recovery files contain password hashes and identity keys.
-                      Encryption uses your BACKUP_PASSPHRASE. Recovery files
-                      stream without a fixed size cap. Retention:{" "}
-                      {overview.retention.recovery_keep_last
-                        ? `newest ${String(overview.retention.recovery_keep_last)} recovery files per destination`
-                        : "all recovery files"}
-                      {"; "}
-                      {overview.retention.snapshot_keep_last
-                        ? `newest ${String(overview.retention.snapshot_keep_last)} Omni snapshots per cluster`
-                        : "all received Omni snapshots"}
-                      .
-                    </p>
+                    <ContextHelp title="About recovery files and retention">
+                      <p className={documentClass("p")}>
+                        Recovery files contain password hashes and identity
+                        keys. Encryption uses your BACKUP_PASSPHRASE. Recovery
+                        files stream without a fixed size cap. Retention:{" "}
+                        {overview.retention.recovery_keep_last
+                          ? `newest ${String(overview.retention.recovery_keep_last)} recovery files per destination`
+                          : "all recovery files"}
+                        {"; "}
+                        {overview.retention.snapshot_keep_last
+                          ? `newest ${String(overview.retention.snapshot_keep_last)} Omni snapshots per cluster`
+                          : "all received Omni snapshots"}
+                        .
+                      </p>
+                    </ContextHelp>
                   )}
                 </Card>
                 <Disclosure>
@@ -1265,14 +1260,19 @@ export default function App() {
                       </div>
                     ))}
                   </div>
-                  <p className={documentClass("p", classes("hint"))}>
-                    Administrators can manage identity settings, people, and
-                    backups. Members can sign in to Omni and change their own
-                    password. Adding an email here is an administrator’s
-                    assertion that it belongs to that person.
-                  </p>
+                  <ContextHelp title="About account roles">
+                    <p className={documentClass("p")}>
+                      Administrators can manage identity settings, people, and
+                      backups. Members can sign in to Omni and change their own
+                      password.
+                    </p>
+                  </ContextHelp>
                 </Card>
                 <Card title="Invite someone in">
+                  <p className={documentClass("p", classes("hint"))}>
+                    Only add an email address you have confirmed belongs to the
+                    account holder.
+                  </p>
                   <Form
                     isDisabled={busy}
                     onSubmit={(e) => {

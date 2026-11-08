@@ -10,6 +10,7 @@ import Input from "./Field";
 import { api } from "./api";
 import { classes, documentClass } from "./layout";
 import { useTask } from "./useTask";
+import ContextHelp from "./ContextHelp";
 
 type Drive = { client_id: string; folder_id: string; connected: boolean };
 export type NetworkShare = {
@@ -59,9 +60,6 @@ export function BackupFrequency({ seconds }: { seconds: number }) {
       ) : (
         <input type="hidden" name="interval_seconds" value={frequency} />
       )}
-      <p className={documentClass("p", classes("hint"))}>
-        Saving resets the schedule timer.
-      </p>
     </>
   );
 }
@@ -124,42 +122,44 @@ export function GoogleDriveSetup({
           <p className={documentClass("p")}>
             Step 1 of 2 · Set up your Google application once
           </p>
-          <p className={documentClass("p")}>
-            This self-hosted installation needs your own Google OAuth
-            application before Google can offer sign-in. Your client secret
-            stays on this server.
-          </p>
-          <ol>
-            <li>
-              Open{" "}
-              <a
-                className={documentClass("a")}
-                href="https://console.cloud.google.com/apis/library/drive.googleapis.com"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Google Cloud
-              </a>
-              , choose a project, and enable the Google Drive API.
-            </li>
-            <li>
-              Configure the OAuth consent screen, then create an OAuth client of
-              type <b>Web application</b> in{" "}
-              <a
-                className={documentClass("a")}
-                href="https://console.cloud.google.com/apis/credentials"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Credentials
-              </a>
-              .
-            </li>
-            <li>Register this exact authorized redirect URI:</li>
-          </ol>
-          <code className={documentClass("code", classes("block"))}>
-            {issuer}/oauth/google/callback
-          </code>
+          <ContextHelp title="Google Cloud setup instructions">
+            <p className={documentClass("p")}>
+              This self-hosted installation needs your own Google OAuth
+              application before Google can offer sign-in. Your client secret
+              stays on this server.
+            </p>
+            <ol>
+              <li>
+                Open{" "}
+                <a
+                  className={documentClass("a")}
+                  href="https://console.cloud.google.com/apis/library/drive.googleapis.com"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Google Cloud
+                </a>
+                , choose a project, and enable the Google Drive API.
+              </li>
+              <li>
+                Configure the OAuth consent screen, then create an OAuth client
+                of type <b>Web application</b> in{" "}
+                <a
+                  className={documentClass("a")}
+                  href="https://console.cloud.google.com/apis/credentials"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Credentials
+                </a>
+                .
+              </li>
+              <li>Register this exact authorized redirect URI:</li>
+            </ol>
+            <code className={documentClass("code", classes("block"))}>
+              {issuer}/oauth/google/callback
+            </code>
+          </ContextHelp>
           <Form
             isDisabled={busy}
             onSubmit={(event) => {

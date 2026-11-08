@@ -351,6 +351,10 @@ describe("Spectrum frontend workflows", () => {
     await events.type(screen.getByLabelText(/^Password/), "test-only-password");
     await events.click(screen.getByRole("button", { name: "Sign in →" }));
     await screen.findByRole("button", { name: /Test Admin.*Sign out/ });
+    expect(screen.queryByText("Workspace data loaded")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Create local backup" }),
+    ).toBeNull();
     await events.click(screen.getByRole("link", { name: "Backups" }));
     expect(router.state.location.pathname).toBe("/backups");
     await screen.findByRole("heading", { name: "Your recovery files" });
@@ -369,6 +373,19 @@ describe("Spectrum frontend workflows", () => {
     await events.click(screen.getByRole("link", { name: "Settings" }));
     expect(router.state.location.pathname).toBe("/settings");
     await screen.findByRole("heading", { name: "Backup settings" });
+    expect(
+      screen.queryByRole("button", { name: "Create local backup" }),
+    ).toBeNull();
+    const settingsHelp = screen.getByRole("button", {
+      name: "How backup settings apply",
+    });
+    expect(settingsHelp.getAttribute("aria-expanded")).toBe("false");
+    settingsHelp.focus();
+    await events.keyboard("{Enter}");
+    expect(settingsHelp.getAttribute("aria-expanded")).toBe("true");
+    await screen.findByText(
+      /An active backup finishes with its original settings/,
+    );
     await events.click(
       screen.getByRole("button", { name: "Save backup settings" }),
     );
