@@ -3,7 +3,7 @@ import {
   Disclosure,
   DisclosureTitle,
   DisclosurePanel,
-} from "@react-spectrum/s2";
+} from "@react-spectrum/s2/Disclosure";
 
 export default function ContextHelp({
   title,

@@ -3,15 +3,11 @@ import FilePicker from "./FilePicker";
 import { useTask } from "./useTask";
 import { classes, layout } from "./layout";
 import Field from "./Field";
-import {
-  RadioGroup,
-  Radio,
-  Form,
-  Checkbox,
-  Picker,
-  PickerItem,
-  Button,
-} from "@react-spectrum/s2";
+import { RadioGroup, Radio } from "@react-spectrum/s2/RadioGroup";
+import { Form } from "@react-spectrum/s2/Form";
+import { Checkbox } from "@react-spectrum/s2/Checkbox";
+import { Picker, PickerItem } from "@react-spectrum/s2/Picker";
+import { Button } from "@react-spectrum/s2/Button";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { useEffect, useRef, useState } from "react";
 

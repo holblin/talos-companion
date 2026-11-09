@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Provider } from "@react-spectrum/s2";
+import { Provider } from "@react-spectrum/s2/Provider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { expect, it, vi } from "vitest";
 import BackupDestinations, { BackupFrequency } from "../src/BackupSetup";
@@ -54,9 +54,8 @@ it("offers setup directly on unconfigured backup cards and saves Google credenti
   await events.click(
     screen.getByRole("button", { name: "Set up Google Drive" }),
   );
-  expect(document.activeElement).toBe(
-    screen.getByRole("heading", { name: "Connect Google Drive" }),
-  );
+  await screen.findByRole("dialog", { name: "Google Drive setup" });
+  expect(screen.getByLabelText("Google client ID")).toBeTruthy();
   expect(
     screen.getByText(overview.issuer + "/oauth/google/callback"),
   ).toBeTruthy();
@@ -93,16 +92,20 @@ it("offers setup directly on unconfigured backup cards and saves Google credenti
   expect(fetch.mock.calls[2]?.[0]).toBe("/api/drive/connect");
 });
 
-it("returns keyboard focus to the setup trigger when the panel closes", async () => {
+it("opens a Spectrum dialog and returns keyboard focus to the setup trigger when it closes", async () => {
   const events = userEvent.setup();
   mount();
   const trigger = screen.getByRole("button", { name: "Set up Google Drive" });
   await events.click(trigger);
-  expect(document.activeElement).toBe(
-    screen.getByRole("heading", { name: "Connect Google Drive" }),
-  );
+  expect(
+    screen
+      .getByRole("dialog", { name: "Google Drive setup" })
+      .contains(document.activeElement),
+  ).toBe(true);
   await events.click(screen.getByRole("button", { name: "Close setup" }));
-  expect(document.activeElement).toBe(trigger);
+  await waitFor(() => {
+    expect(document.activeElement).toBe(trigger);
+  });
 });
 
 it("reconnects an existing Google application without overwriting its credentials", async () => {

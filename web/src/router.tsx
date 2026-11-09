@@ -7,7 +7,8 @@ import {
   useRouter,
 } from "@tanstack/react-router";
 import type { RouterHistory } from "@tanstack/react-router";
-import { Provider, ToastContainer } from "@react-spectrum/s2";
+import { Provider } from "@react-spectrum/s2/Provider";
+import { ToastContainer } from "@react-spectrum/s2/Toast";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import App from "./App";
 import { destinations } from "./navigation";

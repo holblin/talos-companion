@@ -1,4 +1,5 @@
-import { AlertDialog, Button, DialogTrigger } from "@react-spectrum/s2";
+import { AlertDialog, DialogTrigger } from "@react-spectrum/s2/AlertDialog";
+import { Button } from "@react-spectrum/s2/Button";
 
 export default function RemoveAction({
   title,

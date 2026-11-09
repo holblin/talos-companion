@@ -3,14 +3,13 @@ import FilePicker from "./FilePicker";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTask } from "./useTask";
 import { classes } from "./layout";
-import {
-  TextArea,
-  TextField,
-  Button,
-  Checkbox,
-  StatusLight,
-  ToastQueue,
-} from "@react-spectrum/s2";
+import { TextArea } from "@react-spectrum/s2/TextArea";
+import { TextField } from "@react-spectrum/s2/TextField";
+import { Button } from "@react-spectrum/s2/Button";
+import { ButtonGroup } from "@react-spectrum/s2/ButtonGroup";
+import { Checkbox } from "@react-spectrum/s2/Checkbox";
+import { StatusLight } from "@react-spectrum/s2/StatusLight";
+import { ToastQueue } from "@react-spectrum/s2/Toast";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
@@ -441,27 +440,29 @@ export default function SetupFlow({
               description="Use an existing trusted reverse proxy if you already have one. A local certificate uses the same published port as this page."
             />
           </details>
-          <Button
-            variant="secondary"
-            onPress={() => {
-              onDone();
-            }}
-          >
-            Back
-          </Button>
-          <Button
-            variant="accent"
-            isDisabled={
-              busy ||
-              (localPrepared && !trustInstalled) ||
-              !settings.companion_url.startsWith("https://")
-            }
-            onPress={() => {
-              setStep(3);
-            }}
-          >
-            Continue
-          </Button>
+          <ButtonGroup slot={null}>
+            <Button
+              variant="secondary"
+              onPress={() => {
+                onDone();
+              }}
+            >
+              Back
+            </Button>
+            <Button
+              variant="accent"
+              isDisabled={
+                busy ||
+                (localPrepared && !trustInstalled) ||
+                !settings.companion_url.startsWith("https://")
+              }
+              onPress={() => {
+                setStep(3);
+              }}
+            >
+              Continue
+            </Button>
+          </ButtonGroup>
         </>
       )}
       {step === 3 && mode === "access" && (
@@ -548,30 +549,32 @@ export default function SetupFlow({
               }}
             />
           </details>
-          <Button
-            variant="secondary"
-            isDisabled={busy}
-            onPress={() => {
-              setStep(2);
-            }}
-          >
-            Back
-          </Button>
-          <Button
-            variant="accent"
-            isDisabled={
-              busy ||
-              checkingCompanion ||
-              !settings.companion_url.trim().startsWith("https://")
-            }
-            onPress={() => {
-              void work(async () => {
-                await saveAccess();
-              });
-            }}
-          >
-            {busy ? "Verifying and saving…" : "Save access method"}
-          </Button>
+          <ButtonGroup slot={null}>
+            <Button
+              variant="secondary"
+              isDisabled={busy}
+              onPress={() => {
+                setStep(2);
+              }}
+            >
+              Back
+            </Button>
+            <Button
+              variant="accent"
+              isDisabled={
+                busy ||
+                checkingCompanion ||
+                !settings.companion_url.trim().startsWith("https://")
+              }
+              onPress={() => {
+                void work(async () => {
+                  await saveAccess();
+                });
+              }}
+            >
+              {busy ? "Verifying and saving…" : "Save access method"}
+            </Button>
+          </ButtonGroup>
         </>
       )}
       {step === 4 && (
@@ -615,40 +618,42 @@ export default function SetupFlow({
               styles={style({ width: "full", marginY: 12 })}
             />
           </details>
-          <Button
-            variant="secondary"
-            isDisabled={busy}
-            onPress={() => {
-              onDone();
-            }}
-          >
-            Back
-          </Button>
-          <Button
-            variant="accent"
-            isDisabled={busy || !address.trim()}
-            onPress={() => {
-              void work(async () => {
-                const result = await api<{ origin: string }>(
-                  "/api/omni/location",
-                  { address: address.trim(), certificate },
-                );
-                setOmniAddress(result.origin);
-                const endpoints = {
-                  ...settings,
-                  omni_url:
-                    settings.profile === "lan"
-                      ? result.origin
-                      : settings.omni_url,
-                };
-                setSettings(endpoints);
-                setStep(5);
-                await verify(endpoints);
-              });
-            }}
-          >
-            {busy ? "Finding Omni…" : "Continue"}
-          </Button>
+          <ButtonGroup slot={null}>
+            <Button
+              variant="secondary"
+              isDisabled={busy}
+              onPress={() => {
+                onDone();
+              }}
+            >
+              Back
+            </Button>
+            <Button
+              variant="accent"
+              isDisabled={busy || !address.trim()}
+              onPress={() => {
+                void work(async () => {
+                  const result = await api<{ origin: string }>(
+                    "/api/omni/location",
+                    { address: address.trim(), certificate },
+                  );
+                  setOmniAddress(result.origin);
+                  const endpoints = {
+                    ...settings,
+                    omni_url:
+                      settings.profile === "lan"
+                        ? result.origin
+                        : settings.omni_url,
+                  };
+                  setSettings(endpoints);
+                  setStep(5);
+                  await verify(endpoints);
+                });
+              }}
+            >
+              {busy ? "Finding Omni…" : "Continue"}
+            </Button>
+          </ButtonGroup>
         </>
       )}
       {step === 2 && settings.profile !== "lan" && (
@@ -768,43 +773,45 @@ export default function SetupFlow({
                     "We couldn’t finish the connection. Check the account and domain you approved, then try again."}
               </p>
             )}
-          <Button
-            variant="secondary"
-            isDisabled={busy || connecting}
-            onPress={() => {
-              onDone();
-            }}
-          >
-            Back
-          </Button>
-          <Button
-            variant="accent"
-            isDisabled={
-              busy ||
-              connecting ||
-              !authorized ||
-              !connection.data?.available ||
-              !providerIncluded
-            }
-            onPress={() => {
-              void work(async () => {
-                const result = await api<{ id: string }>(
-                  "/api/omni/connection",
-                  { profile: settings.profile, domain: domain.trim() },
-                );
-                startedConnection.current = result.id;
-                await queryClient.invalidateQueries({
-                  queryKey: ["omni-connection"],
+          <ButtonGroup slot={null}>
+            <Button
+              variant="secondary"
+              isDisabled={busy || connecting}
+              onPress={() => {
+                onDone();
+              }}
+            >
+              Back
+            </Button>
+            <Button
+              variant="accent"
+              isDisabled={
+                busy ||
+                connecting ||
+                !authorized ||
+                !connection.data?.available ||
+                !providerIncluded
+              }
+              onPress={() => {
+                void work(async () => {
+                  const result = await api<{ id: string }>(
+                    "/api/omni/connection",
+                    { profile: settings.profile, domain: domain.trim() },
+                  );
+                  startedConnection.current = result.id;
+                  await queryClient.invalidateQueries({
+                    queryKey: ["omni-connection"],
+                  });
                 });
-              });
-            }}
-          >
-            {connecting
-              ? "Connecting…"
-              : settings.profile === "cloudflare"
-                ? "Continue with Cloudflare"
-                : "Connect Tailscale"}
-          </Button>
+              }}
+            >
+              {connecting
+                ? "Connecting…"
+                : settings.profile === "cloudflare"
+                  ? "Continue with Cloudflare"
+                  : "Connect Tailscale"}
+            </Button>
+          </ButtonGroup>
         </>
       )}
       {step === 5 && (
@@ -859,26 +866,28 @@ export default function SetupFlow({
               Select a verified Companion access method
             </Button>
           )}
-          <Button
-            variant="secondary"
-            isDisabled={busy || connecting}
-            onPress={() => {
-              setStep(4);
-            }}
-          >
-            Back
-          </Button>
-          <Button
-            variant="secondary"
-            isDisabled={busy || connecting}
-            onPress={() => {
-              void work(async () => {
-                await verify(settings);
-              });
-            }}
-          >
-            Check again
-          </Button>
+          <ButtonGroup slot={null}>
+            <Button
+              variant="secondary"
+              isDisabled={busy || connecting}
+              onPress={() => {
+                setStep(4);
+              }}
+            >
+              Back
+            </Button>
+            <Button
+              variant="secondary"
+              isDisabled={busy || connecting}
+              onPress={() => {
+                void work(async () => {
+                  await verify(settings);
+                });
+              }}
+            >
+              Check again
+            </Button>
+          </ButtonGroup>
           <Button
             variant="accent"
             isDisabled={
@@ -1120,56 +1129,58 @@ export default function SetupFlow({
                 register the shown callback. I have prepared HTTPS and a
                 recovery copy.
               </Checkbox>
-              <Button
-                variant="accent"
-                isDisabled={
-                  busy ||
-                  !accepted ||
-                  !allReady ||
-                  status?.active_issuer !== settings.companion_url
-                }
-                onPress={() => {
-                  void work(async () => {
-                    await api("/api/oidc", { redirect_uri: plan.callback });
-                    await queryClient.invalidateQueries({
-                      queryKey: ["admin"],
+              <ButtonGroup slot={null}>
+                <Button
+                  variant="accent"
+                  isDisabled={
+                    busy ||
+                    !accepted ||
+                    !allReady ||
+                    status?.active_issuer !== settings.companion_url
+                  }
+                  onPress={() => {
+                    void work(async () => {
+                      await api("/api/oidc", { redirect_uri: plan.callback });
+                      await queryClient.invalidateQueries({
+                        queryKey: ["admin"],
+                      });
+                      ToastQueue.positive(
+                        "Omni callback registered. Apply the downloaded configuration in Omni, then test sign-in and a backup.",
+                      );
                     });
-                    ToastQueue.positive(
-                      "Omni callback registered. Apply the downloaded configuration in Omni, then test sign-in and a backup.",
-                    );
-                  });
-                }}
-              >
-                Register Omni callback
-              </Button>
-              <Button
-                isDisabled={
-                  busy ||
-                  !accepted ||
-                  !plan.mounted ||
-                  !checks?.checks.every((result) => result.ok)
-                }
-                onPress={() => {
-                  void work(async () => {
-                    await api("/api/omni/apply", {
-                      integration: settings,
-                      primary_config: source,
-                      revision: plan.revision,
+                  }}
+                >
+                  Register Omni callback
+                </Button>
+                <Button
+                  isDisabled={
+                    busy ||
+                    !accepted ||
+                    !plan.mounted ||
+                    !checks?.checks.every((result) => result.ok)
+                  }
+                  onPress={() => {
+                    void work(async () => {
+                      await api("/api/omni/apply", {
+                        integration: settings,
+                        primary_config: source,
+                        revision: plan.revision,
+                      });
+                      setPlan(null);
+                      await queryClient.invalidateQueries({
+                        queryKey: ["omni"],
+                      });
+                      setNotice(
+                        "Overlay saved. Restart Omni after activating it and apply the downloaded S3 resource. Companion’s HTTPS identity provider is already active.",
+                      );
                     });
-                    setPlan(null);
-                    await queryClient.invalidateQueries({
-                      queryKey: ["omni"],
-                    });
-                    setNotice(
-                      "Overlay saved. Restart Omni after activating it and apply the downloaded S3 resource. Companion’s HTTPS identity provider is already active.",
-                    );
-                  });
-                }}
-                type="button"
-                variant="accent"
-              >
-                Apply managed Omni configuration
-              </Button>
+                  }}
+                  type="button"
+                  variant="accent"
+                >
+                  Apply managed Omni configuration
+                </Button>
+              </ButtonGroup>
               {!plan.mounted && (
                 <p className={documentClass("p", classes("hint"))}>
                   Apply these files using Omni’s administration tools. Companion

@@ -15,33 +15,36 @@ import {
   SideNavItem,
   SideNavItemContent,
   SideNavItemLink,
-  Text,
-  Form,
-  ProgressCircle,
-  StatusLight,
-  Button,
-  Checkbox,
-  Picker,
-  PickerItem,
-  ToastQueue,
-  Avatar,
-  ActionButton,
-  DialogTrigger,
-  Popover,
-  Dialog,
-  DialogContainer,
-  Heading,
-  Content,
+} from "@react-spectrum/s2/SideNav";
+import { Text } from "@react-spectrum/s2/Text";
+import { Form } from "@react-spectrum/s2/Form";
+import { ProgressCircle } from "@react-spectrum/s2/ProgressCircle";
+import { StatusLight } from "@react-spectrum/s2/StatusLight";
+import { Button } from "@react-spectrum/s2/Button";
+import { Checkbox } from "@react-spectrum/s2/Checkbox";
+import { Picker, PickerItem } from "@react-spectrum/s2/Picker";
+import { ToastQueue } from "@react-spectrum/s2/Toast";
+import { Avatar } from "@react-spectrum/s2/Avatar";
+import { ActionButton } from "@react-spectrum/s2/ActionButton";
+import { DialogTrigger, DialogContainer } from "@react-spectrum/s2/AlertDialog";
+import { Popover } from "@react-spectrum/s2/Popover";
+import { Dialog } from "@react-spectrum/s2/Dialog";
+import { ButtonGroup } from "@react-spectrum/s2/ButtonGroup";
+import { Heading } from "@react-spectrum/s2/Heading";
+import { Content } from "@react-spectrum/s2/Content";
+import {
   TableView,
   TableHeader,
   Column,
   TableBody,
   Row,
   Cell,
+} from "@react-spectrum/s2/TableView";
+import {
   Disclosure,
   DisclosureTitle,
   DisclosurePanel,
-} from "@react-spectrum/s2";
+} from "@react-spectrum/s2/Disclosure";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { SubmitEvent, ReactNode } from "react";
@@ -356,7 +359,9 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     const target = hash ? document.getElementById(hash) : null;
-    (target ?? pageHeading.current)?.focus();
+    if (!(view === "Backups" && hash === "google-drive")) {
+      (target ?? pageHeading.current)?.focus();
+    }
     document.title = `${view} · Talos Companion`;
   }, [view, user, hash]);
   async function refresh() {
@@ -1038,7 +1043,15 @@ export default function App() {
             )}
             {user.admin && view === "Backups" && (
               <>
-                <Card title="Your recovery files">
+                {overview && (
+                  <BackupDestinations
+                    initialEditing={hash === "google-drive" ? "drive" : null}
+                    overview={overview}
+                    createBackup={createBackup}
+                    refresh={refresh}
+                  />
+                )}
+                <Card title="Backup history">
                   {backupsQuery.data !== undefined && (
                     <RecoveryFiles backups={backups} />
                   )}
@@ -1060,23 +1073,9 @@ export default function App() {
                     </ContextHelp>
                   )}
                 </Card>
-                <Disclosure defaultExpanded={hash === "google-drive"}>
-                  <DisclosureTitle>
-                    Backup destinations and schedule
-                  </DisclosureTitle>
-                  <DisclosurePanel>
-                    {overview && (
-                      <BackupDestinations
-                        initialEditing={
-                          hash === "google-drive" ? "drive" : null
-                        }
-                        overview={overview}
-                        createBackup={createBackup}
-                        refresh={refresh}
-                      />
-                    )}
-                    {backupSettings}
-                  </DisclosurePanel>
+                <Disclosure>
+                  <DisclosureTitle>Backup settings</DisclosureTitle>
+                  <DisclosurePanel>{backupSettings}</DisclosurePanel>
                 </Disclosure>
                 <Disclosure>
                   <DisclosureTitle>
@@ -1418,7 +1417,7 @@ export default function App() {
                   }}
                 >
                   {addingAccount && (
-                    <Dialog isDismissible aria-label="Add account">
+                    <Dialog aria-label="Add account">
                       <Heading slot="title">Add account</Heading>
                       <Content>
                         <p className={documentClass("p", classes("hint"))}>
@@ -1426,6 +1425,7 @@ export default function App() {
                           to the account holder.
                         </p>
                         <Form
+                          id="add-account-form"
                           isDisabled={busy}
                           onSubmit={(e) => {
                             const form = e.currentTarget;
@@ -1451,11 +1451,26 @@ export default function App() {
                           >
                             Administrator access
                           </Checkbox>
-                          <Button type="submit" variant="accent">
-                            Create account
-                          </Button>
                         </Form>
                       </Content>
+                      <ButtonGroup>
+                        <Button
+                          variant="secondary"
+                          onPress={() => {
+                            setAddingAccount(false);
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="submit"
+                          form="add-account-form"
+                          variant="accent"
+                          isDisabled={busy}
+                        >
+                          Create account
+                        </Button>
+                      </ButtonGroup>
                     </Dialog>
                   )}
                 </DialogContainer>

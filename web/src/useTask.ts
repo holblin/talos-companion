@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { ToastQueue } from "@react-spectrum/s2";
+import { ToastQueue } from "@react-spectrum/s2/Toast";
 
 export function useTask({ toastErrors = false } = {}) {
   const [error, setError] = useState("");

@@ -1,6 +1,6 @@
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import type { StyleString } from "@react-spectrum/s2/style";
-import { mergeStyles } from "@react-spectrum/s2";
+import { mergeStyles } from "@react-spectrum/s2/mergeStyles";
 
 // Application layouts use Spectrum tokens and compile to atomic CSS. Component
 // appearance belongs to S2; native HTML uses explicit semantic styles below.

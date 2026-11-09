@@ -1,4 +1,5 @@
-import { Button, ProgressCircle } from "@react-spectrum/s2";
+import { Button } from "@react-spectrum/s2/Button";
+import { ProgressCircle } from "@react-spectrum/s2/ProgressCircle";
 import { classes, documentClass, layout } from "./layout";
 
 type QueryState = {

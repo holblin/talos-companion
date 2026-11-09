@@ -1,4 +1,5 @@
-import { NumberField, TextField } from "@react-spectrum/s2";
+import { NumberField } from "@react-spectrum/s2/NumberField";
+import { TextField } from "@react-spectrum/s2/TextField";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 
 type FieldProps = {

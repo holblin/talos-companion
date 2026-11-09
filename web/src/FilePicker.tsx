@@ -1,4 +1,5 @@
-import { Button, FileTrigger } from "@react-spectrum/s2";
+import { Button } from "@react-spectrum/s2/Button";
+import { FileTrigger } from "@react-spectrum/s2/FileTrigger";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 
 export default function FilePicker({

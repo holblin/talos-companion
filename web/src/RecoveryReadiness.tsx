@@ -1,4 +1,6 @@
-import { Button, StatusLight, Link } from "@react-spectrum/s2";
+import { Button } from "@react-spectrum/s2/Button";
+import { StatusLight } from "@react-spectrum/s2/StatusLight";
+import { Link } from "@react-spectrum/s2/Link";
 import {
   backupDate,
   backupTime,

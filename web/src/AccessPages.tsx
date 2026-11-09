@@ -1,21 +1,18 @@
 import { documentClass } from "./layout";
 import { type ReactNode, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Button,
-  Checkbox,
-  Picker,
-  PickerItem,
-  StatusLight,
-  ToastQueue,
-  ActionButton,
-  Dialog,
-  DialogContainer,
-  Heading,
-  Content,
-  ContextualHelp,
-  Text,
-} from "@react-spectrum/s2";
+import { Button } from "@react-spectrum/s2/Button";
+import { Checkbox } from "@react-spectrum/s2/Checkbox";
+import { Picker, PickerItem } from "@react-spectrum/s2/Picker";
+import { StatusLight } from "@react-spectrum/s2/StatusLight";
+import { ToastQueue } from "@react-spectrum/s2/Toast";
+import { ActionButton } from "@react-spectrum/s2/ActionButton";
+import { Dialog } from "@react-spectrum/s2/Dialog";
+import { DialogContainer } from "@react-spectrum/s2/Dialog";
+import { Heading } from "@react-spectrum/s2/Heading";
+import { Content } from "@react-spectrum/s2/Content";
+import { ContextualHelp } from "@react-spectrum/s2/ContextualHelp";
+import { Text } from "@react-spectrum/s2/Text";
 import Refresh from "@react-spectrum/s2/icons/Refresh";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { api } from "./api";
@@ -71,7 +68,6 @@ export function CompanionAccess() {
   const { busy, work } = useTask({ toastErrors: true });
   return (
     <section>
-      <h2 className={documentClass("h2")}>Companion access</h2>
       {catalog.isPending && (
         <p className={documentClass("p")} role="status">
           Loading access methods…

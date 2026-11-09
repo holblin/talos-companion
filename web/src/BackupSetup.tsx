@@ -1,16 +1,20 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  Button,
-  Form,
-  Picker,
-  PickerItem,
-  StatusLight,
-} from "@react-spectrum/s2";
+import { useState } from "react";
+import { Button } from "@react-spectrum/s2/Button";
+import { Form } from "@react-spectrum/s2/Form";
+import { Picker, PickerItem } from "@react-spectrum/s2/Picker";
+import { StatusLight } from "@react-spectrum/s2/StatusLight";
+import { Dialog } from "@react-spectrum/s2/Dialog";
+import { DialogContainer } from "@react-spectrum/s2/Dialog";
+import { Heading } from "@react-spectrum/s2/Heading";
+import { Content } from "@react-spectrum/s2/Content";
+import { ButtonGroup } from "@react-spectrum/s2/ButtonGroup";
+import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import Input from "./Field";
 import { api } from "./api";
 import { classes, documentClass } from "./layout";
 import { useTask } from "./useTask";
 import ContextHelp from "./ContextHelp";
+import { ContextualHelp } from "@react-spectrum/s2/ContextualHelp";
 
 type Drive = { client_id: string; folder_id: string; connected: boolean };
 export type NetworkShare = {
@@ -96,26 +100,28 @@ export function GoogleDriveSetup({
             Your Google application is saved. Continue to Google to approve
             access.
           </p>
-          <Button
-            variant="accent"
-            isDisabled={busy}
-            onPress={() => void authorize()}
-          >
-            {busy
-              ? "Opening Google…"
-              : drive.connected
-                ? "Reconnect Google Drive ↗"
-                : "Sign in with Google ↗"}
-          </Button>
-          <Button
-            variant="secondary"
-            isDisabled={busy}
-            onPress={() => {
-              setEditing(true);
-            }}
-          >
-            Change Google application
-          </Button>
+          <ButtonGroup slot={null}>
+            <Button
+              variant="accent"
+              isDisabled={busy}
+              onPress={() => void authorize()}
+            >
+              {busy
+                ? "Opening Google…"
+                : drive.connected
+                  ? "Reconnect Google Drive ↗"
+                  : "Sign in with Google ↗"}
+            </Button>
+            <Button
+              variant="secondary"
+              isDisabled={busy}
+              onPress={() => {
+                setEditing(true);
+              }}
+            >
+              Change Google application
+            </Button>
+          </ButtonGroup>
         </>
       ) : (
         <>
@@ -390,129 +396,147 @@ export default function BackupDestinations({
   const [editing, setEditing] = useState<"drive" | "network" | null>(
     initialEditing,
   );
-  const setupHeading = useRef<HTMLHeadingElement>(null);
-  const setupTrigger = useRef<HTMLElement | null>(null);
-  const wasEditing = useRef(false);
-  useEffect(() => {
-    if (editing) setupHeading.current?.focus();
-    else if (wasEditing.current) setupTrigger.current?.focus();
-    wasEditing.current = editing !== null;
-  }, [editing]);
-
+  const destinations = [
+    {
+      id: "local",
+      title: "Local storage",
+      location: "/data/backups",
+      status: "Ready",
+      configured: true,
+      help: "Encrypted recovery files are kept in the persistent data directory. Map a host folder to /data/backups to use mounted storage.",
+    },
+    {
+      id: "drive",
+      title: "Google Drive",
+      location: overview.drive.folder_id || "Dedicated backup folder",
+      status: overview.drive.connected ? "Connected" : "Not connected",
+      configured: overview.drive.connected,
+      help: "Send an encrypted copy to Google Drive. A local copy is always kept too.",
+    },
+    {
+      id: "network",
+      title: "NFS / SMB",
+      location: overview.network
+        ? overview.network.host + "/" + overview.network.share
+        : "No share configured",
+      status: overview.network
+        ? "Connected via " + overview.network.protocol.toUpperCase()
+        : "Not connected",
+      configured: !!overview.network,
+      help: "Save encrypted recovery files on your NAS or network share.",
+    },
+  ] as const;
   return (
     <>
       <div className={classes("three-cols")}>
-        <section className={classes("card")} aria-label="Local storage">
-          <h2 className={documentClass("h2")}>Local storage</h2>
-          <p className={documentClass("p")}>
-            Save an encrypted recovery file in the persistent data directory.
-            Download it whenever you need it. For a host or Docker mounted
-            folder, map it to /data/backups and use Local storage.
-          </p>
-          <StatusLight variant="neutral">Local archive destination</StatusLight>
-          <Button
-            variant="secondary"
-            onPress={() => void createBackup("local")}
+        {destinations.map((destination) => (
+          <section
+            key={destination.id}
+            className={classes("card")}
+            aria-label={destination.title}
           >
-            Create local backup →
-          </Button>
-        </section>
-        <section className={classes("card")} aria-label="Google Drive">
-          <h2 className={documentClass("h2")}>Google Drive</h2>
-          <p className={documentClass("p")}>
-            Send an encrypted copy to Google Drive. A local copy is always kept
-            too.
-          </p>
-          <StatusLight
-            variant={overview.drive.connected ? "positive" : "neutral"}
-          >
-            {overview.drive.connected
-              ? "Connected"
-              : overview.drive.client_id
-                ? "Awaiting Google sign-in"
-                : "Set up to get started"}
-          </StatusLight>
-          <Button
-            variant={overview.drive.connected ? "secondary" : "accent"}
-            onPress={(event) => {
-              if (event.target instanceof HTMLElement)
-                setupTrigger.current = event.target;
-              setEditing(editing === "drive" ? null : "drive");
-            }}
-          >
-            {overview.drive.connected
-              ? "Manage Google Drive"
-              : "Set up Google Drive"}
-          </Button>
-          {overview.drive.connected && (
-            <Button
-              variant="secondary"
-              onPress={() => void createBackup("drive")}
+            <div
+              className={style({
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+              })}
             >
-              Back up to Drive →
-            </Button>
-          )}
-        </section>
-        <section className={classes("card")} aria-label="NFS / SMB">
-          <h2 className={documentClass("h2")}>NFS / SMB</h2>
-          <p className={documentClass("p")}>
-            Save an encrypted copy on your NAS or network share.
-          </p>
-          <StatusLight variant={overview.network ? "positive" : "neutral"}>
-            {overview.network
-              ? `Connected via ${overview.network.protocol.toUpperCase()}`
-              : "Set up to get started"}
-          </StatusLight>
-          <Button
-            variant={overview.network ? "secondary" : "accent"}
-            onPress={(event) => {
-              if (event.target instanceof HTMLElement)
-                setupTrigger.current = event.target;
-              setEditing(editing === "network" ? null : "network");
-            }}
-          >
-            {overview.network ? "Manage NFS / SMB" : "Set up NFS / SMB"}
-          </Button>
-          {overview.network && (
-            <Button
-              variant="secondary"
-              onPress={() => void createBackup("network")}
+              <h2 className={documentClass("h2")}>{destination.title}</h2>
+              <ContextualHelp>
+                <Heading slot="title">About {destination.title}</Heading>
+                <Content>{destination.help}</Content>
+              </ContextualHelp>
+            </div>
+            <StatusLight
+              variant={destination.configured ? "positive" : "neutral"}
             >
-              Back up to share →
-            </Button>
-          )}
-        </section>
+              {destination.status}
+            </StatusLight>
+            <p
+              className={style({
+                font: "body-sm",
+                color: "neutral-subdued",
+                overflowWrap: "anywhere",
+                marginY: 12,
+              })}
+            >
+              {destination.location}
+            </p>
+            <ButtonGroup>
+              {destination.id !== "local" && (
+                <Button
+                  variant="secondary"
+                  onPress={() => {
+                    setEditing(
+                      destination.id === "drive" ? "drive" : "network",
+                    );
+                  }}
+                >
+                  {destination.configured ? "Manage " : "Set up "}
+                  {destination.title}
+                </Button>
+              )}
+              {destination.configured && (
+                <Button
+                  variant="secondary"
+                  onPress={() => void createBackup(destination.id)}
+                >
+                  {destination.id === "local"
+                    ? "Create local backup →"
+                    : destination.id === "drive"
+                      ? "Back up to Drive →"
+                      : "Back up to share →"}
+                </Button>
+              )}
+            </ButtonGroup>
+          </section>
+        ))}
       </div>
-      {editing && (
-        <section
-          className={classes("card")}
-          id={editing === "drive" ? "google-drive" : undefined}
-          aria-label={
-            editing === "drive" ? "Google Drive setup" : "Network share setup"
-          }
-        >
-          <h2 className={documentClass("h2")} ref={setupHeading} tabIndex={-1}>
-            {editing === "drive" ? "Connect Google Drive" : "Connect NFS / SMB"}
-          </h2>
-          <Button
-            variant="secondary"
-
-            onPress={() => {
-              setEditing(null);
-            }}
+      <DialogContainer
+        onDismiss={() => {
+          setEditing(null);
+        }}
+      >
+        {editing && (
+          <Dialog
+            size="L"
+            aria-label={
+              editing === "drive" ? "Google Drive setup" : "Network share setup"
+            }
           >
-            Close setup
-          </Button>
-          {editing === "drive" ? (
-            <GoogleDriveSetup issuer={overview.issuer} drive={overview.drive} />
-          ) : (
-            <NetworkShareSetup
-              configured={overview.network}
-              refresh={refresh}
-            />
-          )}
-        </section>
-      )}
+            <Heading slot="title">
+              {editing === "drive"
+                ? "Connect Google Drive"
+                : "Connect NFS / SMB"}
+            </Heading>
+            <Content>
+              {editing === "drive" ? (
+                <GoogleDriveSetup
+                  issuer={overview.issuer}
+                  drive={overview.drive}
+                />
+              ) : (
+                <NetworkShareSetup
+                  configured={overview.network}
+                  refresh={refresh}
+                />
+              )}
+            </Content>
+            <ButtonGroup>
+              <Button
+                variant="secondary"
+                onPress={() => {
+                  setEditing(null);
+                }}
+              >
+                Close setup
+              </Button>
+            </ButtonGroup>
+          </Dialog>
+        )}
+      </DialogContainer>
     </>
   );
 }

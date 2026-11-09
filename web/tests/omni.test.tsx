@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Provider, ToastContainer } from "@react-spectrum/s2";
+import { Provider } from "@react-spectrum/s2/Provider";
+import { ToastContainer } from "@react-spectrum/s2/Toast";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, expect, it, vi } from "vitest";
 import {

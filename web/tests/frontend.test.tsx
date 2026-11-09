@@ -111,6 +111,30 @@ function mount() {
 }
 
 describe("Spectrum frontend workflows", () => {
+  it("puts all backup destinations before the history table and settings", async () => {
+    initialized = true;
+    authenticated = true;
+    const events = userEvent.setup();
+    mount();
+    await events.click(await screen.findByRole("link", { name: "Backups" }));
+    const table = await screen.findByRole("grid", {
+      name: "Encrypted recovery files",
+    });
+    for (const name of ["Local storage", "Google Drive", "NFS / SMB"]) {
+      expect(
+        screen.getByRole("region", { name }).compareDocumentPosition(table) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    expect(
+      within(table).getByRole("columnheader", { name: "Download" }),
+    ).toBeTruthy();
+    expect(
+      table.compareDocumentPosition(
+        screen.getByRole("button", { name: "Backup settings" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
   it("shows account history, creates accounts in a dialog, and opens password changes from the avatar", async () => {
     initialized = true;
     authenticated = true;
@@ -253,9 +277,11 @@ describe("Spectrum frontend workflows", () => {
     await screen.findByRole("heading", { name: "Connect Google Drive" });
     expect(router.state.location.pathname).toBe("/backups");
     expect(router.state.location.hash).toBe("google-drive");
-    expect(document.activeElement).toBe(
-      screen.getByRole("heading", { name: "Connect Google Drive" }),
-    );
+    expect(
+      screen
+        .getByRole("dialog", { name: "Google Drive setup" })
+        .contains(document.activeElement),
+    ).toBe(true);
   });
 
   it("shows recovery errors in a dismissible S2 toast and allows retry", async () => {
@@ -426,7 +452,7 @@ describe("Spectrum frontend workflows", () => {
     ).toBeNull();
     await events.click(screen.getByRole("link", { name: "Backups" }));
     expect(router.state.location.pathname).toBe("/backups");
-    await screen.findByRole("heading", { name: "Your recovery files" });
+    await screen.findByRole("heading", { name: "Backup history" });
     await screen.findByRole("grid", { name: "Encrypted recovery files" });
     await events.click(
       screen.getByRole("button", { name: "Create local backup" }),
@@ -542,7 +568,10 @@ describe("Spectrum frontend workflows", () => {
     ).toBe("/omni-configuration");
     expect(screen.queryByRole("link", { name: "Identity" })).toBeNull();
     await events.click(accessLink);
-    await screen.findByRole("heading", { name: "Companion access" });
+    await screen.findByRole("heading", { name: "Local HTTPS" });
+    expect(
+      screen.queryByRole("heading", { name: "Companion access" }),
+    ).toBeNull();
     await events.click(
       within(screen.getByRole("complementary")).getByRole("link", {
         name: "Omni configuration",
