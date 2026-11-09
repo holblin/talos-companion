@@ -8,7 +8,16 @@ import {
   PickerItem,
   StatusLight,
   ToastQueue,
+  ActionButton,
+  Dialog,
+  DialogContainer,
+  Heading,
+  Content,
+  ContextualHelp,
+  Text,
 } from "@react-spectrum/s2";
+import Refresh from "@react-spectrum/s2/icons/Refresh";
+import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { api } from "./api";
 import { classes } from "./layout";
 import { useTask } from "./useTask";
@@ -60,34 +69,9 @@ export function CompanionAccess() {
   const client = useQueryClient();
   const [editing, setEditing] = useState<Integration | null>(null);
   const { busy, work } = useTask({ toastErrors: true });
-  if (editing)
-    return (
-      <SetupFlow
-        key={editing.profile}
-        mode="access"
-        initial={editing}
-        onDone={() => {
-          setEditing(null);
-        }}
-      />
-    );
   return (
-    <section className={classes("card")}>
+    <section>
       <h2 className={documentClass("h2")}>Companion access</h2>
-      <ContextHelp title="How Companion access methods work">
-        <p className={documentClass("p")}>
-          Configure any or all three methods. Adding access keeps your existing
-          methods running and does not change Omni’s identity provider.
-        </p>
-      </ContextHelp>
-      {catalog.data && (
-        <p className={documentClass("p")}>
-          Omni’s canonical issuer:{" "}
-          <code className={documentClass("code")}>
-            {catalog.data.active_issuer}
-          </code>
-        </p>
-      )}
       {catalog.isPending && (
         <p className={documentClass("p")} role="status">
           Loading access methods…
@@ -109,8 +93,46 @@ export function CompanionAccess() {
               aria-label={method.name}
               className={classes("card")}
             >
-              <h3 className={documentClass("h3")}>{method.name}</h3>
-              <p className={documentClass("p")}>{method.description}</p>
+              <div
+                className={style({
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 12,
+                })}
+              >
+                <h3 className={documentClass("h3", style({ marginBottom: 0 }))}>
+                  {method.name}
+                </h3>
+                <ContextualHelp aria-label={method.name + " information"}>
+                  <Heading>{method.name}</Heading>
+                  <Content>
+                    <Text>
+                      {method.description} Adding access keeps existing methods
+                      running and does not change Omni’s identity provider.
+                    </Text>
+                    {saved?.verified_at ? (
+                      <p>
+                        Last verified:{" "}
+                        {new Date(saved.verified_at * 1000).toLocaleString()}
+                      </p>
+                    ) : null}
+                    {method.profile === "lan" &&
+                      saved &&
+                      catalog.data?.local_ca_available && (
+                        <p>
+                          <a
+                            className={documentClass("a")}
+                            href="/api/companion/ca"
+                          >
+                            Download local trust certificate
+                          </a>
+                        </p>
+                      )}
+                  </Content>
+                </ContextualHelp>
+              </div>
               <StatusLight
                 variant={
                   saved?.verified_at && !saved.local_dns_pending
@@ -138,88 +160,91 @@ export function CompanionAccess() {
                       {saved.integration.companion_url}
                     </code>
                   </p>
-                  {saved.verified_at > 0 && (
-                    <p className={documentClass("p")}>
-                      Last verified:{" "}
-                      {new Date(saved.verified_at * 1000).toLocaleString()}
-                    </p>
-                  )}
-                  {catalog.data?.active_issuer ===
-                    saved.integration.companion_url &&
-                    catalog.data.active_profile === method.profile && (
-                      <p className={documentClass("p")}>
-                        Selected for Omni’s identity provider.
-                      </p>
-                    )}
                 </>
               )}
-              <Button
-                variant={saved ? "secondary" : "accent"}
-                isDisabled={busy || catalog.isPending || !!catalog.error}
-                onPress={() => {
-                  setEditing(
-                    saved?.integration ?? {
-                      profile: method.profile,
-                      companion_url: "",
-                      omni_url: "",
-                      s3_endpoint: "",
-                    },
-                  );
-                }}
+              <div
+                className={style({
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  marginTop: 16,
+                })}
               >
-                {saved ? "Manage " : "Add "}
-                {method.name}
-              </Button>
-              {saved && (
                 <Button
-                  variant="secondary"
-                  isDisabled={busy}
+                  aria-label={(saved ? "Manage " : "Add ") + method.name}
+                  variant={saved ? "secondary" : "accent"}
+                  isDisabled={busy || catalog.isPending || !!catalog.error}
                   onPress={() => {
-                    void work(async () => {
-                      try {
-                        const result = await api<CompanionVerification>(
-                          "/api/companion/access",
-                          {
-                            profile: method.profile,
-                            companion_url: saved.integration.companion_url,
-                          },
-                        );
-                        ToastQueue.positive(
-                          result.local_dns_pending
-                            ? cloudflareDnsPendingMessage
-                            : method.name + " access verified.",
-                        );
-                      } finally {
-                        await client.invalidateQueries({
-                          queryKey: ["companion-access"],
-                        });
-                      }
-                    });
+                    setEditing(
+                      saved?.integration ?? {
+                        profile: method.profile,
+                        companion_url: "",
+                        omni_url: "",
+                        s3_endpoint: "",
+                      },
+                    );
                   }}
                 >
-                  Check {method.name}
+                  {saved ? "Manage" : "Add access"}
                 </Button>
-              )}
-              {method.profile === "lan" &&
-                saved &&
-                catalog.data?.local_ca_available && (
-                  <p className={documentClass("p")}>
-                    <a className={documentClass("a")} href="/api/companion/ca">
-                      Download local trust certificate
-                    </a>
-                  </p>
+                {saved && (
+                  <ActionButton
+                    aria-label={"Check " + method.name}
+                    isDisabled={busy}
+                    onPress={() => {
+                      void work(async () => {
+                        try {
+                          const result = await api<CompanionVerification>(
+                            "/api/companion/access",
+                            {
+                              profile: method.profile,
+                              companion_url: saved.integration.companion_url,
+                            },
+                          );
+                          ToastQueue.positive(
+                            result.local_dns_pending
+                              ? cloudflareDnsPendingMessage
+                              : method.name + " access verified.",
+                          );
+                        } finally {
+                          await client.invalidateQueries({
+                            queryKey: ["companion-access"],
+                          });
+                        }
+                      });
+                    }}
+                  >
+                    <Refresh />
+                  </ActionButton>
                 )}
+              </div>
             </section>
           );
         })}
       </div>
-      <p className={documentClass("p")}>
-        Once a method is verified, choose it in{" "}
-        <a className={documentClass("a")} href="/omni-configuration">
-          Omni configuration
-        </a>
-        . Each selection is checked again before use.
-      </p>
+      <DialogContainer
+        onDismiss={() => {
+          setEditing(null);
+        }}
+      >
+        {editing && (
+          <Dialog size="L" isDismissible aria-label="Manage access method">
+            <Heading slot="title">
+              {methods.find((m) => m.profile === editing.profile)?.name} access
+            </Heading>
+            <Content>
+              <SetupFlow
+                key={editing.profile}
+                mode="access"
+                initial={editing}
+                onDone={() => {
+                  setEditing(null);
+                }}
+              />
+            </Content>
+          </Dialog>
+        )}
+      </DialogContainer>
     </section>
   );
 }

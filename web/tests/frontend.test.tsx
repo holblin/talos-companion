@@ -96,6 +96,12 @@ beforeEach(() => {
   );
 });
 
+function accountMenuButton() {
+  const button = screen.getAllByRole("button", { name: "Account menu" })[0];
+  if (!button) throw new Error("Account menu is missing");
+  return button;
+}
+
 function mount() {
   return render(
     <QueryClientProvider client={queryClient}>
@@ -105,6 +111,67 @@ function mount() {
 }
 
 describe("Spectrum frontend workflows", () => {
+  it("shows account history, creates accounts in a dialog, and opens password changes from the avatar", async () => {
+    initialized = true;
+    authenticated = true;
+    const events = userEvent.setup();
+    mount();
+    await events.click(await screen.findByRole("link", { name: "Accounts" }));
+    await screen.findByRole("grid", { name: "Workspace accounts" });
+    expect(
+      screen.getByRole("columnheader", { name: "Created by" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("columnheader", { name: "Created at" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("columnheader", { name: "Last login at" }),
+    ).toBeTruthy();
+    await events.click(screen.getByRole("button", { name: "Add account" }));
+    const dialog = await screen.findByRole("dialog");
+    await events.type(
+      within(dialog).getByLabelText(/Display name/),
+      "New Member",
+    );
+    await events.type(
+      within(dialog).getByLabelText(/Email address/),
+      "member@example.test",
+    );
+    await events.type(
+      within(dialog).getByLabelText(/^Password/),
+      "test-only-password",
+    );
+    await events.click(
+      within(dialog).getByRole("button", { name: "Create account" }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(
+      requests.some(
+        (request) =>
+          request.path === "/api/users" &&
+          JSON.stringify(request.body) ===
+            JSON.stringify({
+              name: "New Member",
+              email: "member@example.test",
+              password: "test-only-password",
+              admin: false,
+            }),
+      ),
+    ).toBe(true);
+    await events.click(accountMenuButton());
+    const account = await screen.findByRole("dialog");
+    expect(within(account).getByText(user.name)).toBeTruthy();
+    expect(within(account).getByText(user.email)).toBeTruthy();
+    await events.click(
+      within(account).getByRole("button", { name: "Change password" }),
+    );
+    await screen.findByRole("heading", { name: "Change your password" });
+    expect(router.state.location.pathname).toBe("/change-password");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("preserves recovery data when accounts fail and retries only the failed section", async () => {
     initialized = true;
     authenticated = true;
@@ -184,9 +251,11 @@ describe("Spectrum frontend workflows", () => {
       screen.getByRole("button", { name: "Connect Google Drive" }),
     );
     await screen.findByRole("heading", { name: "Connect Google Drive" });
-    expect(router.state.location.pathname).toBe("/settings");
+    expect(router.state.location.pathname).toBe("/backups");
     expect(router.state.location.hash).toBe("google-drive");
-    expect(document.activeElement?.id).toBe("google-drive");
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "Connect Google Drive" }),
+    );
   });
 
   it("shows recovery errors in a dismissible S2 toast and allows retry", async () => {
@@ -350,7 +419,7 @@ describe("Spectrum frontend workflows", () => {
     await events.type(screen.getByLabelText(/Email address/), user.email);
     await events.type(screen.getByLabelText(/^Password/), "test-only-password");
     await events.click(screen.getByRole("button", { name: "Sign in →" }));
-    await screen.findByRole("button", { name: /Test Admin.*Sign out/ });
+    await screen.findAllByRole("button", { name: "Account menu" });
     expect(screen.queryByText("Workspace data loaded")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Create local backup" }),
@@ -394,9 +463,9 @@ describe("Spectrum frontend workflows", () => {
         requests.find((request) => request.path === "/api/settings")?.body,
       ).toEqual(settings);
     });
-    await events.click(
-      screen.getByRole("button", { name: /Test Admin.*Sign out/ }),
-    );
+    await events.click(accountMenuButton());
+    await screen.findByText(user.email);
+    await events.click(screen.getByRole("button", { name: "Sign out" }));
     await screen.findByRole("heading", { name: "Sign in to your companion" });
     expect(
       queryClient.getQueryCache().findAll({ queryKey: ["admin", user.id] }),

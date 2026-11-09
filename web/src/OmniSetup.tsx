@@ -326,23 +326,20 @@ export default function SetupFlow({
     </dl>
   );
   return (
-    <section className={classes("card omni-setup")}>
-      <div className={classes("eyebrow")}>
-        {mode === "access" ? "COMPANION ACCESS" : "OMNI CONFIGURATION"}
-      </div>
-      <h2 className={documentClass("h2")}>
-        {mode === "access"
-          ? settings.profile === "lan"
-            ? "Local HTTPS"
-            : provider
-          : "Configure your Omni"}
-      </h2>
-      <p className={documentClass("p")}>
-        Active Omni identity-provider URL:{" "}
-        <code className={documentClass("code")}>
-          {status?.active_issuer ?? "Loading…"}
-        </code>
-      </p>
+    <section
+      className={mode === "omni" ? classes("card omni-setup") : undefined}
+    >
+      {mode === "omni" && (
+        <h2 className={documentClass("h2")}>Configure your Omni</h2>
+      )}
+      {mode === "omni" && (
+        <p className={documentClass("p")}>
+          Active Omni identity-provider URL:{" "}
+          <code className={documentClass("code")}>
+            {status?.active_issuer ?? "Loading…"}
+          </code>
+        </p>
+      )}
       <p className={documentClass("p")}>
         {mode === "access"
           ? step === 2

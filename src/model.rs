@@ -128,6 +128,12 @@ pub struct User {
     pub email: String,
     pub name: String,
     pub password_hash: String,
+    #[serde(default)]
+    pub created_by: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<u64>,
+    #[serde(default)]
+    pub last_login_at: Option<u64>,
     pub admin: bool,
 }
 #[derive(Clone, Default, Serialize, Deserialize)]

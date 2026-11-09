@@ -40,7 +40,7 @@ const CONTENT_SECURITY_POLICY: &str = concat!(
     "'sha256-38RhXrc7EdReTKsOm23ZPOCUgniTUUcjky8QOOrQx6o=' ",
     "'sha256-gYiS/BvZvRcK27JIXTuwhZ3hs2+VJ1X+2gUlE+farlg='; ",
     "font-src 'self' https://use.typekit.net; ",
-    "img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    "img-src 'self' data: https://www.gravatar.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 );
 
 async fn overview(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
@@ -74,6 +74,7 @@ fn frontend_routes<S: Clone + Send + Sync + 'static>(static_dir: &str) -> Router
         "/omni-configuration",
         "/accounts",
         "/settings",
+        "/change-password",
     ]
     .into_iter()
     .fold(Router::new(), |routes, path| {
@@ -239,7 +240,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("index.html"), "<title>Companion</title>").unwrap();
         let routes = frontend_routes::<()>(dir.path().to_str().unwrap());
-        for path in ["/", "/backups", "/identity", "/accounts", "/settings"] {
+        for path in [
+            "/",
+            "/backups",
+            "/identity",
+            "/accounts",
+            "/settings",
+            "/change-password",
+        ] {
             let response = routes
                 .clone()
                 .oneshot(

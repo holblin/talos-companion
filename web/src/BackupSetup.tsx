@@ -377,16 +377,19 @@ export function NetworkShareSetup({
 }
 
 export default function BackupDestinations({
+  initialEditing = null,
   overview,
   createBackup,
   refresh,
 }: {
+  initialEditing?: "drive" | "network" | null;
   overview: DestinationInfo;
   createBackup: (destination: string) => Promise<void>;
   refresh: () => Promise<void>;
 }) {
-  const [editing, setEditing] = useState<"drive" | "network" | null>(null);
-
+  const [editing, setEditing] = useState<"drive" | "network" | null>(
+    initialEditing,
+  );
   const setupHeading = useRef<HTMLHeadingElement>(null);
   const setupTrigger = useRef<HTMLElement | null>(null);
   const wasEditing = useRef(false);
@@ -483,6 +486,7 @@ export default function BackupDestinations({
       {editing && (
         <section
           className={classes("card")}
+          id={editing === "drive" ? "google-drive" : undefined}
           aria-label={
             editing === "drive" ? "Google Drive setup" : "Network share setup"
           }

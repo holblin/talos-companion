@@ -8,6 +8,7 @@ use axum::{
 use rsa::pkcs8::EncodePrivateKey;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
 pub async fn user(app: &App, headers: &HeaderMap) -> Result<User> {
@@ -85,7 +86,9 @@ pub fn setup_auth(app: &App, headers: &HeaderMap) -> Result<()> {
     Ok(())
 }
 pub fn public(u: &User) -> Value {
-    json!({"id":u.id,"email":u.email,"name":u.name,"admin":u.admin})
+    json!({"id":u.id,"email":u.email,"name":u.name,"admin":u.admin,
+        "created_by":u.created_by,"created_at":u.created_at,"last_login_at":u.last_login_at,
+        "avatar_url":format!("https://www.gravatar.com/avatar/{:x}?d=identicon&s=96", Sha256::digest(u.email.trim().to_lowercase().as_bytes()))})
 }
 #[derive(Deserialize)]
 pub struct Account {
@@ -112,6 +115,9 @@ pub fn make_user(input: Account) -> Result<User> {
         name: input.name.trim().into(),
         password_hash: hash_password(&input.password)?,
         admin: input.admin,
+        created_by: None,
+        created_at: Some(now()),
+        last_login_at: None,
     })
 }
 pub async fn status(State(app): State<App>) -> Json<Value> {
@@ -232,7 +238,7 @@ pub async fn login(
     // A recovery/password change may complete while Argon2 is running. Hold the
     // current store through session creation so an old password cannot create a
     // fresh session after recovery has revoked existing sessions.
-    let guard = app.store.read().await;
+    let mut guard = app.store.write().await;
     if !guard.as_ref().is_some_and(|store| {
         store
             .users
@@ -244,6 +250,16 @@ pub async fn login(
             "Invalid email or password".into(),
         ));
     }
+    let mut updated = guard.clone().ok_or_else(denied)?;
+    let current = updated
+        .users
+        .iter_mut()
+        .find(|current| current.id == u.id)
+        .ok_or_else(denied)?;
+    current.last_login_at = Some(now());
+    let u = current.clone();
+    app.persist(&updated)?;
+    *guard = Some(updated);
     let token = secret();
     let mut m = app.memory.lock().await;
     m.sessions.retain(|_, s| s.expires > now());
@@ -315,8 +331,9 @@ pub async fn add(
     Json(input): Json<Account>,
 ) -> Result<Json<Value>> {
     csrf(&app, &headers)?;
-    admin(&app, &headers).await?;
-    let u = make_user(input)?;
+    let actor = admin(&app, &headers).await?;
+    let mut u = make_user(input)?;
+    u.created_by = Some(actor.name);
     let mut guard = app.store.write().await;
     let mut s = guard.clone().ok_or_else(denied)?;
     if s.users.iter().any(|x| x.email == u.email) {
@@ -377,4 +394,30 @@ pub async fn password(
     m.sessions.retain(|_, s| s.user_id != actor.id);
     m.codes.retain(|_, s| s.user_id != actor.id);
     Ok(Json(json!({"ok":true})))
+}
+
+#[cfg(test)]
+mod account_metadata_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_accounts_keep_unknown_history_and_public_profiles_never_expose_passwords() {
+        let account: User = serde_json::from_value(json!({
+            "id": "legacy", "email": "Admin@Example.com", "name": "Admin",
+            "password_hash": "private-hash", "admin": true
+        }))
+        .unwrap();
+        assert_eq!(account.created_at, None);
+        assert_eq!(account.last_login_at, None);
+        let profile = public(&account);
+        assert_eq!(profile["created_by"], Value::Null);
+        assert!(profile.get("password_hash").is_none());
+        assert_eq!(
+            profile["avatar_url"],
+            format!(
+                "https://www.gravatar.com/avatar/{:x}?d=identicon&s=96",
+                Sha256::digest(b"admin@example.com")
+            )
+        );
+    }
 }

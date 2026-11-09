@@ -1,12 +1,13 @@
 import { documentClass } from "./layout";
 import RemoveAction from "./RemoveAction";
 import FilePicker from "./FilePicker";
-import BackupDestinations, {
-  BackupFrequency,
-  GoogleDriveSetup,
-} from "./BackupSetup";
+import BackupDestinations, { BackupFrequency } from "./BackupSetup";
 import { classes, layout } from "./layout";
 import Input from "./Field";
+import Home from "@react-spectrum/s2/icons/Home";
+import Archive from "@react-spectrum/s2/icons/Archive";
+import SettingsIcon from "@react-spectrum/s2/icons/Settings";
+import Add from "@react-spectrum/s2/icons/Add";
 import Cloud from "@react-spectrum/s2/icons/Cloud";
 import People from "@react-spectrum/s2/icons/People";
 import {
@@ -23,8 +24,20 @@ import {
   Picker,
   PickerItem,
   ToastQueue,
-  ActionMenu,
-  MenuItem,
+  Avatar,
+  ActionButton,
+  DialogTrigger,
+  Popover,
+  Dialog,
+  DialogContainer,
+  Heading,
+  Content,
+  TableView,
+  TableHeader,
+  Column,
+  TableBody,
+  Row,
+  Cell,
   Disclosure,
   DisclosureTitle,
   DisclosurePanel,
@@ -54,7 +67,16 @@ const CompanionAccess = lazy(() =>
   })),
 );
 
-type User = { id: string; email: string; name: string; admin: boolean };
+type User = {
+  id: string;
+  email: string;
+  name: string;
+  admin: boolean;
+  avatar_url?: string;
+  created_by?: string | null;
+  created_at?: number | null;
+  last_login_at?: number | null;
+};
 type Settings = {
   retention: { recovery_keep_last: number; snapshot_keep_last: number };
   schedule: { enabled: boolean; interval_seconds: number; destination: string };
@@ -171,6 +193,78 @@ function AccountFields({ optionalName = false }: { optionalName?: boolean }) {
   );
 }
 
+const navIcons: Partial<Record<View, ReactNode>> = {
+  Overview: <Home />,
+  Backups: <Archive />,
+  "Companion access": <Cloud />,
+  "Omni configuration": <SettingsIcon />,
+  Accounts: <People />,
+  Settings: <SettingsIcon />,
+};
+function accountDate(value?: number | null) {
+  return value ? new Date(value * 1000).toLocaleString() : "Not recorded";
+}
+
+function AccountPopover({
+  user,
+  signOut,
+}: {
+  user: User;
+  signOut: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  return (
+    <DialogTrigger isOpen={open} onOpenChange={setOpen}>
+      <ActionButton aria-label="Account menu" isQuiet>
+        <Avatar
+          {...(user.avatar_url ? { src: user.avatar_url } : {})}
+          alt=""
+          size={28}
+        />
+      </ActionButton>
+      <Popover aria-label="Your account" placement="top start">
+        <div
+          className={style({
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            minWidth: 220,
+            font: "body",
+            overflowWrap: "anywhere",
+          })}
+        >
+          <Avatar
+            {...(user.avatar_url ? { src: user.avatar_url } : {})}
+            alt=""
+            size={48}
+          />
+          <strong>{user.name}</strong>
+          <Text>{user.email}</Text>
+          <Button
+            variant="secondary"
+            onPress={() => {
+              setOpen(false);
+              void navigate({ to: "/change-password" });
+            }}
+          >
+            Change password
+          </Button>
+          <Button
+            variant="secondary"
+            onPress={() => {
+              setOpen(false);
+              signOut();
+            }}
+          >
+            Sign out
+          </Button>
+        </div>
+      </Popover>
+    </DialogTrigger>
+  );
+}
+
 export default function App() {
   const navigate = useNavigate();
   const pathname = useRouterState({
@@ -252,6 +346,7 @@ export default function App() {
     vaultQuery.isPending;
   const [credentialFile, setCredentialFile] = useState<File | null>(null);
   const [recoveryExpires, setRecoveryExpires] = useState<number | null>(null);
+  const [addingAccount, setAddingAccount] = useState(false);
   const [recovering, setRecovering] = useState(false);
   const signInHeading = useRef<HTMLHeadingElement>(null);
   const pageHeading = useRef<HTMLHeadingElement>(null);
@@ -550,6 +645,7 @@ export default function App() {
     "Omni configuration": "One identity. Your Omni.",
     Accounts: "The people you trust.",
     Settings: "Make yourself at home.",
+    "Change password": "Change your password.",
   };
   function signOut() {
     void work(async () => {
@@ -557,6 +653,7 @@ export default function App() {
       setUser(null);
     });
   }
+  const accountPopover = <AccountPopover user={user} signOut={signOut} />;
   const backupSettings = user.admin && overview && (
     <Card title="Backup settings">
       <Form
@@ -666,26 +763,37 @@ export default function App() {
         <div className={classes("brand-row")}>
           <div className={classes("brand")}>
             <Logo />
-            <div>
+            <div
+              className={style({ display: { default: "none", sm: "block" } })}
+            >
               talos<span className={layout.brandDetail}>companion</span>
             </div>
           </div>
           <div className={classes("mobile-only")}>
-            <ActionMenu aria-label="Account menu" size="L">
-              <MenuItem id="sign-out" onAction={signOut}>
-                <Text>{user.name} · Sign out</Text>
-              </MenuItem>
-            </ActionMenu>
+            <Picker
+              aria-label="Workspace page"
+              value={view}
+              onChange={(value) => {
+                if (views.includes(value as View)) setView(value as View);
+              }}
+              styles={style({ width: 160 })}
+            >
+              {(view === "Change password"
+                ? [...views, "Change password" as const]
+                : views
+              )
+                .filter(
+                  (v) =>
+                    user.admin || v === "Settings" || v === "Change password",
+                )
+                .map((v) => (
+                  <PickerItem key={v} id={v}>
+                    {v}
+                  </PickerItem>
+                ))}
+            </Picker>
           </div>
-        </div>
-        <div className={classes("workspace")}>
-          <span className={classes("dot")} />
-          <div>
-            My infrastructure
-            <small className={documentClass("small", layout.brandDetail)}>
-              Self-hosted workspace
-            </small>
-          </div>
+          <div className={classes("mobile-only")}>{accountPopover}</div>
         </div>
         <div className={classes("desktop-only")}>
           <SideNav
@@ -704,6 +812,7 @@ export default function App() {
                 >
                   <SideNavItemContent>
                     <SideNavItemLink>
+                      {navIcons[v]}
                       <Text>{v}</Text>
                     </SideNavItemLink>
                   </SideNavItemContent>
@@ -717,14 +826,7 @@ export default function App() {
             flexGrow: 1,
           })}
         >
-          <div className={classes("sidebar-bottom")}>
-            <div className={classes("status")}>
-              <span className={classes("dot")} /> All yours. All local.
-            </div>
-            <Button onPress={signOut} type="button" variant="secondary">
-              <Text>{user.name} · Sign out</Text>
-            </Button>
-          </div>
+          <div className={classes("sidebar-bottom")}>{accountPopover}</div>
         </div>
       </aside>
       <main className={classes("main")} id="main-content">
@@ -732,24 +834,6 @@ export default function App() {
           <span className={classes("desktop-only")}>
             Workspace <b>/</b> {view}
           </span>
-          <div className={classes("mobile-only")}>
-            <Picker
-              aria-label="Workspace page"
-              value={view}
-              onChange={(value) => {
-                if (views.includes(value as View)) setView(value as View);
-              }}
-              styles={style({ width: 160 })}
-            >
-              {views
-                .filter((v) => user.admin || v === "Settings")
-                .map((v) => (
-                  <PickerItem key={v} id={v}>
-                    {v}
-                  </PickerItem>
-                ))}
-            </Picker>
-          </div>
           {user.admin && (adminError || adminLoading) && (
             <StatusLight variant={adminError ? "notice" : "neutral"}>
               {adminError ? "Some data unavailable" : "Loading workspace"}
@@ -764,7 +848,9 @@ export default function App() {
                 ref={pageHeading}
                 tabIndex={-1}
               >
-                {user.admin ? titles[view] : "Your account."}
+                {user.admin || view === "Change password"
+                  ? titles[view]
+                  : "Your account."}
               </h1>
             </div>
             {user.admin && view === "Backups" && (
@@ -929,7 +1015,7 @@ export default function App() {
                         variant="secondary"
                         onPress={() => {
                           void navigate({
-                            to: "/settings",
+                            to: "/backups",
                             hash: "google-drive",
                           });
                         }}
@@ -974,13 +1060,16 @@ export default function App() {
                     </ContextHelp>
                   )}
                 </Card>
-                <Disclosure>
+                <Disclosure defaultExpanded={hash === "google-drive"}>
                   <DisclosureTitle>
                     Backup destinations and schedule
                   </DisclosureTitle>
                   <DisclosurePanel>
                     {overview && (
                       <BackupDestinations
+                        initialEditing={
+                          hash === "google-drive" ? "drive" : null
+                        }
                         overview={overview}
                         createBackup={createBackup}
                         refresh={refresh}
@@ -1220,94 +1309,176 @@ export default function App() {
               </>
             )}
             {user.admin && view === "Accounts" && (
-              <div className={classes("two-cols")}>
-                <Card title="Workspace accounts">
-                  <div className={classes("account-list")}>
-                    {users.map((u) => (
-                      <div className={classes("account")} key={u.id}>
-                        <span className={classes("avatar")}>
-                          {u.name.slice(0, 1)}
-                        </span>
-                        <div>
-                          <b>{u.name}</b>
-                          <small
-                            className={documentClass(
-                              "small",
-                              layout.brandDetail,
-                            )}
-                          >
-                            {u.email} · {u.admin ? "Administrator" : "Member"}
-                          </small>
-                        </div>
-                        {u.id !== user.id && (
-                          <RemoveAction
-                            title="Remove account?"
-                            isDisabled={busy}
-                            onRemove={() => {
-                              void work(async () => {
-                                await api(
-                                  `/api/users/${u.id}`,
-                                  undefined,
-                                  "DELETE",
-                                );
-                                await refresh();
-                              });
-                            }}
-                          >
-                            {`Remove ${u.email}? This revokes their companion sessions and future Omni sign-ins.`}
-                          </RemoveAction>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <ContextHelp title="About account roles">
-                    <p className={documentClass("p")}>
-                      Administrators can manage identity settings, people, and
-                      backups. Members can sign in to Omni and change their own
-                      password.
-                    </p>
-                  </ContextHelp>
-                </Card>
-                <Card title="Invite someone in">
-                  <p className={documentClass("p", classes("hint"))}>
-                    Only add an email address you have confirmed belongs to the
-                    account holder.
-                  </p>
-                  <Form
-                    isDisabled={busy}
-                    onSubmit={(e) => {
-                      const form = e.currentTarget;
-                      const data = fields(e);
-                      void work(async () => {
-                        await api("/api/users", {
-                          ...data,
-                          admin: data["admin"] === "on",
-                        });
-                        form.reset();
-                        await refresh();
-                        setNotice(
-                          "Account created. Share the credentials with the account holder securely.",
-                        );
-                      });
+              <Card>
+                <div
+                  className={style({
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    marginBottom: 24,
+                  })}
+                >
+                  <h2
+                    className={documentClass("h2", style({ marginBottom: 0 }))}
+                  >
+                    Workspace accounts
+                  </h2>
+                  <Button
+                    variant="accent"
+                    onPress={() => {
+                      setAddingAccount(true);
                     }}
                   >
-                    <AccountFields />
-                    <Checkbox
-                      name="admin"
-                      styles={style({ width: "full", marginY: 12 })}
-                    >
-                      Administrator access
-                    </Checkbox>
-                    <Button type="submit" variant="accent">
-                      Create account
-                    </Button>
-                  </Form>
-                </Card>
-              </div>
+                    <Add />
+                    <Text>Add account</Text>
+                  </Button>
+                </div>
+                <div className={classes("table-scroll")}>
+                  <TableView
+                    aria-label="Workspace accounts"
+                    overflowMode="wrap"
+                    styles={style({
+                      width: "full",
+                      minWidth: 800,
+                      height: "auto",
+                    })}
+                  >
+                    <TableHeader>
+                      <Column id="person" isRowHeader minWidth={220}>
+                        Account
+                      </Column>
+                      <Column id="role">Role</Column>
+                      <Column id="creator">Created by</Column>
+                      <Column id="created">Created at</Column>
+                      <Column id="login">Last login at</Column>
+                      <Column id="actions">Actions</Column>
+                    </TableHeader>
+                    <TableBody items={users}>
+                      {(u) => (
+                        <Row id={u.id}>
+                          <Cell>
+                            <div
+                              className={style({
+                                display: "flex",
+                                gap: 12,
+                                alignItems: "center",
+                              })}
+                            >
+                              <Avatar
+                                {...(u.avatar_url ? { src: u.avatar_url } : {})}
+                                alt=""
+                                size={36}
+                              />
+                              <div>
+                                <b>{u.name}</b>
+                                <small
+                                  className={documentClass(
+                                    "small",
+                                    layout.brandDetail,
+                                  )}
+                                >
+                                  {u.email}
+                                </small>
+                              </div>
+                            </div>
+                          </Cell>
+                          <Cell>{u.admin ? "Administrator" : "Member"}</Cell>
+                          <Cell>{u.created_by ?? "Not recorded"}</Cell>
+                          <Cell>{accountDate(u.created_at)}</Cell>
+                          <Cell>{accountDate(u.last_login_at)}</Cell>
+                          <Cell>
+                            {u.id !== user.id ? (
+                              <RemoveAction
+                                title="Remove account?"
+                                isDisabled={busy}
+                                onRemove={() => {
+                                  void work(async () => {
+                                    await api(
+                                      `/api/users/${u.id}`,
+                                      undefined,
+                                      "DELETE",
+                                    );
+                                    await refresh();
+                                  });
+                                }}
+                              >{`Remove ${u.email}? This revokes their companion sessions and future Omni sign-ins.`}</RemoveAction>
+                            ) : (
+                              "You"
+                            )}
+                          </Cell>
+                        </Row>
+                      )}
+                    </TableBody>
+                  </TableView>
+                </div>
+                <DialogContainer
+                  onDismiss={() => {
+                    setAddingAccount(false);
+                  }}
+                >
+                  {addingAccount && (
+                    <Dialog isDismissible aria-label="Add account">
+                      <Heading slot="title">Add account</Heading>
+                      <Content>
+                        <p className={documentClass("p", classes("hint"))}>
+                          Only add an email address you have confirmed belongs
+                          to the account holder.
+                        </p>
+                        <Form
+                          isDisabled={busy}
+                          onSubmit={(e) => {
+                            const form = e.currentTarget;
+                            const data = fields(e);
+                            void work(async () => {
+                              await api("/api/users", {
+                                ...data,
+                                admin: data["admin"] === "on",
+                              });
+                              form.reset();
+                              setAddingAccount(false);
+                              await refresh();
+                              setNotice(
+                                "Account created. Share the credentials with the account holder securely.",
+                              );
+                            });
+                          }}
+                        >
+                          <AccountFields />
+                          <Checkbox
+                            name="admin"
+                            styles={style({ width: "full", marginY: 12 })}
+                          >
+                            Administrator access
+                          </Checkbox>
+                          <Button type="submit" variant="accent">
+                            Create account
+                          </Button>
+                        </Form>
+                      </Content>
+                    </Dialog>
+                  )}
+                </DialogContainer>
+              </Card>
             )}
-            {(view === "Settings" || !user.admin) && (
+            {view === "Settings" && <>{backupSettings}</>}
+            {!user.admin && view !== "Change password" && (
+              <Card title="Your account">
+                <p className={documentClass("p")}>
+                  {user.name} · {user.email}
+                </p>
+                <Button
+                  variant="secondary"
+                  onPress={() => {
+                    setView("Change password");
+                  }}
+                >
+                  Change password
+                </Button>
+              </Card>
+            )}
+            {view === "Change password" && (
               <div className={classes("two-cols")}>
-                {backupSettings}
                 <Card title="Change your password">
                   <Form
                     isDisabled={busy}
@@ -1342,16 +1513,6 @@ export default function App() {
                     sessions.
                   </p>
                 </Card>
-                {user.admin && (
-                  <Card title="Connect Google Drive" id="google-drive">
-                    {overview && (
-                      <GoogleDriveSetup
-                        issuer={overview.issuer}
-                        drive={overview.drive}
-                      />
-                    )}
-                  </Card>
-                )}
               </div>
             )}
           </fieldset>
