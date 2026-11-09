@@ -1,3 +1,10 @@
+import Panel from "./Panel";
+import {
+  Disclosure,
+  DisclosureTitle,
+  DisclosurePanel,
+} from "@react-spectrum/s2/Disclosure";
+import { Link } from "@react-spectrum/s2/Link";
 import { documentClass } from "./layout";
 import FilePicker from "./FilePicker";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -324,10 +331,9 @@ export default function SetupFlow({
       ))}
     </dl>
   );
+  const Container = mode === "omni" ? Panel : "section";
   return (
-    <section
-      className={mode === "omni" ? classes("card omni-setup") : undefined}
-    >
+    <Container>
       {mode === "omni" && (
         <h2 className={documentClass("h2")}>Configure your Omni</h2>
       )}
@@ -397,9 +403,9 @@ export default function SetupFlow({
           {localPrepared && (
             <>
               <p className={documentClass("p")}>
-                <a className={documentClass("a")} href="/api/companion/ca">
+                <Link href="/api/companion/ca" download>
                   Download Companion trust certificate
-                </a>
+                </Link>
               </p>
               <p className={documentClass("p")}>
                 Import this certificate into your operating system’s trusted
@@ -408,14 +414,13 @@ export default function SetupFlow({
                 without a certificate warning.
               </p>
               <p className={documentClass("p")}>
-                <a
-                  className={documentClass("a")}
+                <Link
                   href={settings.companion_url}
                   target="_blank"
                   rel="noreferrer"
                 >
                   Open Companion over HTTPS ↗
-                </a>
+                </Link>
               </p>
               <Checkbox
                 isSelected={trustInstalled}
@@ -426,20 +431,20 @@ export default function SetupFlow({
               </Checkbox>
             </>
           )}
-          <details className={documentClass("details")}>
-            <summary className={documentClass("summary")}>
-              Advanced settings
-            </summary>
-            <TextField
-              label="Companion HTTPS address"
-              value={settings.companion_url}
-              onChange={(value) => {
-                change("companion_url", value);
-                setCompanionVerified(false);
-              }}
-              description="Use an existing trusted reverse proxy if you already have one. A local certificate uses the same published port as this page."
-            />
-          </details>
+          <Disclosure styles={style({ marginY: 24 })}>
+            <DisclosureTitle>Advanced settings</DisclosureTitle>
+            <DisclosurePanel>
+              <TextField
+                label="Companion HTTPS address"
+                value={settings.companion_url}
+                onChange={(value) => {
+                  change("companion_url", value);
+                  setCompanionVerified(false);
+                }}
+                description="Use an existing trusted reverse proxy if you already have one. A local certificate uses the same published port as this page."
+              />
+            </DisclosurePanel>
+          </Disclosure>
           <ButtonGroup slot={null}>
             <Button
               variant="secondary"
@@ -525,30 +530,30 @@ export default function SetupFlow({
                 : "Companion HTTPS and identity verified"}
             </StatusLight>
           )}
-          <details className={documentClass("details")}>
-            <summary className={documentClass("summary")}>
-              Advanced settings
-            </summary>
-            <TextField
-              label="Companion HTTPS address"
-              value={settings.companion_url}
-              isDisabled={busy}
-              description={
-                settings.profile === "lan"
-                  ? "Choose Save access method to verify and save this address. It must already route to this Companion."
-                  : settings.profile === "cloudflare"
-                    ? "Saving updates Cloudflare DNS and tunnel routes, then verifies HTTPS. Choose a subdomain of your approved domain. Existing routes remain available."
-                    : "Saving renames this Tailscale device and updates Companion, Omni and backup addresses. Use Local HTTPS or Cloudflare for this change so the page stays connected. Change only the device name within your current tailnet. If Omni uses this device as its issuer, select another verified access method first."
-              }
-              onChange={(value) => {
-                setAutoCheck(null);
-                setCheckingCompanion(false);
-                setCompanionHint("");
-                change("companion_url", value);
-                setCompanionVerified(false);
-              }}
-            />
-          </details>
+          <Disclosure styles={style({ marginY: 24 })}>
+            <DisclosureTitle>Advanced settings</DisclosureTitle>
+            <DisclosurePanel>
+              <TextField
+                label="Companion HTTPS address"
+                value={settings.companion_url}
+                isDisabled={busy}
+                description={
+                  settings.profile === "lan"
+                    ? "Choose Save access method to verify and save this address. It must already route to this Companion."
+                    : settings.profile === "cloudflare"
+                      ? "Saving updates Cloudflare DNS and tunnel routes, then verifies HTTPS. Choose a subdomain of your approved domain. Existing routes remain available."
+                      : "Saving renames this Tailscale device and updates Companion, Omni and backup addresses. Use Local HTTPS or Cloudflare for this change so the page stays connected. Change only the device name within your current tailnet. If Omni uses this device as its issuer, select another verified access method first."
+                }
+                onChange={(value) => {
+                  setAutoCheck(null);
+                  setCheckingCompanion(false);
+                  setCompanionHint("");
+                  change("companion_url", value);
+                  setCompanionVerified(false);
+                }}
+              />
+            </DisclosurePanel>
+          </Disclosure>
           <ButtonGroup slot={null}>
             <Button
               variant="secondary"
@@ -582,14 +587,13 @@ export default function SetupFlow({
           <h3 className={documentClass("h3")}>Where do you open Omni?</h3>
           <p className={documentClass("p")}>
             Companion is ready at{" "}
-            <a
-              className={documentClass("a")}
+            <Link
               href={settings.companion_url}
               target="_blank"
               rel="noreferrer"
             >
               {settings.companion_url}
-            </a>
+            </Link>
             . Opening a different hostname may require signing in again.
           </p>
           <p className={documentClass("p")}>
@@ -606,18 +610,18 @@ export default function SetupFlow({
             description="A hostname is enough. You can also paste a complete web address."
             styles={style({ width: "full", marginY: 12 })}
           />
-          <details className={documentClass("details")}>
-            <summary className={documentClass("summary")}>
-              Advanced settings
-            </summary>
-            <TextArea
-              label="Public trust certificate (optional)"
-              value={certificate}
-              onChange={setCertificate}
-              description="Only for an Omni server using a private certificate authority. Paste its public PEM certificate, never a private key."
-              styles={style({ width: "full", marginY: 12 })}
-            />
-          </details>
+          <Disclosure styles={style({ marginY: 24 })}>
+            <DisclosureTitle>Advanced settings</DisclosureTitle>
+            <DisclosurePanel>
+              <TextArea
+                label="Public trust certificate (optional)"
+                value={certificate}
+                onChange={setCertificate}
+                description="Only for an Omni server using a private certificate authority. Paste its public PEM certificate, never a private key."
+                styles={style({ width: "full", marginY: 12 })}
+              />
+            </DisclosurePanel>
+          </Disclosure>
           <ButtonGroup slot={null}>
             <Button
               variant="secondary"
@@ -690,23 +694,23 @@ export default function SetupFlow({
             </p>
           )}
           {settings.profile === "cloudflare" && (
-            <details className={documentClass("details")}>
-              <summary className={documentClass("summary")}>
-                Advanced settings
-              </summary>
-              <TextField
-                label="Cloudflare domain override (optional)"
-                value={domain}
-                onChange={(value) => {
-                  setDomain(value);
-                  setAuthorized(false);
-                }}
-                placeholder="example.com"
-                description="Normally detected from Cloudflare. Only enter the domain you approved if automatic detection fails. Use example.com without https:// or a port."
-                isDisabled={busy || connecting}
-                styles={style({ width: "full", marginY: 12 })}
-              />
-            </details>
+            <Disclosure styles={style({ marginY: 24 })}>
+              <DisclosureTitle>Advanced settings</DisclosureTitle>
+              <DisclosurePanel>
+                <TextField
+                  label="Cloudflare domain override (optional)"
+                  value={domain}
+                  onChange={(value) => {
+                    setDomain(value);
+                    setAuthorized(false);
+                  }}
+                  placeholder="example.com"
+                  description="Normally detected from Cloudflare. Only enter the domain you approved if automatic detection fails. Use example.com without https:// or a port."
+                  isDisabled={busy || connecting}
+                  styles={style({ width: "full", marginY: 12 })}
+                />
+              </DisclosurePanel>
+            </Disclosure>
           )}
           {!connecting && (
             <Checkbox
@@ -724,16 +728,11 @@ export default function SetupFlow({
             job.state === "authorizing" &&
             job.auth_url && (
               <p className={documentClass("p")}>
-                <a
-                  className={documentClass("a")}
-                  href={job.auth_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <Link href={job.auth_url} target="_blank" rel="noreferrer">
                   {provider === "Cloudflare"
                     ? "Open Cloudflare sign-in ↗"
                     : "Sign in to Tailscale ↗"}
-                </a>
+                </Link>
               </p>
             )}
           {connecting && (
@@ -913,136 +912,137 @@ export default function SetupFlow({
           >
             Save verified network
           </Button>
-          <details className={documentClass("details")}>
-            <summary className={documentClass("summary")}>
-              Advanced settings
-            </summary>
-            <div>
-              <h4>Manual addresses</h4>
-              <p className={documentClass("p")}>
-                Override advertised addresses for an existing proxy or custom
-                deployment. Changing an address does not create a listener,
-                certificate or proxy route.
-              </p>
-              {settings.profile === "lan" && status?.mounted && (
+          <Disclosure styles={style({ marginY: 24 })}>
+            <DisclosureTitle>Advanced settings</DisclosureTitle>
+            <DisclosurePanel>
+              <div>
+                <h4>Manual addresses</h4>
                 <p className={documentClass("p")}>
-                  <a className={documentClass("a")} href="/api/omni/ca">
-                    Download LAN trust certificate
-                  </a>
-                  {" · "}
-                  <a className={documentClass("a")} href="/api/omni/talos-ca">
-                    Download Talos trust configuration
-                  </a>
+                  Override advertised addresses for an existing proxy or custom
+                  deployment. Changing an address does not create a listener,
+                  certificate or proxy route.
                 </p>
-              )}
-              {(
-                [
-                  ["companion_url", "Companion address"],
-                  ["omni_url", "Omni address"],
-                  ["s3_endpoint", "S3 receiver address"],
-                ] as const
-              ).map(([name, label]) => (
-                <TextField
-                  key={name}
-                  type="url"
-                  label={label}
-                  value={settings[name]}
-                  onChange={(value) => {
-                    change(name, value);
-                  }}
-                  isDisabled={busy || connecting || name === "companion_url"}
-                  styles={style({ width: "full", marginY: 12 })}
-                />
-              ))}
-            </div>
-            <details className={documentClass("details")}>
-              <summary className={documentClass("summary")}>
-                Import / repair an existing instance
-              </summary>
-              <p className={documentClass("p")}>
-                Upload its main YAML/JSON configuration. It is inspected in
-                memory; private keys are not needed. The checker covers OIDC and
-                S3 enablement only. Existing CLI flags or later config files can
-                override these values.
-              </p>
-              <FilePicker
-                label="Import Omni configuration (maximum 256 KiB)"
-                file={importFile}
-                acceptedFileTypes={[".yaml", ".yml", ".json"]}
-                isDisabled={busy}
-                onChange={(file) => {
-                  if (file)
-                    void work(async () => {
-                      if (file.size > 262144)
-                        throw new Error("Configuration exceeds 256 KiB");
-                      const text = await file.text();
-                      const discovered = await api<{
-                        omni_url: string | null;
-                      }>("/api/omni/discover", { primary_config: text });
-                      if (discovered.omni_url && settings.profile === "lan")
-                        change("omni_url", discovered.omni_url);
-                      setSource(text);
-                      setImportFile(file);
+                {settings.profile === "lan" && status?.mounted && (
+                  <p className={documentClass("p")}>
+                    <Link href="/api/omni/ca" download>
+                      Download LAN trust certificate
+                    </Link>
+                    {" · "}
+                    <Link href="/api/omni/talos-ca" download>
+                      Download Talos trust configuration
+                    </Link>
+                  </p>
+                )}
+                {(
+                  [
+                    ["companion_url", "Companion address"],
+                    ["omni_url", "Omni address"],
+                    ["s3_endpoint", "S3 receiver address"],
+                  ] as const
+                ).map(([name, label]) => (
+                  <TextField
+                    key={name}
+                    type="url"
+                    label={label}
+                    value={settings[name]}
+                    onChange={(value) => {
+                      change(name, value);
+                    }}
+                    isDisabled={busy || connecting || name === "companion_url"}
+                    styles={style({ width: "full", marginY: 12 })}
+                  />
+                ))}
+              </div>
+              <Disclosure styles={style({ marginY: 24 })}>
+                <DisclosureTitle>
+                  Import / repair an existing instance
+                </DisclosureTitle>
+                <DisclosurePanel>
+                  <p className={documentClass("p")}>
+                    Upload its main YAML/JSON configuration. It is inspected in
+                    memory; private keys are not needed. The checker covers OIDC
+                    and S3 enablement only. Existing CLI flags or later config
+                    files can override these values.
+                  </p>
+                  <FilePicker
+                    label="Import Omni configuration (maximum 256 KiB)"
+                    file={importFile}
+                    acceptedFileTypes={[".yaml", ".yml", ".json"]}
+                    isDisabled={busy}
+                    onChange={(file) => {
+                      if (file)
+                        void work(async () => {
+                          if (file.size > 262144)
+                            throw new Error("Configuration exceeds 256 KiB");
+                          const text = await file.text();
+                          const discovered = await api<{
+                            omni_url: string | null;
+                          }>("/api/omni/discover", { primary_config: text });
+                          if (discovered.omni_url && settings.profile === "lan")
+                            change("omni_url", discovered.omni_url);
+                          setSource(text);
+                          setImportFile(file);
+                          setPlan(null);
+                          setAccepted(false);
+                          setNotice(
+                            "Configuration imported for inspection. It has not been applied.",
+                          );
+                        });
+                    }}
+                  />
+                  <TextArea
+                    label="Or paste configuration"
+                    value={source}
+                    onChange={(value) => {
+                      setSource(value);
                       setPlan(null);
                       setAccepted(false);
+                    }}
+                    styles={style({ width: "full", marginY: 16 })}
+                  />
+                </DisclosurePanel>
+              </Disclosure>
+              {source.trim() && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  isDisabled={busy}
+                  onPress={() => {
+                    void work(async () => {
+                      const discovered = await api<{
+                        omni_url: string | null;
+                      }>("/api/omni/discover", { primary_config: source });
+                      if (discovered.omni_url)
+                        change("omni_url", discovered.omni_url);
                       setNotice(
-                        "Configuration imported for inspection. It has not been applied.",
+                        discovered.omni_url
+                          ? "Omni address discovered from the imported configuration."
+                          : "No advertised Omni address was found in this configuration.",
                       );
                     });
-                }}
-              />
-              <TextArea
-                label="Or paste configuration"
-                value={source}
-                onChange={(value) => {
-                  setSource(value);
-                  setPlan(null);
-                  setAccepted(false);
-                }}
-                styles={style({ width: "full", marginY: 16 })}
-              />
-            </details>
-            {source.trim() && (
-              <Button
-                type="button"
-                variant="secondary"
-                isDisabled={busy}
-                onPress={() => {
-                  void work(async () => {
-                    const discovered = await api<{
-                      omni_url: string | null;
-                    }>("/api/omni/discover", { primary_config: source });
-                    if (discovered.omni_url)
-                      change("omni_url", discovered.omni_url);
-                    setNotice(
-                      discovered.omni_url
-                        ? "Omni address discovered from the imported configuration."
-                        : "No advertised Omni address was found in this configuration.",
-                    );
-                  });
-                }}
-              >
-                Discover Omni address from configuration
-              </Button>
-            )}
-            <p className={documentClass("p")}>
-              <a
-                className={documentClass("a")}
-                href="https://github.com/holblin/talos-companion/blob/main/docs/home-setup.md"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Home installation, certificates and migration tutorial ↗
-              </a>
-            </p>
-            {status?.restart_pending && (
-              <p className={documentClass("p")} role="status">
-                An issuer migration is saved. Prepare HTTPS, restart Companion,
-                and open {status.integration.companion_url}. The active issuer
-                is still {status.active_issuer}.
+                  }}
+                >
+                  Discover Omni address from configuration
+                </Button>
+              )}
+              <p className={documentClass("p")}>
+                <Link
+                  href="https://github.com/holblin/talos-companion/blob/main/docs/home-setup.md"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Home installation, certificates and migration tutorial ↗
+                </Link>
               </p>
-            )}
-          </details>
+              {status?.restart_pending && (
+                <p className={documentClass("p")} role="status">
+                  An issuer migration is saved. Prepare HTTPS, restart
+                  Companion, and open {status.integration.companion_url}. The
+                  active issuer is still {status.active_issuer}.
+                </p>
+              )}
+            </DisclosurePanel>
+          </Disclosure>
           <h3 className={documentClass("h3")}>Finish configuring Omni</h3>
           <p className={documentClass("p")}>
             Companion HTTPS is active. Omni still needs the sign-in overlay and
@@ -1190,12 +1190,10 @@ export default function SetupFlow({
             </div>
           )}
 
-          <details className={documentClass("details")}>
-            <summary className={documentClass("summary")}>
-              Connection details
-            </summary>
-            {job?.message}
-          </details>
+          <Disclosure styles={style({ marginY: 24 })}>
+            <DisclosureTitle>Connection details</DisclosureTitle>
+            <DisclosurePanel>{job?.message}</DisclosurePanel>
+          </Disclosure>
         </>
       )}
       {notice && (
@@ -1203,6 +1201,6 @@ export default function SetupFlow({
           {notice}
         </p>
       )}
-    </section>
+    </Container>
   );
 }

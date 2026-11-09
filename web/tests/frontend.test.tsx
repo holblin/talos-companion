@@ -307,7 +307,7 @@ describe("Spectrum frontend workflows", () => {
         return fallback(input, init);
       }),
     );
-    const { container } = mount();
+    mount();
     await screen.findByRole("button", { name: "Sign in →" });
     await events.click(screen.getByText("Forgot the administrator password?"));
     expect(screen.queryByRole("button", { name: "Sign in →" })).toBeNull();
@@ -343,7 +343,7 @@ describe("Spectrum frontend workflows", () => {
     );
     const toast = message.closest('[role="alertdialog"]');
     expect(toast).not.toBeNull();
-    expect(container.querySelector(".message.error")).toBeNull();
+    expect(within(screen.getByRole("main")).queryByRole("alert")).toBeNull();
     if (!(toast instanceof HTMLElement))
       throw new Error("Expected an S2 toast");
     await events.click(within(toast).getByRole("button", { name: "Dismiss" }));
@@ -416,7 +416,7 @@ describe("Spectrum frontend workflows", () => {
     await events.click(
       screen.getByRole("button", { name: "Create companion" }),
     );
-    await screen.findByRole("alert");
+    await within(screen.getByRole("main")).findByRole("alert");
     expect(requests.some((request) => request.path === "/api/setup")).toBe(
       false,
     );

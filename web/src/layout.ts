@@ -480,7 +480,7 @@ export function documentClass(
   tag: keyof typeof documentStyles,
   value?: string,
 ) {
-  return `${value ?? ""} ${mergeStyles(documentStyles[tag], value as StyleString | undefined)}`;
+  return mergeStyles(documentStyles[tag], value as StyleString | undefined);
 }
 
 const names: Record<string, StyleString> = {
@@ -536,5 +536,5 @@ const names: Record<string, StyleString> = {
 
 export function classes(value: string) {
   const tokens = value.split(/\s+/);
-  return `${value} ${mergeStyles(...tokens.map((name) => names[name]))}`;
+  return mergeStyles(...tokens.map((name) => names[name]));
 }

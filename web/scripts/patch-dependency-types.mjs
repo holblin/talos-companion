@@ -45,3 +45,16 @@ writeFileSync(
   macroTypes,
   "import type { PluginOption } from 'vite';\ndeclare const plugin: { vite(): PluginOption };\nexport = plugin;\n",
 );
+
+// The locale optimizer uses the same unplugin abstraction. Its optional bundler
+// peers must not become requirements of this Vite-only application either.
+const localeTypes = fileURLToPath(
+  new URL(
+    "../node_modules/@react-aria/optimize-locales-plugin/LocalesPlugin.d.ts",
+    import.meta.url,
+  ),
+);
+writeFileSync(
+  localeTypes,
+  "import type { Plugin } from 'vite';\ndeclare const plugin: { vite(options: {locales: readonly string[]}): Plugin };\nexport = plugin;\n",
+);

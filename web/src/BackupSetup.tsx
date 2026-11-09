@@ -1,5 +1,11 @@
+import {
+  Disclosure,
+  DisclosureTitle,
+  DisclosurePanel,
+} from "@react-spectrum/s2/Disclosure";
+import Panel from "./Panel";
 import { useState } from "react";
-import { Button } from "@react-spectrum/s2/Button";
+import { Button, Text } from "@react-spectrum/s2/Button";
 import { Form } from "@react-spectrum/s2/Form";
 import { Picker, PickerItem } from "@react-spectrum/s2/Picker";
 import { StatusLight } from "@react-spectrum/s2/StatusLight";
@@ -196,22 +202,24 @@ export function GoogleDriveSetup({
               type="password"
               autoComplete="off"
             />
-            <details className={documentClass("details")}>
-              <summary className={documentClass("summary")}>
+            <Disclosure styles={style({ marginY: 24 })}>
+              <DisclosureTitle>
                 Use an existing backup folder (optional)
-              </summary>
-              <Input
-                label="Destination folder ID (optional)"
-                name="folder_id"
-                required={false}
-                defaultValue={drive.folder_id}
-                placeholder="Leave empty to create a dedicated folder"
-              />
-              <p className={documentClass("p")}>
-                Use a folder created by this Google application. An arbitrary
-                folder ID does not grant access.
-              </p>
-            </details>
+              </DisclosureTitle>
+              <DisclosurePanel>
+                <Input
+                  label="Destination folder ID (optional)"
+                  name="folder_id"
+                  required={false}
+                  defaultValue={drive.folder_id}
+                  placeholder="Leave empty to create a dedicated folder"
+                />
+                <p className={documentClass("p")}>
+                  Use a folder created by this Google application. An arbitrary
+                  folder ID does not grant access.
+                </p>
+              </DisclosurePanel>
+            </Disclosure>
             <Button type="submit" variant="accent">
               {busy ? "Opening Google…" : "Save and authorize Google Drive ↗"}
             </Button>
@@ -430,10 +438,10 @@ export default function BackupDestinations({
     <>
       <div className={classes("three-cols")}>
         {destinations.map((destination) => (
-          <section
+          <Panel
             key={destination.id}
-            className={classes("card")}
-            aria-label={destination.title}
+
+            label={destination.title}
           >
             <div
               className={style({
@@ -445,7 +453,7 @@ export default function BackupDestinations({
             >
               <h2 className={documentClass("h2")}>{destination.title}</h2>
               <ContextualHelp>
-                <Heading slot="title">About {destination.title}</Heading>
+                <Heading>About {destination.title}</Heading>
                 <Content>{destination.help}</Content>
               </ContextualHelp>
             </div>
@@ -474,8 +482,10 @@ export default function BackupDestinations({
                     );
                   }}
                 >
-                  {destination.configured ? "Manage " : "Set up "}
-                  {destination.title}
+                  <Text>
+                    {destination.configured ? "Manage " : "Set up "}
+                    {destination.title}
+                  </Text>
                 </Button>
               )}
               {destination.configured && (
@@ -491,7 +501,7 @@ export default function BackupDestinations({
                 </Button>
               )}
             </ButtonGroup>
-          </section>
+          </Panel>
         ))}
       </div>
       <DialogContainer

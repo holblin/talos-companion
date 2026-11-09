@@ -1,3 +1,4 @@
+import { User } from "@react-aria/test-utils";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "@react-spectrum/s2/Provider";
@@ -342,10 +343,13 @@ it("explains Cloudflare-only verification before saving", async () => {
 async function selectOmni(name: string) {
   const events = userEvent.setup();
   mount(<OmniConfiguration />);
-  await events.click(
-    await screen.findByRole("button", { name: /Companion access for Omni/ }),
-  );
-  await events.click(screen.getByRole("option", { name }));
+  await new User()
+    .createTester("Select", {
+      root: await screen.findByRole("button", {
+        name: /Companion access for Omni/,
+      }),
+    })
+    .toggleOptionSelection({ option: name });
   return events;
 }
 it("enumerates independent access methods without an Omni prerequisite", async () => {
@@ -428,10 +432,12 @@ it("adds Cloudflare alongside existing methods without implicitly selecting it f
   await events.click(
     await screen.findByRole("button", { name: "Add Cloudflare" }),
   );
-  expect(
-    screen.getByRole("textbox", { name: /domain override/ }).closest("details")
-      ?.open,
-  ).toBe(false);
+  expect(screen.queryByRole("textbox", { name: /domain override/ })).toBeNull();
+  const advanced = screen.getByRole("button", { name: "Advanced settings" });
+  expect(advanced.getAttribute("aria-expanded")).toBe("false");
+  await events.click(advanced);
+  expect(screen.getByRole("textbox", { name: /domain override/ })).toBeTruthy();
+  await events.click(advanced);
   expect(
     screen
       .getByRole("button", { name: "Continue with Cloudflare" })

@@ -1,3 +1,4 @@
+import { Link } from "@react-spectrum/s2/Link";
 import { documentClass } from "./layout";
 import {
   createRootRoute,
@@ -18,7 +19,6 @@ function Root() {
   return (
     <Provider
       locale="en-US"
-      colorScheme="dark"
       background="base"
       router={{
         navigate: (to) => {
@@ -52,9 +52,7 @@ export function createAppRouter(history?: RouterHistory) {
     defaultNotFoundComponent: () => (
       <main className={style({ padding: 32 })}>
         <h1 className={documentClass("h1")}>Page not found</h1>
-        <a className={documentClass("a")} href="/">
-          Return to your companion
-        </a>
+        <Link href="/">Return to your companion</Link>
       </main>
     ),
   });

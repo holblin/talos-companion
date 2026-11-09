@@ -1,3 +1,5 @@
+import Panel from "./Panel";
+import { Link } from "@react-spectrum/s2/Link";
 import { documentClass } from "./layout";
 import { type ReactNode, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,7 +14,6 @@ import { DialogContainer } from "@react-spectrum/s2/Dialog";
 import { Heading } from "@react-spectrum/s2/Heading";
 import { Content } from "@react-spectrum/s2/Content";
 import { ContextualHelp } from "@react-spectrum/s2/ContextualHelp";
-import { Text } from "@react-spectrum/s2/Text";
 import Refresh from "@react-spectrum/s2/icons/Refresh";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { api } from "./api";
@@ -84,11 +85,7 @@ export function CompanionAccess() {
             (a) => a.integration.profile === method.profile,
           );
           return (
-            <section
-              key={method.profile}
-              aria-label={method.name}
-              className={classes("card")}
-            >
+            <Panel key={method.profile} label={method.name}>
               <div
                 className={style({
                   display: "flex",
@@ -104,10 +101,10 @@ export function CompanionAccess() {
                 <ContextualHelp aria-label={method.name + " information"}>
                   <Heading>{method.name}</Heading>
                   <Content>
-                    <Text>
+                    <p className={documentClass("p")}>
                       {method.description} Adding access keeps existing methods
                       running and does not change Omni’s identity provider.
-                    </Text>
+                    </p>
                     {saved?.verified_at ? (
                       <p>
                         Last verified:{" "}
@@ -118,12 +115,9 @@ export function CompanionAccess() {
                       saved &&
                       catalog.data?.local_ca_available && (
                         <p>
-                          <a
-                            className={documentClass("a")}
-                            href="/api/companion/ca"
-                          >
+                          <Link href="/api/companion/ca" download>
                             Download local trust certificate
-                          </a>
+                          </Link>
                         </p>
                       )}
                   </Content>
@@ -214,7 +208,7 @@ export function CompanionAccess() {
                   </ActionButton>
                 )}
               </div>
-            </section>
+            </Panel>
           );
         })}
       </div>
@@ -274,7 +268,7 @@ export function OmniConfiguration({ children }: { children?: ReactNode } = {}) {
     selected && selected.companion_url !== catalog.data?.active_issuer;
   return (
     <>
-      <section className={classes("card")}>
+      <Panel>
         <h2 className={documentClass("h2")}>Omni configuration</h2>
         {catalog.isPending ? (
           <p className={documentClass("p")} role="status">
@@ -293,9 +287,7 @@ export function OmniConfiguration({ children }: { children?: ReactNode } = {}) {
               Omni needs a verified HTTPS endpoint for Companion. Add Local
               HTTPS, Tailscale or Cloudflare before configuring Omni.
             </p>
-            <a className={documentClass("a")} href="/access">
-              Set up Companion access →
-            </a>
+            <Link href="/access">Set up Companion access →</Link>
           </>
         ) : (
           <>
@@ -394,13 +386,11 @@ export function OmniConfiguration({ children }: { children?: ReactNode } = {}) {
               Use this access for Omni
             </Button>
             <p className={documentClass("p")}>
-              <a className={documentClass("a")} href="/access">
-                Manage Companion access methods
-              </a>
+              <Link href="/access">Manage Companion access methods</Link>
             </p>
           </>
         )}
-      </section>
+      </Panel>
       {verified.length > 0 && children}
     </>
   );

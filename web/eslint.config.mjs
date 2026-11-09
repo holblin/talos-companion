@@ -54,6 +54,24 @@ export default defineConfig({
           "Use the S2 style macro with className on HTML or styles on Spectrum components.",
       },
       {
+        selector:
+          "JSXOpeningElement[name.name=/^(details|summary|button|select|table)$/]",
+        message:
+          "Use the corresponding S2 Disclosure, Button, Picker, or TableView component.",
+      },
+      {
+        selector:
+          "JSXOpeningElement[name.name='Row']:not(:has(JSXAttribute[name.name='textValue']))",
+        message:
+          "Provide a searchable textValue for table rows with rich cell content.",
+      },
+      {
+        selector:
+          "JSXElement[openingElement.name.name=/^(Button|ActionButton|LinkButton)$/]:has(> JSXExpressionContainer ~ JSXExpressionContainer), JSXElement[openingElement.name.name=/^(Button|ActionButton|LinkButton)$/]:has(> JSXText[value=/\\S/]):has(> JSXExpressionContainer), JSXElement[openingElement.name.name=/^(Button|ActionButton|LinkButton)$/]:has(> JSXText[value=/\\S/]):has(> JSXElement), JSXElement[openingElement.name.name=/^(Button|ActionButton|LinkButton)$/]:has(> JSXExpressionContainer):has(> JSXElement)",
+        message:
+          "Wrap composite button labels in Spectrum Text so they receive the centered label slot. A single string is wrapped automatically by S2.",
+      },
+      {
         selector: "JSXAttribute[name.name=/^UNSAFE_(style|className)$/]",
         message:
           "Use S2 component props and style macro layout tokens; unsafe overrides are prohibited.",

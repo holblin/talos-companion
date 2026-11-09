@@ -8,7 +8,6 @@ import { layout } from "./layout";
 import "@react-spectrum/s2/page.css";
 
 document.body.className = layout.document;
-document.documentElement.dataset["colorScheme"] = "dark";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("The application root element is missing.");

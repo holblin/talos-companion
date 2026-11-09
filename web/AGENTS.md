@@ -8,4 +8,10 @@ Use the installed `react-spectrum-s2` skill for changes in `web/` and `spectrum-
 - Standard dialogs use direct `Heading`, `Content`, and `ButtonGroup` slots. Use a non-dismissible dialog when it has footer actions. `isDismissible` hides the footer ButtonGroup.
 - Button groups inside dialog Content must explicitly use `slot={null}` to opt out of the dialog's footer context. Use `CustomDialog` only when the workflow requires a custom layout.
 - Keep form submission accessible: an external submit button uses `form` referencing the actual form ID. Preserve pending/disabled state and focus restoration.
+- Button labels composed from multiple expressions, or combined with an icon, must use Spectrum `Text` from the button's subpath. S2 only automatically wraps a single string; raw composite children miss the centered label slot. ESLint rejects unwrapped composite labels.
+- Use `Panel` for document sections that need an S2 Card surface. Put custom card layouts inside its Content slot; preserve accessible regions and heading levels.
+- Let TableView own its scrolling. Use column minWidth values rather than making the table wider than its parent. Supply row textValue and use TableBody renderEmptyState.
+- Use S2 Disclosure and Link. Keep the native skip link for its document-focus behavior, and mark API download links with download so the client router does not intercept them.
+- Use the Provider's default system color scheme. Merge macro outputs with mergeStyles without also concatenating their original class strings.
+- Prefer Adobe ARIA pattern testers for collections and overlays. Import User from @react-aria/test-utils: the currently published @react-spectrum/test-utils 1.0.0-rc.2 declares the re-export but omits it at runtime.
 - Before completing UI work, run frontend lint, typecheck, tests, and the production build.

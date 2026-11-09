@@ -1,9 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import macros from "unplugin-parcel-macros";
+import optimizeLocales from "@react-aria/optimize-locales-plugin";
 
 export default defineConfig({
-  plugins: [macros.vite(), react()],
+  plugins: [
+    { ...optimizeLocales.vite({ locales: ["en-US"] }), enforce: "pre" },
+    macros.vite(),
+    react(),
+  ],
   build: {
     target: "es2022",
     cssMinify: "lightningcss",

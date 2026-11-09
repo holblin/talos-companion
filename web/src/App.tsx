@@ -1,3 +1,5 @@
+import Card from "./Panel";
+import { Link } from "@react-spectrum/s2/Link";
 import { documentClass } from "./layout";
 import RemoveAction from "./RemoveAction";
 import FilePicker from "./FilePicker";
@@ -128,29 +130,6 @@ function Logo() {
     </span>
   );
 }
-function Card({
-  title,
-  children,
-  className = "",
-  id,
-}: {
-  title?: string;
-  children: ReactNode;
-  className?: string;
-  id?: string;
-}) {
-  return (
-    <section
-      className={classes(`card ${className}`)}
-      aria-label={title}
-      id={id}
-      tabIndex={id ? -1 : undefined}
-    >
-      {title && <h2 className={documentClass("h2")}>{title}</h2>}
-      {children}
-    </section>
-  );
-}
 function Secret({ label, value }: { label: string; value: string }) {
   const [show, setShow] = useState(false);
   return (
@@ -243,7 +222,11 @@ function AccountPopover({
             size={48}
           />
           <strong>{user.name}</strong>
-          <Text>{user.email}</Text>
+          <span
+            className={style({ font: "body-sm", color: "neutral-subdued" })}
+          >
+            {user.email}
+          </span>
           <Button
             variant="secondary"
             onPress={() => {
@@ -628,14 +611,13 @@ export default function App() {
                     </Button>
                   </Form>
                 </fieldset>
-                <a
-                  className={documentClass("a")}
+                <Link
                   href="https://github.com/holblin/talos-companion/blob/main/docs/home-setup.md#recover-a-forgotten-administrator-password"
                   target="_blank"
                   rel="noreferrer"
                 >
                   Recovery instructions ↗
-                </a>
+                </Link>
               </>
             )}
           </div>
@@ -712,33 +694,33 @@ export default function App() {
             Google Drive
           </PickerItem>
         </Picker>
-        <details className={documentClass("details")}>
-          <summary className={documentClass("summary")}>
-            Retention settings
-          </summary>
-          <Input
-            label="Recovery files to keep per destination"
-            name="recovery_keep_last"
-            type="number"
-            min={0}
-            max={1000000}
-            step={1}
-            defaultValue={overview.settings.retention.recovery_keep_last}
-          />
-          <Input
-            label="Omni snapshots to keep per cluster"
-            name="snapshot_keep_last"
-            type="number"
-            min={0}
-            max={1000000}
-            step={1}
-            defaultValue={overview.settings.retention.snapshot_keep_last}
-          />
-          <p className={documentClass("p", classes("hint"))}>
-            Use 0 to keep everything. Retention applies after the next
-            successful backup.
-          </p>
-        </details>
+        <Disclosure styles={style({ marginY: 24 })}>
+          <DisclosureTitle>Retention settings</DisclosureTitle>
+          <DisclosurePanel>
+            <Input
+              label="Recovery files to keep per destination"
+              name="recovery_keep_last"
+              type="number"
+              min={0}
+              max={1000000}
+              step={1}
+              defaultValue={overview.settings.retention.recovery_keep_last}
+            />
+            <Input
+              label="Omni snapshots to keep per cluster"
+              name="snapshot_keep_last"
+              type="number"
+              min={0}
+              max={1000000}
+              step={1}
+              defaultValue={overview.settings.retention.snapshot_keep_last}
+            />
+            <p className={documentClass("p", classes("hint"))}>
+              Use 0 to keep everything. Retention applies after the next
+              successful backup.
+            </p>
+          </DisclosurePanel>
+        </Disclosure>
         <Button type="submit" variant="accent">
           Save backup settings
         </Button>
@@ -929,10 +911,7 @@ export default function App() {
                   </div>
                 </dl>
                 <div className={classes("overview-grid")}>
-                  <Card
-                    className={classes("recovery-card")}
-                    title="Recovery readiness"
-                  >
+                  <Card title="Recovery readiness">
                     <RecoveryReadiness
                       overview={overview}
                       backups={backupsQuery.data}
@@ -1128,12 +1107,9 @@ export default function App() {
                       {vault.map((name) => (
                         <div className={classes("account")} key={name}>
                           <code className={documentClass("code")}>{name}</code>
-                          <a
-                            className={documentClass("a", classes("download"))}
-                            href={`/api/vault/${encodeURIComponent(name)}`}
-                          >
+                          <Link href={`/api/vault/${encodeURIComponent(name)}`}>
                             Download ↓
-                          </a>
+                          </Link>
                           <RemoveAction
                             title="Remove credential file?"
                             isDisabled={busy}
@@ -1205,104 +1181,106 @@ export default function App() {
                   }
                 >
                   <OmniSetup>
-                    <details
-                      className={documentClass("details", classes("card"))}
-                    >
-                      <summary className={documentClass("summary")}>
+                    <Disclosure styles={style({ marginY: 24 })}>
+                      <DisclosureTitle>
                         Advanced settings: identity and backup credentials
-                      </summary>
-                      <div className={classes("two-cols")}>
-                        <Card title="Give Omni a familiar face">
-                          <p className={documentClass("p")}>
-                            Your companion is a dedicated identity provider for
-                            one Omni instance. Add Omni’s exact callback URL,
-                            then configure Omni with these values.
-                          </p>
-                          <dl>
-                            <dt className={documentClass("dt")}>Issuer URL</dt>
-                            <dd className={documentClass("dd")}>
-                              <code className={documentClass("code")}>
-                                {overview.issuer}
-                              </code>
-                            </dd>
-                            <dt className={documentClass("dt")}>Client ID</dt>
-                            <dd className={documentClass("dd")}>
-                              <code className={documentClass("code")}>
-                                {overview.client_id}
-                              </code>
-                            </dd>
-                          </dl>
-                          <Secret
-                            label="Client secret"
-                            value={overview.client_secret}
-                          />
-                          <Form
-                            isDisabled={busy}
-                            onSubmit={(e) => {
-                              const data = fields(e);
-                              void work(async () => {
-                                await api("/api/oidc", data);
-                                await refresh();
-                                setNotice("Omni callback URL saved.");
-                              });
-                            }}
-                          >
-                            <Input
-                              label="Omni callback URL"
-                              name="redirect_uri"
-                              type="url"
-                              placeholder="https://omni.example.com/oidc/consume"
-                              defaultValue={overview.redirect_uri}
+                      </DisclosureTitle>
+                      <DisclosurePanel>
+                        <div className={classes("two-cols")}>
+                          <Card title="Give Omni a familiar face">
+                            <p className={documentClass("p")}>
+                              Your companion is a dedicated identity provider
+                              for one Omni instance. Add Omni’s exact callback
+                              URL, then configure Omni with these values.
+                            </p>
+                            <dl>
+                              <dt className={documentClass("dt")}>
+                                Issuer URL
+                              </dt>
+                              <dd className={documentClass("dd")}>
+                                <code className={documentClass("code")}>
+                                  {overview.issuer}
+                                </code>
+                              </dd>
+                              <dt className={documentClass("dt")}>Client ID</dt>
+                              <dd className={documentClass("dd")}>
+                                <code className={documentClass("code")}>
+                                  {overview.client_id}
+                                </code>
+                              </dd>
+                            </dl>
+                            <Secret
+                              label="Client secret"
+                              value={overview.client_secret}
                             />
-                            <Button type="submit" variant="accent">
-                              Save callback URL
-                            </Button>
-                          </Form>
-                        </Card>
-                        <Card title="A home for Omni backups">
-                          <p className={documentClass("p")}>
-                            Use the verified backup endpoint from the guided
-                            setup. The bucket is created automatically after
-                            account setup.
-                          </p>
-                          <dl>
-                            <dt className={documentClass("dt")}>Bucket</dt>
-                            <dd className={documentClass("dd")}>
-                              <code className={documentClass("code")}>
-                                omni
-                              </code>
-                            </dd>
-                            <dt className={documentClass("dt")}>Region</dt>
-                            <dd className={documentClass("dd")}>
-                              <code className={documentClass("code")}>
-                                us-east-1
-                              </code>
-                            </dd>
-                            <dt className={documentClass("dt")}>Endpoint</dt>
-                            <dd className={documentClass("dd")}>
-                              <code className={documentClass("code")}>
-                                {overview.s3_endpoint ||
-                                  "Complete the guided connection setup above."}
-                              </code>
-                            </dd>
-                          </dl>
-                          <Secret
-                            label="Access key"
-                            value={overview.s3_access_key}
-                          />
-                          <Secret
-                            label="Secret key"
-                            value={overview.s3_secret_key}
-                          />
-                          <p className={documentClass("p", classes("hint"))}>
-                            Configure Omni with S3 backups enabled. See
-                            docs/omni.md for the resource template and full
-                            setup instructions. Omni access roles are managed in
-                            Omni.
-                          </p>
-                        </Card>
-                      </div>
-                    </details>
+                            <Form
+                              isDisabled={busy}
+                              onSubmit={(e) => {
+                                const data = fields(e);
+                                void work(async () => {
+                                  await api("/api/oidc", data);
+                                  await refresh();
+                                  setNotice("Omni callback URL saved.");
+                                });
+                              }}
+                            >
+                              <Input
+                                label="Omni callback URL"
+                                name="redirect_uri"
+                                type="url"
+                                placeholder="https://omni.example.com/oidc/consume"
+                                defaultValue={overview.redirect_uri}
+                              />
+                              <Button type="submit" variant="accent">
+                                Save callback URL
+                              </Button>
+                            </Form>
+                          </Card>
+                          <Card title="A home for Omni backups">
+                            <p className={documentClass("p")}>
+                              Use the verified backup endpoint from the guided
+                              setup. The bucket is created automatically after
+                              account setup.
+                            </p>
+                            <dl>
+                              <dt className={documentClass("dt")}>Bucket</dt>
+                              <dd className={documentClass("dd")}>
+                                <code className={documentClass("code")}>
+                                  omni
+                                </code>
+                              </dd>
+                              <dt className={documentClass("dt")}>Region</dt>
+                              <dd className={documentClass("dd")}>
+                                <code className={documentClass("code")}>
+                                  us-east-1
+                                </code>
+                              </dd>
+                              <dt className={documentClass("dt")}>Endpoint</dt>
+                              <dd className={documentClass("dd")}>
+                                <code className={documentClass("code")}>
+                                  {overview.s3_endpoint ||
+                                    "Complete the guided connection setup above."}
+                                </code>
+                              </dd>
+                            </dl>
+                            <Secret
+                              label="Access key"
+                              value={overview.s3_access_key}
+                            />
+                            <Secret
+                              label="Secret key"
+                              value={overview.s3_secret_key}
+                            />
+                            <p className={documentClass("p", classes("hint"))}>
+                              Configure Omni with S3 backups enabled. See
+                              docs/omni.md for the resource template and full
+                              setup instructions. Omni access roles are managed
+                              in Omni.
+                            </p>
+                          </Card>
+                        </div>
+                      </DisclosurePanel>
+                    </Disclosure>
                   </OmniSetup>
                 </Suspense>
               </>
@@ -1333,13 +1311,13 @@ export default function App() {
                     <Text>Add account</Text>
                   </Button>
                 </div>
-                <div className={classes("table-scroll")}>
+                <div className={style({ minWidth: 0 })}>
                   <TableView
                     aria-label="Workspace accounts"
                     overflowMode="wrap"
                     styles={style({
                       width: "full",
-                      minWidth: 800,
+                      maxWidth: "full",
                       height: "auto",
                     })}
                   >
@@ -1347,15 +1325,25 @@ export default function App() {
                       <Column id="person" isRowHeader minWidth={220}>
                         Account
                       </Column>
-                      <Column id="role">Role</Column>
-                      <Column id="creator">Created by</Column>
-                      <Column id="created">Created at</Column>
-                      <Column id="login">Last login at</Column>
-                      <Column id="actions">Actions</Column>
+                      <Column id="role" minWidth={120}>
+                        Role
+                      </Column>
+                      <Column id="creator" minWidth={160}>
+                        Created by
+                      </Column>
+                      <Column id="created" minWidth={160}>
+                        Created at
+                      </Column>
+                      <Column id="login" minWidth={160}>
+                        Last login at
+                      </Column>
+                      <Column id="actions" minWidth={100}>
+                        Actions
+                      </Column>
                     </TableHeader>
                     <TableBody items={users}>
                       {(u) => (
-                        <Row id={u.id}>
+                        <Row id={u.id} textValue={`${u.name} ${u.email}`}>
                           <Cell>
                             <div
                               className={style({

@@ -1,3 +1,8 @@
+import {
+  Disclosure,
+  DisclosureTitle,
+  DisclosurePanel,
+} from "@react-spectrum/s2/Disclosure";
 import { documentClass } from "./layout";
 import { useTask } from "./useTask";
 import { classes } from "./layout";
@@ -148,69 +153,73 @@ export default function RecoveryPassphrase({
               Download recovery note
             </Button>
           </div>
-          <details className={documentClass("details")}>
-            <summary className={documentClass("summary")}>
+          <Disclosure styles={style({ marginY: 24 })}>
+            <DisclosureTitle>
               Optional: protect a recovery copy with an age / SSH public key
-            </summary>
-            <p className={documentClass("p")}>
-              Download an age-encrypted note containing this passphrase. Anyone
-              with one matching private key can recover the note locally. You
-              can paste native age keys or import supported public SSH keys from
-              GitHub.
-            </p>
-            <fieldset className={documentClass("fieldset")} disabled={busy}>
-              <TextField
-                label={<>GitHub username (optional)</>}
-                value={githubUser}
-                onChange={(value) => {
-                  setGithubUser(value);
-                }}
-                autoComplete="off"
-                maxLength={39}
-                styles={style({ width: "full", marginY: 12 })}
-              ></TextField>
-              <Button
-                type="button"
-                isDisabled={!githubUser.trim()}
-                onPress={() => {
-                  void importGithub();
-                }}
-                variant="secondary"
-              >
-                Load GitHub public keys
-              </Button>
-              <TextArea
-                label="Public keys — one age1, ssh-ed25519, or ssh-rsa key per line"
-                maxLength={32768}
-                value={recipients}
-                onChange={setRecipients}
-                styles={style({ width: "full", marginY: 16 })}
-              />
-              <Button
-                type="button"
-                isDisabled={!recipients.trim()}
-                onPress={() => {
-                  void protect();
-                }}
-                variant="secondary"
-              >
-                {busy ? "Working…" : "Download encrypted recovery note (.age)"}
-              </Button>
-            </fieldset>
-            <p className={documentClass("p", classes("hint"))}>
-              Private keys stay on your computer. Hardware-backed SSH keys are
-              not supported. Keep the matching private key long-term, even if
-              you remove its public key from GitHub.
-            </p>
-            <code className={documentClass("code", classes("block"))}>
-              age -d -i /path/to/private-key talos-companion-recovery.txt.age
-            </code>
-            <p className={documentClass("p", classes("hint"))}>
-              This recovers the passphrase note; use that passphrase to restore
-              the .tcb backup. The encrypted note is an extra recovery copy, not
-              a replacement for the backup itself.
-            </p>
-          </details>
+            </DisclosureTitle>
+            <DisclosurePanel>
+              <p className={documentClass("p")}>
+                Download an age-encrypted note containing this passphrase.
+                Anyone with one matching private key can recover the note
+                locally. You can paste native age keys or import supported
+                public SSH keys from GitHub.
+              </p>
+              <fieldset className={documentClass("fieldset")} disabled={busy}>
+                <TextField
+                  label={<>GitHub username (optional)</>}
+                  value={githubUser}
+                  onChange={(value) => {
+                    setGithubUser(value);
+                  }}
+                  autoComplete="off"
+                  maxLength={39}
+                  styles={style({ width: "full", marginY: 12 })}
+                ></TextField>
+                <Button
+                  type="button"
+                  isDisabled={!githubUser.trim()}
+                  onPress={() => {
+                    void importGithub();
+                  }}
+                  variant="secondary"
+                >
+                  Load GitHub public keys
+                </Button>
+                <TextArea
+                  label="Public keys — one age1, ssh-ed25519, or ssh-rsa key per line"
+                  maxLength={32768}
+                  value={recipients}
+                  onChange={setRecipients}
+                  styles={style({ width: "full", marginY: 16 })}
+                />
+                <Button
+                  type="button"
+                  isDisabled={!recipients.trim()}
+                  onPress={() => {
+                    void protect();
+                  }}
+                  variant="secondary"
+                >
+                  {busy
+                    ? "Working…"
+                    : "Download encrypted recovery note (.age)"}
+                </Button>
+              </fieldset>
+              <p className={documentClass("p", classes("hint"))}>
+                Private keys stay on your computer. Hardware-backed SSH keys are
+                not supported. Keep the matching private key long-term, even if
+                you remove its public key from GitHub.
+              </p>
+              <code className={documentClass("code", classes("block"))}>
+                age -d -i /path/to/private-key talos-companion-recovery.txt.age
+              </code>
+              <p className={documentClass("p", classes("hint"))}>
+                This recovers the passphrase note; use that passphrase to
+                restore the .tcb backup. The encrypted note is an extra recovery
+                copy, not a replacement for the backup itself.
+              </p>
+            </DisclosurePanel>
+          </Disclosure>
         </>
       )}
       <div aria-live="polite">

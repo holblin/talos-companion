@@ -13,8 +13,8 @@ import { classes, documentClass } from "./layout";
 import { backupDate, type Backup } from "./backupPresentation";
 
 export default function BackupTable({ backups }: { backups: Backup[] }) {
-  return backups.length ? (
-    <div className={style({ minWidth: 0, overflowX: "auto" })}>
+  return (
+    <div className={style({ minWidth: 0 })}>
       <TableView
         aria-label="Encrypted recovery files"
         overflowMode="wrap"
@@ -31,9 +31,23 @@ export default function BackupTable({ backups }: { backups: Backup[] }) {
             Download
           </Column>
         </TableHeader>
-        <TableBody items={backups}>
+        <TableBody
+          items={backups}
+          renderEmptyState={() => (
+            <div className={classes("empty")}>
+              <Download styles={style({ marginBottom: 16 })} />
+              <h3 className={documentClass("h3")}>
+                Your first backup starts here.
+              </h3>
+              <p className={documentClass("p")}>
+                Create a recovery file to keep your accounts and infrastructure
+                safe.
+              </p>
+            </div>
+          )}
+        >
           {(backup) => (
-            <Row id={backup.name}>
+            <Row id={backup.name} textValue={backup.name}>
               <Cell>
                 <div>{backupDate(backup.name)}</div>
                 <code className={documentClass("code")}>{backup.name}</code>
@@ -51,14 +65,6 @@ export default function BackupTable({ backups }: { backups: Backup[] }) {
           )}
         </TableBody>
       </TableView>
-    </div>
-  ) : (
-    <div className={classes("empty")}>
-      <Download styles={style({ marginBottom: 16 })} />
-      <h3 className={documentClass("h3")}>Your first backup starts here.</h3>
-      <p className={documentClass("p")}>
-        Create a recovery file to keep your accounts and infrastructure safe.
-      </p>
     </div>
   );
 }

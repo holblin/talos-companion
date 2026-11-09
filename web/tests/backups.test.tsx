@@ -1,3 +1,4 @@
+import { User } from "@react-aria/test-utils";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "@react-spectrum/s2/Provider";
@@ -93,16 +94,15 @@ it("offers setup directly on unconfigured backup cards and saves Google credenti
 });
 
 it("opens a Spectrum dialog and returns keyboard focus to the setup trigger when it closes", async () => {
-  const events = userEvent.setup();
   mount();
   const trigger = screen.getByRole("button", { name: "Set up Google Drive" });
-  await events.click(trigger);
-  expect(
-    screen
-      .getByRole("dialog", { name: "Google Drive setup" })
-      .contains(document.activeElement),
-  ).toBe(true);
-  await events.click(screen.getByRole("button", { name: "Close setup" }));
+  const dialog = new User({ interactionType: "keyboard" }).createTester(
+    "Dialog",
+    { root: trigger },
+  );
+  await dialog.open();
+  expect(dialog.getDialog()?.contains(document.activeElement)).toBe(true);
+  await dialog.close();
   await waitFor(() => {
     expect(document.activeElement).toBe(trigger);
   });
@@ -196,8 +196,11 @@ it("switches the native setup to NFS export and identity fields", async () => {
   vi.stubGlobal("fetch", fetch);
   mount();
   await events.click(screen.getByRole("button", { name: "Set up NFS / SMB" }));
-  await events.click(screen.getByRole("button", { name: /Share protocol/ }));
-  await events.click(screen.getByRole("option", { name: "NFSv3" }));
+  await new User()
+    .createTester("Select", {
+      root: screen.getByRole("button", { name: /Share protocol/ }),
+    })
+    .toggleOptionSelection({ option: "NFSv3" });
   expect(screen.queryByLabelText(/SMB password/)).toBeNull();
   await events.type(
     screen.getByLabelText(/Server hostname/),
@@ -229,7 +232,6 @@ it("switches the native setup to NFS export and identity fields", async () => {
 });
 
 it("submits human-readable schedule choices as the backend interval", async () => {
-  const events = userEvent.setup();
   const { container } = render(
     <Provider locale="en-US">
       <form>
@@ -240,7 +242,10 @@ it("submits human-readable schedule choices as the backend interval", async () =
   const form = container.querySelector("form");
   if (!form) throw new Error("Expected schedule form");
   expect(new FormData(form).get("interval_seconds")).toBe("86400");
-  await events.click(screen.getByRole("button", { name: /Backup frequency/ }));
-  await events.click(screen.getByRole("option", { name: "Every week" }));
+  await new User({ interactionType: "keyboard" })
+    .createTester("Select", {
+      root: screen.getByRole("button", { name: /Backup frequency/ }),
+    })
+    .toggleOptionSelection({ option: "Every week" });
   expect(new FormData(form).get("interval_seconds")).toBe("604800");
 });
