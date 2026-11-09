@@ -43,7 +43,7 @@ test('owner-issued codes preserve passwords, expire, rotate and work once', {tim
     assert.equal((await reset(final)).status,401);
     await login(18430,'recovery@example.test','replacement recovery password');
     assert.equal((await request(18430,'/api/login',{body:{email:'recovery@example.test',password:'initial recovery test password'}})).status,401);
-    const after=JSON.parse(await readFile(join(data,'state.json'),'utf8'));const expected=structuredClone(before);expected.users[0].password_hash=after.users[0].password_hash;assert.deepEqual(after,expected);assert.notEqual(after.users[0].password_hash,before.users[0].password_hash);
+    const after=JSON.parse(await readFile(join(data,'state.json'),'utf8'));const expected=structuredClone(before);expected.users[0].password_hash=after.users[0].password_hash;assert.ok(Number.isInteger(after.users[0].last_login_at));assert.ok(after.users[0].last_login_at>=before.users[0].created_at);expected.users[0].last_login_at=after.users[0].last_login_at;assert.deepEqual(after,expected);assert.notEqual(after.users[0].password_hash,before.users[0].password_hash);
     assert.ok(!running.logs().includes(final));
     const pending=generate();const session=await login(18430,'recovery@example.test','replacement recovery password');
     assert.equal((await request(18430,'/api/password',{cookie:session,body:{current:'replacement recovery password',password:'normal password change invalidates code'}})).status,200);
@@ -65,8 +65,8 @@ test('browser requests emit one private log code per window and never return it 
     assert.equal(codes(running.logs()).length,0);
     assert.equal((await ask()).status,400);
     assert.equal((await request(port,'/api/setup',{setup:true,body:{name:'Logs Test',email:'logs@example.test',password:'initial log recovery password',backup_passphrase_confirmation:passphrase}})).status,200);
-    const original=await readFile(join(data,'state.json'),'utf8');
     const cookie=await login(port,'logs@example.test','initial log recovery password');
+    const original=await readFile(join(data,'state.json'),'utf8');
     assert.equal((await fetch(`http://127.0.0.1:${port}/api/password/recovery-code`,{method:'POST'})).status,400);
     assert.equal((await ask({origin:'https://untrusted.example.test'})).status,400);
     assert.equal(codes(running.logs()).length,0);
