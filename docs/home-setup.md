@@ -262,7 +262,7 @@ a server-log code can replace a privately issued command code. This is optional 
 independent of the deployment platform. The old `--reset-admin-password` is refused.
 
 If you cannot see the new button, update to 0.2.2 or later and refresh the sign-in page.
-The Unraid repository is `holblin/talos-companion:0.3.10` for a pinned image.
+The Unraid repository is `holblin/talos-companion:0.3.11` for a pinned image.
 
 ## Verify before relying on the deployment
 
