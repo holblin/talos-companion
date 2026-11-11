@@ -34,6 +34,7 @@ COPY web/scripts ./web/scripts
 RUN mise exec -- npm ci --prefix web
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
+COPY deploy/unraid/omni-config.example.yaml ./deploy/unraid/omni-config.example.yaml
 COPY web ./web
 RUN mise run web:build \
     && mise exec -- cargo build --release --locked --target x86_64-unknown-linux-musl \
