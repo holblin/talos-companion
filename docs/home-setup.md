@@ -5,6 +5,21 @@ and migration between LAN, Cloudflare DNS and Tailscale access. Requires Compani
 and uses official Omni v1.13.2. Screenshots use isolated demonstration data; never publish
 screenshots of real credentials or private configuration.
 
+## Browser bootstrap before Omni startup
+
+The **Omni configuration** page offers separate new-instance and existing-instance flows.
+For a new instance, configure Companion's stable HTTPS access first, then generate and
+download a complete `omni.yaml` using planned Omni addresses; Omni need not be running.
+Prepare TLS certificates and `omni.asc`, review and accept the EULA yourself, and use
+read-only `/config` plus writable `/data` mounts. The saved account UUID and OIDC
+credentials are retained across repeat generation. Only administrators can download the
+secret-containing file. See the [installation guide](../deploy/unraid/omni-install.md).
+
+This browser flow is an alternative to the owner-run new-installation helper below.
+Choose one source of identity/configuration for a new instance; never bootstrap over an
+existing Omni. Use the existing-instance review flow for that installation's primary YAML.
+After startup, validate the connection and configure Omni's S3 backup destination separately.
+
 ## Choose an access profile
 
 For browser-guided Cloudflare Tunnel or Tailscale authorization, use the

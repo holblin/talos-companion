@@ -478,6 +478,7 @@ mod tests {
             drive: Default::default(),
             network: None,
             integration: Default::default(),
+            omni_bootstrap: None,
         };
         let app = App {
             _process_lock: Arc::new(tempfile::tempfile().unwrap()),

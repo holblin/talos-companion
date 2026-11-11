@@ -189,18 +189,7 @@ fn check(
         vantage: "Companion",
     }
 }
-pub async fn run(
-    State(app): State<App>,
-    headers: HeaderMap,
-    Json(integration): Json<Integration>,
-) -> Result<Json<Value>> {
-    auth::csrf(&app, &headers)?;
-    auth::admin(&app, &headers).await?;
-    let (key, access) = {
-        let store = app.store.read().await;
-        let store = store.as_ref().ok_or_else(denied)?;
-        (store.s3_secret_key.clone(), store.s3_access_key.clone())
-    };
+fn endpoint_client(profile: &Profile) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(8))
         .redirect(reqwest::redirect::Policy::none());
@@ -215,7 +204,7 @@ pub async fn run(
             reqwest::Certificate::from_pem(ca.as_bytes()).map_err(anyhow::Error::from)?,
         );
     }
-    if integration.profile == Profile::Lan {
+    if *profile == Profile::Lan {
         let path = std::path::Path::new("/omni-managed/root-ca.crt");
         if path.is_file() {
             builder = builder.add_root_certificate(
@@ -224,13 +213,37 @@ pub async fn run(
             );
         }
     }
-    if integration.profile == Profile::Tailscale
-        && crate::connections::provider_available(&Profile::Tailscale)
+    if *profile == Profile::Tailscale && crate::connections::provider_available(&Profile::Tailscale)
     {
         builder = builder
             .proxy(reqwest::Proxy::all("socks5h://127.0.0.1:1055").map_err(anyhow::Error::from)?);
     }
-    let client = builder.build().map_err(anyhow::Error::from)?;
+    Ok(builder.build().map_err(anyhow::Error::from)?)
+}
+pub async fn omni_reachable(url: &str, profile: &Profile) -> Result<()> {
+    let response = endpoint_client(profile)?
+        .get(origin(url)?)
+        .send()
+        .await
+        .map_err(anyhow::Error::from)?;
+    if !response.status().is_success() && !response.status().is_redirection() {
+        return Err(bad("Omni returned an unsuccessful HTTP response"));
+    }
+    Ok(())
+}
+pub async fn run(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(integration): Json<Integration>,
+) -> Result<Json<Value>> {
+    auth::csrf(&app, &headers)?;
+    auth::admin(&app, &headers).await?;
+    let (key, access) = {
+        let store = app.store.read().await;
+        let store = store.as_ref().ok_or_else(denied)?;
+        (store.s3_secret_key.clone(), store.s3_access_key.clone())
+    };
+    let client = endpoint_client(&integration.profile)?;
     let omni = async {
         let response = client.get(origin(&integration.omni_url)?).send().await?;
         anyhow::ensure!(

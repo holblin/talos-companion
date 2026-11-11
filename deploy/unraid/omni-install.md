@@ -10,6 +10,36 @@ Omni is separately licensed by Sidero Labs. Read its [license](https://github.co
 and [EULA](https://siderolabs.com/eula/). Complete acceptance yourself. This template
 does not pre-accept terms or provide a commercial license.
 
+## Generate configuration before starting Omni
+
+Finish Companion setup and configure its stable HTTPS issuer under **Companion access**.
+Open **Omni configuration → Set up a new Omni instance**. Omni does **not** need to be
+running or reachable. Enter its planned HTTPS URL, Companion issuer, initial administrator
+email (matching a Companion account), a literal node-reachable WireGuard IP, and review
+ports and container paths. The issuer must match Companion's active HTTPS issuer.
+
+Choose **Generate configuration**, then **Download omni.yaml**. This registers the exact
+planned Omni callback and uses Companion's existing confidential OIDC client credentials.
+Generation saves one permanent account UUID; edits and repeat downloads retain the UUID
+and credentials, including after Companion restarts. The download contains a secret:
+only Companion administrators can obtain it, it is served with private/no-store cache
+controls, and it must be saved privately outside version control. Generation does not
+mount files, prepare keys/certificates, accept the EULA, or start Omni.
+
+**Configuration generated** means only that the file is ready. After you prepare the
+files below and start Omni, choose **Validate connection after startup**. **Omni connected**
+records successful HTTPS reachability from Companion, not successful OIDC sign-in, Talos
+node connectivity or backup delivery; test those separately. Saving changed inputs clears
+an earlier connection result. A changed issuer or callback requires reviewing and generating
+again before downloading.
+
+For a running installation choose **Connect an existing Omni instance** instead. Import
+its primary configuration, review the OIDC/auth-mode and S3-mode changes, acknowledge the
+review, then download **reviewed omni.yaml**. This preserves the existing account UUID,
+encryption references, databases, initial users and unrelated settings. Keep a private
+original/recovery copy and review the result before replacing your file. YAML comments and
+formatting are not retained; CLI flags and later configuration files can override it.
+
 ## Prepare files
 
 Use a dedicated appdata directory, on persistent storage with reliable fsync. Prefer
@@ -32,9 +62,10 @@ omni-siderolabs/
    administrator/container process, for example root ownership, directories `0700` and
    private files `0600`. The template retains the official image's user; do not apply
    Companion's `99:100` ownership instructions to Omni without checking the image.
-2. Copy `omni-config.example.yaml` to private `config/omni.yaml`. Replace all `REPLACE_`
-   values, `example.com` addresses, and the documentation IP `192.0.2.10`.
-3. Generate a unique account UUID with `uuidgen` and save it in `account.id` permanently.
+2. Save the generated download as private `config/omni.yaml`. Alternatively copy
+   `omni-config.example.yaml` and replace all `REPLACE_` values, example addresses and IPs manually.
+3. Preserve the generated `account.id` permanently. Only for the manual example, generate
+   a unique UUID with `uuidgen`. Never generate a replacement for an existing installation.
 4. Follow [upstream GPG encryption-key preparation](https://github.com/siderolabs/omni-docs/blob/main/content/docs/how-to-guides/self-hosted/how-to-deploy-omni-on-prem/index.md#create-etcd-encryption-key).
    Put the exported unencrypted ASCII-armored private encryption key in `config/omni.asc`.
    Store an offline copy separately. Do not put the key or real configuration in this repository.

@@ -8,12 +8,14 @@ import {
 export default function ContextHelp({
   title,
   children,
+  defaultExpanded = false,
 }: {
   title: string;
   children: ReactNode;
+  defaultExpanded?: boolean;
 }) {
   return (
-    <Disclosure>
+    <Disclosure defaultExpanded={defaultExpanded}>
       <DisclosureTitle>{title}</DisclosureTitle>
       <DisclosurePanel>{children}</DisclosurePanel>
     </Disclosure>

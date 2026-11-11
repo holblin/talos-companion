@@ -1,5 +1,30 @@
 # Connect Talos Omni
 
+## Bootstrap a new instance offline
+
+Use **Omni configuration → Set up a new Omni instance** before Omni's first start.
+Only Companion needs to be configured with its stable HTTPS issuer. Enter planned Omni
+addresses, the initial administrator email, WireGuard IP, ports, TLS/key paths under
+read-only `/config` and database paths under writable `/data`. Generate and download
+`omni.yaml` without contacting Omni. Companion registers the matching OIDC callback,
+uses its actual client credentials, and persists one account UUID across edits/downloads.
+
+Downloads are administrator-only and contain the OIDC client secret. Keep them private.
+Prepare certificates and `omni.asc`, explicitly accept Omni's EULA yourself if you agree,
+and mount/start the supported image. See the [Unraid installation guide](../deploy/unraid/omni-install.md)
+for preparation and mount details. Generated configuration has no active EULA acceptance.
+
+**Configuration generated** and **Omni connected** are separate states. Run connection
+validation after startup; the check establishes HTTPS reachability from Companion only.
+Verify real sign-in, node connections and backups separately. Enabling S3 mode in the YAML
+still requires applying Omni's backup destination resource after startup, as described below.
+
+For an existing installation, choose **Connect an existing Omni instance**, import the
+primary YAML and review changes before downloading the updated full file. The scoped
+update preserves its account UUID, encryption references, storage paths, initial users and
+unrelated settings. Keep the original and inspect CLI/later-file overrides before applying.
+
+
 ## OIDC login
 
 1. Set Companion’s `PUBLIC_URL` to its stable HTTPS origin, reachable from Omni and from your browser. Put your existing reverse proxy in front of web port 8080. Preserve the Host header; the issuer is taken from `PUBLIC_URL`, never from forwarded request headers.

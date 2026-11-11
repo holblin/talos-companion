@@ -26,7 +26,7 @@ run = "cargo run"
 env = { PUBLIC_URL = "http://localhost:5173" }
 
 [tasks.test]
-run = ["cargo test --all-targets --locked", "cargo build --locked", "node --test tests/docker-interface.mjs tests/network-backup.mjs tests/integration.mjs tests/streaming.mjs tests/recovery.mjs tests/connections.mjs tests/companion-setup.mjs"]
+run = ["cargo test --all-targets --locked", "cargo build --locked", "node --test tests/omni-bootstrap.mjs tests/accounts.mjs tests/docker-interface.mjs tests/network-backup.mjs tests/integration.mjs tests/streaming.mjs tests/recovery.mjs tests/connections.mjs tests/companion-setup.mjs"]
 
 [tasks."web:check"]
 dir = "web"

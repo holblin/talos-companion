@@ -262,6 +262,7 @@ mod tests {
             drive: Drive::default(),
             network: None,
             integration: Default::default(),
+            omni_bootstrap: None,
         };
         let mut q = Authorize {
             client_id: "omni".into(),

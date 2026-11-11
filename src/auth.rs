@@ -181,6 +181,7 @@ pub async fn setup(
         drive: Drive::default(),
         network: None,
         integration: Default::default(),
+        omni_bootstrap: None,
     };
     settings.persist(&app.data)?;
     if let Err(e) = app.persist(&store) {
@@ -344,6 +345,57 @@ pub async fn add(
     *guard = Some(s);
     Ok(Json(public(&u)))
 }
+#[derive(Deserialize)]
+pub struct AccountUpdate {
+    pub email: String,
+    pub name: String,
+    pub admin: bool,
+}
+pub async fn update(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<AccountUpdate>,
+) -> Result<Json<Value>> {
+    csrf(&app, &headers)?;
+    let actor = admin(&app, &headers).await?;
+    let email = input.email.trim().to_lowercase();
+    if !email.contains('@')
+        || email.len() > 254
+        || input.name.trim().is_empty()
+        || input.name.len() > 100
+    {
+        return Err(bad(
+            "Provide a valid email and a name of up to 100 characters",
+        ));
+    }
+    let mut guard = app.store.write().await;
+    let mut s = guard.clone().ok_or_else(denied)?;
+    // Recheck the actor under the write lock so a concurrent demotion cannot authorize this change.
+    if !s.users.iter().any(|u| u.id == actor.id && u.admin) {
+        return Err(denied());
+    }
+    let index = s
+        .users
+        .iter()
+        .position(|u| u.id == id)
+        .ok_or_else(|| bad("Account not found"))?;
+    if s.users.iter().any(|u| u.id != id && u.email == email) {
+        return Err(bad("Email already exists"));
+    }
+    if s.users[index].admin && !input.admin && s.users.iter().filter(|u| u.admin).count() == 1 {
+        return Err(bad(
+            "The last administrator cannot lose administrator access",
+        ));
+    }
+    s.users[index].name = input.name.trim().into();
+    s.users[index].email = email;
+    s.users[index].admin = input.admin;
+    let result = public(&s.users[index]);
+    app.persist(&s)?;
+    *guard = Some(s);
+    Ok(Json(result))
+}
 pub async fn remove(
     State(app): State<App>,
     headers: HeaderMap,
@@ -351,11 +403,19 @@ pub async fn remove(
 ) -> Result<Json<Value>> {
     csrf(&app, &headers)?;
     let actor = admin(&app, &headers).await?;
-    if actor.id == id {
-        return Err(bad("You cannot remove your own account"));
-    }
     let mut guard = app.store.write().await;
     let mut s = guard.clone().ok_or_else(denied)?;
+    if !s.users.iter().any(|u| u.id == actor.id && u.admin) {
+        return Err(denied());
+    }
+    let target = s
+        .users
+        .iter()
+        .find(|u| u.id == id)
+        .ok_or_else(|| bad("Account not found"))?;
+    if target.admin && s.users.iter().filter(|u| u.admin).count() == 1 {
+        return Err(bad("The last administrator cannot be deleted"));
+    }
     s.users.retain(|u| u.id != id);
     app.persist(&s)?;
     *guard = Some(s);

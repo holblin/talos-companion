@@ -4,7 +4,10 @@ import {
   DisclosurePanel,
 } from "@react-spectrum/s2/Disclosure";
 import Panel from "./Panel";
-import { useState } from "react";
+import { useId, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "@react-spectrum/s2/Link";
+import type { AccessCatalog } from "./AccessPages";
 import { Button, Text } from "@react-spectrum/s2/Button";
 import { Form } from "@react-spectrum/s2/Form";
 import { Picker, PickerItem } from "@react-spectrum/s2/Picker";
@@ -77,316 +80,475 @@ export function BackupFrequency({ seconds }: { seconds: number }) {
 export function GoogleDriveSetup({
   issuer,
   drive,
+  onClose,
 }: {
   issuer: string;
   drive: Drive;
+  onClose: () => void;
 }) {
+  const formId = useId();
+  const access = useQuery({
+    queryKey: ["companion-access"],
+    queryFn: () => api<AccessCatalog>("/api/companion/access"),
+  });
+  const verified =
+    access.data?.accesses.filter(
+      (a) =>
+        a.verified_at > 0 &&
+        !a.local_dns_pending &&
+        a.integration.companion_url.startsWith("https://"),
+    ) ?? [];
+  const current = verified.find(
+    (a) => a.integration.companion_url === location.origin,
+  );
+  const preferred =
+    current ??
+    verified.find((a) => a.integration.companion_url === issuer) ??
+    verified.find((a) => a.integration.profile === "cloudflare") ??
+    verified[0];
+  const callbackOrigin = preferred?.integration.companion_url;
+  const canAuthorize = !!current;
   const [editing, setEditing] = useState(!drive.client_id);
   const { busy, error, work } = useTask();
   function authorize() {
+    if (!canAuthorize) return Promise.resolve();
     return work(async () => {
       const result = await api<{ url: string }>("/api/drive/connect", {});
       location.assign(result.url);
     });
   }
   return (
-    <>
-      <p className={documentClass("p")}>
-        Sign in to Google to allow encrypted backups. Companion creates a
-        dedicated backup folder automatically and keeps a local copy too.
-      </p>
-      {error && (
-        <p className={documentClass("p")} role="alert">
-          {error}
+    <Dialog size="L" aria-label="Google Drive setup">
+      <Heading slot="title">Connect Google Drive</Heading>
+      <Content>
+        <p className={documentClass("p")}>
+          Sign in to Google to allow encrypted backups. Companion creates a
+          dedicated backup folder automatically and keeps a local copy too.
         </p>
-      )}
-      {!editing ? (
-        <>
-          <p className={documentClass("p")}>
-            Your Google application is saved. Continue to Google to approve
-            access.
+        {access.isPending ? (
+          <p role="status" className={documentClass("p")}>
+            Checking Companion access…
           </p>
-          <ButtonGroup slot={null}>
-            <Button
-              variant="accent"
-              isDisabled={busy}
-              onPress={() => void authorize()}
-            >
-              {busy
-                ? "Opening Google…"
-                : drive.connected
-                  ? "Reconnect Google Drive ↗"
-                  : "Sign in with Google ↗"}
-            </Button>
+        ) : access.error ? (
+          <p role="alert" className={documentClass("p")}>
+            Could not check Companion access.{" "}
             <Button
               variant="secondary"
-              isDisabled={busy}
               onPress={() => {
-                setEditing(true);
+                void access.refetch();
               }}
             >
-              Change Google application
+              Retry
             </Button>
-          </ButtonGroup>
-        </>
-      ) : (
-        <>
-          <p className={documentClass("p")}>
-            Step 1 of 2 · Set up your Google application once
           </p>
-          <ContextHelp title="Google Cloud setup instructions">
+        ) : !preferred ? (
+          <p role="alert" className={documentClass("p")}>
+            Set up verified HTTPS Companion access before connecting Google
+            Drive.{" "}
+            <Link href="/access" onPress={onClose}>
+              Set up Companion access
+            </Link>
+          </p>
+        ) : !current ? (
+          <p role="alert" className={documentClass("p")}>
+            Continue through your verified HTTPS Companion address before
+            connecting Google Drive. Sign in there if prompted.{" "}
+            <Link
+              href={
+                preferred.integration.companion_url + "/backups#google-drive"
+              }
+            >
+              Continue setup over HTTPS
+            </Link>
+          </p>
+        ) : null}
+        {error && (
+          <p className={documentClass("p")} role="alert">
+            {error}
+          </p>
+        )}
+        {!editing ? (
+          <>
             <p className={documentClass("p")}>
-              This self-hosted installation needs your own Google OAuth
-              application before Google can offer sign-in. Your client secret
-              stays on this server.
+              Your Google application is saved. Continue to Google to approve
+              access.
             </p>
-            <ol>
-              <li>
-                Open{" "}
-                <a
-                  className={documentClass("a")}
-                  href="https://console.cloud.google.com/apis/library/drive.googleapis.com"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Google Cloud
-                </a>
-                , choose a project, and enable the Google Drive API.
-              </li>
-              <li>
-                Configure the OAuth consent screen, then create an OAuth client
-                of type <b>Web application</b> in{" "}
-                <a
-                  className={documentClass("a")}
-                  href="https://console.cloud.google.com/apis/credentials"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Credentials
-                </a>
-                .
-              </li>
-              <li>Register this exact authorized redirect URI:</li>
-            </ol>
-            <code className={documentClass("code", classes("block"))}>
-              {issuer}/oauth/google/callback
-            </code>
-          </ContextHelp>
-          <Form
-            isDisabled={busy}
-            onSubmit={(event) => {
-              event.preventDefault();
-              const data = Object.fromEntries(
-                new FormData(event.currentTarget),
-              );
-              void work(async () => {
-                await api("/api/drive", data);
-                // Keep the saved-application screen available if opening Google fails.
-                setEditing(false);
-                const result = await api<{ url: string }>(
-                  "/api/drive/connect",
-                  {},
+            <ButtonGroup slot={null}>
+              <Button
+                variant="secondary"
+                isDisabled={busy}
+                onPress={() => {
+                  setEditing(true);
+                }}
+              >
+                Change Google application
+              </Button>
+            </ButtonGroup>
+          </>
+        ) : (
+          <>
+            <p className={documentClass("p")}>
+              Step 1 of 2 · Set up your Google application once
+            </p>
+            <ContextHelp
+              title="Google Cloud setup instructions"
+              defaultExpanded
+            >
+              <p className={documentClass("p")}>
+                This self-hosted installation needs your own Google OAuth
+                application before Google can offer sign-in. Your client secret
+                stays on this server.
+              </p>
+              <ol>
+                <li>
+                  Open{" "}
+                  <a
+                    className={documentClass("a")}
+                    href="https://console.cloud.google.com/apis/library/drive.googleapis.com"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Google Cloud
+                  </a>
+                  , choose a project, and enable the Google Drive API.
+                </li>
+                <li>
+                  Configure the OAuth consent screen, then create an OAuth
+                  client of type <b>Web application</b> in{" "}
+                  <a
+                    className={documentClass("a")}
+                    href="https://console.cloud.google.com/apis/credentials"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Credentials
+                  </a>
+                  .
+                </li>
+                <li>
+                  {callbackOrigin
+                    ? "Register the exact authorized redirect URI below, using your verified HTTPS Companion address."
+                    : "Set up Companion access to get your HTTPS authorized redirect URI."}
+                </li>
+              </ol>
+              {callbackOrigin && (
+                <code className={documentClass("code", classes("block"))}>
+                  {callbackOrigin}/oauth/google/callback
+                </code>
+              )}
+            </ContextHelp>
+            <Form
+              id={formId}
+              isDisabled={busy}
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!canAuthorize) return;
+                const data = Object.fromEntries(
+                  new FormData(event.currentTarget),
                 );
-                location.assign(result.url);
-              });
+                void work(async () => {
+                  await api("/api/drive", data);
+                  // Keep the saved-application screen available if opening Google fails.
+                  setEditing(false);
+                  const result = await api<{ url: string }>(
+                    "/api/drive/connect",
+                    {},
+                  );
+                  location.assign(result.url);
+                });
+              }}
+            >
+              <Input
+                compact
+                label="Google client ID"
+                name="client_id"
+                defaultValue={drive.client_id}
+              />
+              <Input
+                compact
+                label="Google client secret"
+                name="client_secret"
+                type="password"
+                autoComplete="off"
+              />
+              <Disclosure>
+                <DisclosureTitle>
+                  Use an existing backup folder (optional)
+                </DisclosureTitle>
+                <DisclosurePanel>
+                  <Input
+                    compact
+                    label="Destination folder ID (optional)"
+                    name="folder_id"
+                    required={false}
+                    defaultValue={drive.folder_id}
+                    placeholder="Leave empty to create a dedicated folder"
+                  />
+                  <p className={documentClass("p")}>
+                    Use a folder created by this Google application. An
+                    arbitrary folder ID does not grant access.
+                  </p>
+                </DisclosurePanel>
+              </Disclosure>
+            </Form>
+            <p className={documentClass("p", classes("hint"))}>
+              Step 2: approve access in Google, then return here. Companion only
+              requests access to files created by this application. Google
+              grants in Testing mode may expire after seven days; use an
+              appropriate publishing status for unattended backups.
+            </p>
+          </>
+        )}
+      </Content>
+      <ButtonGroup>
+        <Button variant="secondary" onPress={onClose} isDisabled={busy}>
+          Close setup
+        </Button>
+        {editing ? (
+          <Button
+            type="submit"
+            form={formId}
+            variant="accent"
+            isDisabled={busy || !canAuthorize}
+          >
+            {busy ? "Opening Google…" : "Save and authorize Google Drive ↗"}
+          </Button>
+        ) : (
+          <Button
+            variant="accent"
+            isDisabled={busy || !canAuthorize}
+            onPress={() => {
+              void authorize();
             }}
           >
-            <Input
-              label="Google client ID"
-              name="client_id"
-              defaultValue={drive.client_id}
-            />
-            <Input
-              label="Google client secret"
-              name="client_secret"
-              type="password"
-              autoComplete="off"
-            />
-            <Disclosure styles={style({ marginY: 24 })}>
-              <DisclosureTitle>
-                Use an existing backup folder (optional)
-              </DisclosureTitle>
-              <DisclosurePanel>
-                <Input
-                  label="Destination folder ID (optional)"
-                  name="folder_id"
-                  required={false}
-                  defaultValue={drive.folder_id}
-                  placeholder="Leave empty to create a dedicated folder"
-                />
-                <p className={documentClass("p")}>
-                  Use a folder created by this Google application. An arbitrary
-                  folder ID does not grant access.
-                </p>
-              </DisclosurePanel>
-            </Disclosure>
-            <Button type="submit" variant="accent">
-              {busy ? "Opening Google…" : "Save and authorize Google Drive ↗"}
-            </Button>
-          </Form>
-          <p className={documentClass("p", classes("hint"))}>
-            Step 2: approve access in Google, then return here. Companion only
-            requests access to files created by this application. Google grants
-            in Testing mode may expire after seven days; use an appropriate
-            publishing status for unattended backups.
-          </p>
-        </>
-      )}
-    </>
+            {busy
+              ? "Opening Google…"
+              : drive.connected
+                ? "Reconnect Google Drive ↗"
+                : "Sign in with Google ↗"}
+          </Button>
+        )}
+      </ButtonGroup>
+    </Dialog>
   );
 }
 
 export function NetworkShareSetup({
   configured,
   refresh,
+  onClose,
 }: {
   configured?: NetworkShare | null | undefined;
   refresh: () => Promise<void>;
+  onClose: () => void;
 }) {
+  const formId = useId();
   const [protocol, setProtocol] = useState(configured?.protocol ?? "smb");
   const [saved, setSaved] = useState(false);
   const { busy, error, work } = useTask();
   return (
-    <>
-      <p className={documentClass("p")}>
-        Connect directly to your NAS. No host mount or Docker volume is needed.
-        The check creates, reads, and removes a temporary file before saving
-        this destination.
-      </p>
-      <Form
-        onSubmit={(event) => {
-          event.preventDefault();
-          const data = Object.fromEntries(new FormData(event.currentTarget));
-          setSaved(false);
-          void work(async () => {
-            await api("/api/backups/network", {
-              protocol,
-              host: data["host"],
-              share: data["share"],
-              directory: data["directory"],
-              username: protocol === "smb" ? data["username"] : "",
-              password: protocol === "smb" ? data["password"] : "",
-              uid:
-                protocol === "nfs"
-                  ? Number(
-                      typeof data["uid"] === "string"
-                        ? data["uid"].replaceAll(",", "")
-                        : NaN,
-                    )
-                  : 99,
-              gid:
-                protocol === "nfs"
-                  ? Number(
-                      typeof data["gid"] === "string"
-                        ? data["gid"].replaceAll(",", "")
-                        : NaN,
-                    )
-                  : 100,
-            });
-            setSaved(true);
-            await refresh();
-          });
-        }}
-      >
-        <Picker
-          label="Share protocol"
-          value={protocol}
-          onChange={(value) => {
-            setProtocol(value === "nfs" ? "nfs" : "smb");
+    <Dialog size="L" aria-label="Network share setup">
+      <Heading slot="title">Connect NFS / SMB</Heading>
+      <Content>
+        <p className={documentClass("p")}>
+          Connect directly to your NAS. No host mount or Docker volume is
+          needed. The check creates, reads, and removes a temporary file before
+          saving this destination.
+        </p>
+        <Form
+          id={formId}
+          isDisabled={busy}
+          onSubmit={(event) => {
+            event.preventDefault();
+            const data = Object.fromEntries(new FormData(event.currentTarget));
             setSaved(false);
+            void work(async () => {
+              await api("/api/backups/network", {
+                protocol,
+                host: data["host"],
+                share: data["share"],
+                directory: data["directory"],
+                username: protocol === "smb" ? data["username"] : "",
+                password: protocol === "smb" ? data["password"] : "",
+                uid:
+                  protocol === "nfs"
+                    ? Number(
+                        typeof data["uid"] === "string"
+                          ? data["uid"].replaceAll(",", "")
+                          : NaN,
+                      )
+                    : 99,
+                gid:
+                  protocol === "nfs"
+                    ? Number(
+                        typeof data["gid"] === "string"
+                          ? data["gid"].replaceAll(",", "")
+                          : NaN,
+                      )
+                    : 100,
+              });
+              setSaved(true);
+              await refresh();
+            });
           }}
         >
-          <PickerItem id="smb">SMB</PickerItem>
-          <PickerItem id="nfs">NFSv3</PickerItem>
-        </Picker>
-        <Input
-          label="Server hostname or IP address"
-          name="host"
-          defaultValue={configured?.host ?? ""}
-        />
-        <Input
-          key={protocol}
-          label={protocol === "nfs" ? "NFS export path" : "SMB share name"}
-          name="share"
-          defaultValue={
-            configured?.protocol === protocol ? configured.share : ""
-          }
-          placeholder={protocol === "nfs" ? "/exports/backups" : "Backups"}
-        />
-        <Input
-          label="Directory within share (optional)"
-          name="directory"
-          required={false}
-          defaultValue={configured?.directory ?? ""}
-        />
-        <p className={documentClass("p")}>
-          Use an existing, dedicated directory for this instance. Leave the
-          directory empty to use the share root.
-        </p>
-        {protocol === "smb" ? (
-          <>
-            <Input
-              label="SMB username"
-              name="username"
-              defaultValue={configured?.username ?? ""}
-            />
-            <Input
-              label="SMB password"
-              name="password"
-              type="password"
-              required={!configured || configured.protocol !== "smb"}
-              autoComplete="new-password"
-            />
-            {configured?.protocol === "smb" && (
+          <Picker
+            label="Share protocol"
+            value={protocol}
+            onChange={(value) => {
+              setProtocol(value === "nfs" ? "nfs" : "smb");
+              setSaved(false);
+            }}
+          >
+            <PickerItem id="smb">SMB</PickerItem>
+            <PickerItem id="nfs">NFSv3</PickerItem>
+          </Picker>
+          <Input
+            compact
+            label="Server hostname or IP address"
+            name="host"
+            defaultValue={configured?.host ?? ""}
+          />
+          <Input
+            compact
+            key={protocol}
+            label={protocol === "nfs" ? "NFS export path" : "SMB share name"}
+            name="share"
+            defaultValue={
+              configured?.protocol === protocol ? configured.share : ""
+            }
+            placeholder={protocol === "nfs" ? "/exports/backups" : "Backups"}
+          />
+          <Input
+            compact
+            label="Directory within share (optional)"
+            name="directory"
+            required={false}
+            defaultValue={configured?.directory ?? ""}
+            description="Use an existing, dedicated directory for this instance. Leave the directory empty to use the share root."
+          />
+          {protocol === "smb" ? (
+            <>
+              <Input
+                compact
+                label="SMB username"
+                name="username"
+                defaultValue={configured?.username ?? ""}
+              />
+              <Input
+                compact
+                label="SMB password"
+                name="password"
+                type="password"
+                required={!configured || configured.protocol !== "smb"}
+                autoComplete="new-password"
+                description={
+                  configured?.protocol === "smb"
+                    ? "Leave the password empty to keep it for the same server, share, and username."
+                    : undefined
+                }
+              />
+            </>
+          ) : (
+            <>
+              <Input
+                compact
+                label="NFS user ID (UID)"
+                name="uid"
+                type="number"
+                min={0}
+                max={4294967295}
+                step={1}
+                defaultValue={configured?.uid ?? 99}
+              />
+              <Input
+                compact
+                label="NFS group ID (GID)"
+                name="gid"
+                type="number"
+                min={0}
+                max={4294967295}
+                step={1}
+                defaultValue={configured?.gid ?? 100}
+              />
               <p className={documentClass("p")}>
-                Leave the password empty to keep it for the same server, share,
-                and username.
+                NFSv3 uses export permissions and numeric user/group IDs. Allow
+                this server’s IP on your NAS, including connections from
+                unprivileged ports.
               </p>
-            )}
-          </>
-        ) : (
-          <>
-            <Input
-              label="NFS user ID (UID)"
-              name="uid"
-              type="number"
-              min={0}
-              max={4294967295}
-              step={1}
-              defaultValue={configured?.uid ?? 99}
-            />
-            <Input
-              label="NFS group ID (GID)"
-              name="gid"
-              type="number"
-              min={0}
-              max={4294967295}
-              step={1}
-              defaultValue={configured?.gid ?? 100}
-            />
-            <p className={documentClass("p")}>
-              NFSv3 uses export permissions and numeric user/group IDs. Allow
-              this server’s IP on your NAS, including connections from
-              unprivileged ports.
+            </>
+          )}
+          {error && (
+            <p className={documentClass("p")} role="alert">
+              {error}
             </p>
-          </>
-        )}
+          )}
+          {saved && (
+            <p className={documentClass("p")} role="status">
+              Share access verified and destination saved. You can back up now
+              or select Remote NFS / SMB for scheduled backups.
+            </p>
+          )}
+        </Form>
+      </Content>
+      <ButtonGroup>
+        <Button variant="secondary" onPress={onClose} isDisabled={busy}>
+          Close setup
+        </Button>
+        <Button type="submit" form={formId} variant="accent" isDisabled={busy}>
+          {busy ? "Checking share…" : "Check access and save"}
+        </Button>
+      </ButtonGroup>
+    </Dialog>
+  );
+}
+
+function LocalBackupSetup({
+  createBackup,
+  onClose,
+}: {
+  createBackup: (destination: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const { busy, error, work } = useTask();
+  return (
+    <Dialog aria-label="Local backup management">
+      <Heading slot="title">Manage local storage</Heading>
+      <Content>
+        <p className={documentClass("p")}>
+          Encrypted recovery files are stored in{" "}
+          <code className={documentClass("code")}>/data/backups</code>. Map a
+          persistent host directory to this path in your container configuration
+          to choose where local backups are kept.
+        </p>
+        <p className={documentClass("p")}>
+          A local copy is also kept when backing up to Google Drive or NFS /
+          SMB. Review, download, and restore recovery files on the Backups page.
+        </p>
         {error && (
-          <p className={documentClass("p")} role="alert">
+          <p role="alert" className={documentClass("p")}>
             {error}
           </p>
         )}
-        {saved && (
-          <p className={documentClass("p")} role="status">
-            Share access verified and destination saved. You can back up now or
-            select Remote NFS / SMB for scheduled backups.
-          </p>
-        )}
-        <Button type="submit" variant="accent" isDisabled={busy}>
-          {busy ? "Checking share…" : "Check access and save"}
+      </Content>
+      <ButtonGroup>
+        <Button variant="secondary" onPress={onClose} isDisabled={busy}>
+          Close
         </Button>
-      </Form>
-    </>
+        <Button
+          variant="accent"
+          isDisabled={busy}
+          onPress={() => {
+            void work(async () => {
+              await createBackup("local");
+              onClose();
+            });
+          }}
+        >
+          {busy ? "Creating backup…" : "Create local backup"}
+        </Button>
+      </ButtonGroup>
+    </Dialog>
   );
 }
 
@@ -401,7 +563,7 @@ export default function BackupDestinations({
   createBackup: (destination: string) => Promise<void>;
   refresh: () => Promise<void>;
 }) {
-  const [editing, setEditing] = useState<"drive" | "network" | null>(
+  const [editing, setEditing] = useState<"local" | "drive" | "network" | null>(
     initialEditing,
   );
   const destinations = [
@@ -418,7 +580,7 @@ export default function BackupDestinations({
       title: "Google Drive",
       location: overview.drive.folder_id || "Dedicated backup folder",
       status: overview.drive.connected ? "Connected" : "Not connected",
-      configured: overview.drive.connected,
+      configured: !!overview.drive.client_id || overview.drive.connected,
       help: "Send an encrypted copy to Google Drive. A local copy is always kept too.",
     },
     {
@@ -458,7 +620,15 @@ export default function BackupDestinations({
               </ContextualHelp>
             </div>
             <StatusLight
-              variant={destination.configured ? "positive" : "neutral"}
+              variant={
+                (
+                  destination.id === "drive"
+                    ? overview.drive.connected
+                    : destination.configured
+                )
+                  ? "positive"
+                  : "neutral"
+              }
             >
               {destination.status}
             </StatusLight>
@@ -473,33 +643,29 @@ export default function BackupDestinations({
               {destination.location}
             </p>
             <ButtonGroup>
-              {destination.id !== "local" && (
-                <Button
-                  variant="secondary"
-                  onPress={() => {
-                    setEditing(
-                      destination.id === "drive" ? "drive" : "network",
-                    );
-                  }}
-                >
-                  <Text>
-                    {destination.configured ? "Manage " : "Set up "}
-                    {destination.title}
-                  </Text>
-                </Button>
-              )}
-              {destination.configured && (
-                <Button
-                  variant="secondary"
-                  onPress={() => void createBackup(destination.id)}
-                >
-                  {destination.id === "local"
-                    ? "Create local backup →"
-                    : destination.id === "drive"
+              <Button
+                variant="secondary"
+                onPress={() => {
+                  setEditing(destination.id);
+                }}
+              >
+                <Text>
+                  {destination.configured ? "Manage " : "Set up "}
+                  {destination.title}
+                </Text>
+              </Button>
+              {destination.id !== "local" &&
+                destination.configured &&
+                (destination.id !== "drive" || overview.drive.connected) && (
+                  <Button
+                    variant="secondary"
+                    onPress={() => void createBackup(destination.id)}
+                  >
+                    {destination.id === "drive"
                       ? "Back up to Drive →"
                       : "Back up to share →"}
-                </Button>
-              )}
+                  </Button>
+                )}
             </ButtonGroup>
           </Panel>
         ))}
@@ -509,43 +675,30 @@ export default function BackupDestinations({
           setEditing(null);
         }}
       >
-        {editing && (
-          <Dialog
-            size="L"
-            aria-label={
-              editing === "drive" ? "Google Drive setup" : "Network share setup"
-            }
-          >
-            <Heading slot="title">
-              {editing === "drive"
-                ? "Connect Google Drive"
-                : "Connect NFS / SMB"}
-            </Heading>
-            <Content>
-              {editing === "drive" ? (
-                <GoogleDriveSetup
-                  issuer={overview.issuer}
-                  drive={overview.drive}
-                />
-              ) : (
-                <NetworkShareSetup
-                  configured={overview.network}
-                  refresh={refresh}
-                />
-              )}
-            </Content>
-            <ButtonGroup>
-              <Button
-                variant="secondary"
-                onPress={() => {
-                  setEditing(null);
-                }}
-              >
-                Close setup
-              </Button>
-            </ButtonGroup>
-          </Dialog>
-        )}
+        {editing === "local" ? (
+          <LocalBackupSetup
+            createBackup={createBackup}
+            onClose={() => {
+              setEditing(null);
+            }}
+          />
+        ) : editing === "network" ? (
+          <NetworkShareSetup
+            configured={overview.network}
+            refresh={refresh}
+            onClose={() => {
+              setEditing(null);
+            }}
+          />
+        ) : editing === "drive" ? (
+          <GoogleDriveSetup
+            issuer={overview.issuer}
+            drive={overview.drive}
+            onClose={() => {
+              setEditing(null);
+            }}
+          />
+        ) : null}
       </DialogContainer>
     </>
   );

@@ -1,7 +1,7 @@
 export const destinations = {
   Overview: "/",
-  Backups: "/backups",
   "Companion access": "/access",
+  Backups: "/backups",
   "Omni configuration": "/omni-configuration",
   Accounts: "/accounts",
   Settings: "/settings",

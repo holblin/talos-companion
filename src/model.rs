@@ -158,6 +158,8 @@ pub struct Store {
     pub network: Option<crate::network_backup::Config>,
     #[serde(default)]
     pub integration: crate::omni::Integration,
+    #[serde(default)]
+    pub omni_bootstrap: Option<crate::omni::Bootstrap>,
 }
 pub struct Session {
     pub user_id: String,
@@ -174,7 +176,7 @@ pub struct Code {
 pub struct Memory {
     pub sessions: HashMap<String, Session>,
     pub codes: HashMap<String, Code>,
-    pub drive_states: HashMap<String, (String, u64)>,
+    pub drive_states: HashMap<String, (String, u64, String)>,
     pub attempts: Vec<u64>,
 }
 #[derive(Clone)]

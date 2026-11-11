@@ -81,6 +81,8 @@ beforeEach(() => {
         value = {};
       } else if (path === "/api/companion/access")
         value = { accesses: [], active_issuer: overview.issuer };
+      else if (path === "/api/omni/connection")
+        value = { providers: ["tailscale", "cloudflare"] };
       else if (path === "/api/settings") value = {};
       else {
         status = 404;
@@ -142,6 +144,8 @@ describe("Spectrum frontend workflows", () => {
     mount();
     await events.click(await screen.findByRole("link", { name: "Accounts" }));
     await screen.findByRole("grid", { name: "Workspace accounts" });
+    expect(screen.getByRole("columnheader", { name: "Email" })).toBeTruthy();
+    expect(screen.getByRole("gridcell", { name: user.email })).toBeTruthy();
     expect(
       screen.getByRole("columnheader", { name: "Created by" }),
     ).toBeTruthy();
@@ -194,6 +198,118 @@ describe("Spectrum frontend workflows", () => {
     await screen.findByRole("heading", { name: "Change your password" });
     expect(router.state.location.pathname).toBe("/change-password");
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps edit available for the current last administrator and saves profile changes", async () => {
+    initialized = true;
+    authenticated = true;
+    const fallback = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) => {
+        if (input === "/api/users/" + user.id && init?.method === "PUT") {
+          const body = JSON.parse(
+            typeof init.body === "string" ? init.body : "{}",
+          ) as {
+            name: string;
+            email: string;
+            admin: boolean;
+          };
+          requests.push({ path: input, body });
+          return Promise.resolve(
+            new Response(JSON.stringify({ ...user, ...body })),
+          );
+        }
+        return fallback(input, init);
+      }),
+    );
+    const events = userEvent.setup();
+    mount();
+    await events.click(await screen.findByRole("link", { name: "Accounts" }));
+    const remove = await screen.findByRole<HTMLButtonElement>("button", {
+      name: "Delete " + user.email,
+    });
+    expect(remove.disabled).toBe(true);
+    expect(screen.queryByText("Last administrator")).toBeNull();
+    await events.hover(
+      screen.getByLabelText("Delete " + user.email + " unavailable"),
+    );
+    expect(await screen.findByRole("tooltip")).toHaveProperty(
+      "textContent",
+      "The last administrator cannot be deleted. Add another administrator first.",
+    );
+    await events.unhover(
+      screen.getByLabelText("Delete " + user.email + " unavailable"),
+    );
+    await events.click(
+      screen.getByRole("button", { name: "Edit " + user.email }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Edit account" });
+    expect(
+      within(dialog).getByRole<HTMLInputElement>("checkbox", {
+        name: "Administrator access",
+      }).disabled,
+    ).toBe(true);
+    const name = within(dialog).getByLabelText(/Display name/);
+    await events.clear(name);
+    await events.type(name, "Updated Admin");
+    await events.click(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Edit account" })).toBeNull();
+    });
+    expect(
+      requests.some(
+        (request) =>
+          request.path === "/api/users/" + user.id &&
+          JSON.stringify(request.body) ===
+            JSON.stringify({
+              name: "Updated Admin",
+              email: user.email,
+              admin: true,
+            }),
+      ),
+    ).toBe(true);
+  });
+
+  it("allows the current administrator to delete their account when another administrator remains", async () => {
+    initialized = true;
+    authenticated = true;
+    const fallback = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) => {
+        if (input === "/api/users")
+          return Promise.resolve(
+            new Response(
+              JSON.stringify([
+                user,
+                { ...user, id: "other-admin", email: "other@example.test" },
+              ]),
+            ),
+          );
+        if (input === "/api/users/" + user.id && init?.method === "DELETE") {
+          requests.push({ path: input, body: undefined });
+          return Promise.resolve(new Response(JSON.stringify({ ok: true })));
+        }
+        return fallback(input, init);
+      }),
+    );
+    const events = userEvent.setup();
+    mount();
+    await events.click(await screen.findByRole("link", { name: "Accounts" }));
+    const remove = await screen.findByRole<HTMLButtonElement>("button", {
+      name: "Delete " + user.email,
+    });
+    expect(remove.disabled).toBe(false);
+    await events.click(remove);
+    const confirmation = await screen.findByRole("alertdialog");
+    expect(confirmation.textContent).toContain("You will be signed out");
+    await events.click(
+      within(confirmation).getByRole("button", { name: "Delete" }),
+    );
+    await screen.findByRole("heading", { name: "Sign in to your companion" });
   });
 
   it("preserves recovery data when accounts fail and retries only the failed section", async () => {
@@ -256,6 +372,38 @@ describe("Spectrum frontend workflows", () => {
     if (!resolveBackups) throw new Error("Recovery request was not started");
     resolveBackups(new Response(JSON.stringify(backups)));
     await screen.findByText("1 encrypted");
+  });
+
+  it("explains missing image connectors directly on access tiles", async () => {
+    initialized = true;
+    authenticated = true;
+    const fallback = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) => {
+        if (input === "/api/omni/connection") {
+          return Promise.resolve(
+            new Response(JSON.stringify({ providers: [] })),
+          );
+        }
+        return fallback(input, init);
+      }),
+    );
+    router = createAppRouter(
+      createMemoryHistory({ initialEntries: ["/access"] }),
+    );
+    mount();
+    expect(
+      await screen.findAllByText("holblin/talos-companion:latest"),
+    ).toHaveLength(2);
+    expect(screen.getAllByText("Not available in this image")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Add Tailscale" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add Cloudflare" })).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Add Local HTTPS" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
   });
 
   it("focuses route headings and links directly to Google Drive setup", async () => {
@@ -575,6 +723,11 @@ describe("Spectrum frontend workflows", () => {
     await events.click(
       within(screen.getByRole("complementary")).getByRole("link", {
         name: "Omni configuration",
+      }),
+    );
+    await events.click(
+      await screen.findByRole("button", {
+        name: "Connect an existing Omni instance",
       }),
     );
     await screen.findByRole("heading", {

@@ -343,6 +343,11 @@ it("explains Cloudflare-only verification before saving", async () => {
 async function selectOmni(name: string) {
   const events = userEvent.setup();
   mount(<OmniConfiguration />);
+  await userEvent.setup().click(
+    await screen.findByRole("button", {
+      name: "Connect an existing Omni instance",
+    }),
+  );
   await new User()
     .createTester("Select", {
       root: await screen.findByRole("button", {
@@ -404,20 +409,11 @@ it("saves local access after explicit trust and verification without changing th
 });
 it("explains an excluded connector and blocks authorization in smaller images", async () => {
   providers = ["tailscale"];
-  const events = userEvent.setup();
   mount();
-  await events.click(
-    await screen.findByRole("button", { name: "Add Cloudflare" }),
-  );
-  await screen.findByText(/Cloudflare is not included in this image/);
-  await events.click(
-    screen.getByRole("checkbox", { name: /Allow public access/ }),
-  );
-  expect(
-    screen
-      .getByRole("button", { name: "Continue with Cloudflare" })
-      .hasAttribute("disabled"),
-  ).toBe(true);
+  await screen.findByText("holblin/talos-companion:latest");
+  expect(screen.queryByRole("button", { name: "Add Cloudflare" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Add Tailscale" })).toBeTruthy();
+  expect(screen.queryByRole("dialog")).toBeNull();
   expect(posted.some((p) => p.path === "/api/omni/connection")).toBe(false);
 });
 
@@ -482,6 +478,11 @@ it("adds Cloudflare alongside existing methods without implicitly selecting it f
 it("blocks Omni configuration until an access method has been verified", async () => {
   accesses = [{ integration: cloud, verified_at: 0 }];
   mount(<OmniConfiguration />);
+  await userEvent.setup().click(
+    await screen.findByRole("button", {
+      name: "Connect an existing Omni instance",
+    }),
+  );
   await screen.findByRole("heading", {
     name: "Configure Companion access first",
   });

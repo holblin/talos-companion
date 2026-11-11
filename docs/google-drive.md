@@ -2,12 +2,13 @@
 
 Companion uploads encrypted `.tcb` recovery files using a native Rust HTTPS client. No external executable runs in the container.
 
-1. In your own Google Cloud project, enable the **Google Drive API**.
-2. Configure an OAuth consent screen and create an OAuth client of type **Web application**.
-3. Register `https://YOUR-COMPANION-ORIGIN/oauth/google/callback` as an authorized redirect URI. It must exactly match `PUBLIC_URL` plus that path. For local testing, Google permits localhost HTTP redirect URIs.
-4. In Companion → Backups, choose **Set up Google Drive**, then enter the client ID and client secret. Leave the folder ID empty to have Companion create a dedicated **Talos Companion backups** folder during authorization. You may instead reuse a folder previously created by this same OAuth application.
-5. Choose Save and authorize, then sign in to Google and grant the requested access. After the callback, Drive is shown as connected.
-6. In Backups, choose **Back up to Drive**. For scheduled copies, choose **Google Drive** in **Backups → Backup settings**.
+1. Configure and verify HTTPS in **Companion access**, then open Companion through that address and sign in. Google setup reuses this access method; the HTTP container address is not used for the callback. Use a hostname and certificate accepted by Google’s OAuth redirect rules.
+2. In your own Google Cloud project, enable the **Google Drive API**.
+3. Configure an OAuth consent screen and create an OAuth client of type **Web application**.
+4. In Companion → Backups, choose **Set up Google Drive**. Register the exact HTTPS redirect URI shown in the expanded Google Cloud instructions as an authorized redirect URI. It uses the verified Companion address where you opened setup, independently of Omni’s identity-provider URL.
+5. Enter the client ID and client secret. Leave the folder ID empty to have Companion create a dedicated **Talos Companion backups** folder during authorization. You may instead reuse a folder previously created by this same OAuth application.
+6. Choose Save and authorize, then sign in to Google and grant the requested access. After the callback, Drive is shown as connected.
+7. In Backups, choose **Back up to Drive**. For scheduled copies, choose **Google Drive** in **Backups → Backup settings**.
 
 The application requests `https://www.googleapis.com/auth/drive.file`, which limits it to files it creates or explicitly opens with the OAuth application. Supplying an arbitrary existing folder ID does not grant access to that folder. Letting Companion create the folder avoids that issue without requesting full Drive access.
 

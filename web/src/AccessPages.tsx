@@ -25,6 +25,8 @@ import {
 } from "./verifyCompanion";
 import SetupFlow, { type Integration, type Profile } from "./OmniSetup";
 import ContextHelp from "./ContextHelp";
+import OmniBootstrap from "./OmniBootstrap";
+import { ButtonGroup } from "@react-spectrum/s2/ButtonGroup";
 
 export type AccessMethod = {
   integration: Integration;
@@ -65,6 +67,10 @@ function useAccessCatalog() {
 export function CompanionAccess() {
   const catalog = useAccessCatalog();
   const client = useQueryClient();
+  const providers = useQuery({
+    queryKey: ["access-provider-support"],
+    queryFn: () => api<{ providers: Profile[] }>("/api/omni/connection"),
+  });
   const [editing, setEditing] = useState<Integration | null>(null);
   const { busy, work } = useTask({ toastErrors: true });
   return (
@@ -84,6 +90,10 @@ export function CompanionAccess() {
           const saved = catalog.data?.accesses.find(
             (a) => a.integration.profile === method.profile,
           );
+          const unavailable =
+            method.profile !== "lan" &&
+            !!providers.data &&
+            !providers.data.providers.includes(method.profile);
           return (
             <Panel key={method.profile} label={method.name}>
               <div
@@ -125,19 +135,37 @@ export function CompanionAccess() {
               </div>
               <StatusLight
                 variant={
-                  saved?.verified_at && !saved.local_dns_pending
-                    ? "positive"
-                    : "neutral"
+                  unavailable
+                    ? "notice"
+                    : saved?.verified_at && !saved.local_dns_pending
+                      ? "positive"
+                      : "neutral"
                 }
               >
-                {saved?.local_dns_pending
-                  ? "Cloudflare verified · local DNS updating"
-                  : saved?.verified_at
-                    ? "Verified access"
-                    : saved
-                      ? "Needs verification"
-                      : "Not configured"}
+                {unavailable
+                  ? "Not available in this image"
+                  : saved?.local_dns_pending
+                    ? "Cloudflare verified · local DNS updating"
+                    : saved?.verified_at
+                      ? "Verified access"
+                      : saved
+                        ? "Needs verification"
+                        : "Not configured"}
               </StatusLight>
+              {unavailable && (
+                <p className={documentClass("p")}>
+                  This image does not include {method.name}. Switch to{" "}
+                  <code className={documentClass("code")}>
+                    holblin/talos-companion:latest
+                  </code>{" "}
+                  which includes both Cloudflare and Tailscale.
+                </p>
+              )}
+              {method.profile !== "lan" && providers.error && (
+                <p className={documentClass("p")} role="alert">
+                  Could not check image support. {providers.error.message}
+                </p>
+              )}
               {saved && (
                 <>
                   {saved.local_dns_pending && (
@@ -152,62 +180,72 @@ export function CompanionAccess() {
                   </p>
                 </>
               )}
-              <div
-                className={style({
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  marginTop: 16,
-                })}
-              >
-                <Button
-                  aria-label={(saved ? "Manage " : "Add ") + method.name}
-                  variant={saved ? "secondary" : "accent"}
-                  isDisabled={busy || catalog.isPending || !!catalog.error}
-                  onPress={() => {
-                    setEditing(
-                      saved?.integration ?? {
-                        profile: method.profile,
-                        companion_url: "",
-                        omni_url: "",
-                        s3_endpoint: "",
-                      },
-                    );
-                  }}
+              {!unavailable && (
+                <div
+                  className={style({
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    marginTop: 16,
+                  })}
                 >
-                  {saved ? "Manage" : "Add access"}
-                </Button>
-                {saved && (
-                  <ActionButton
-                    aria-label={"Check " + method.name}
-                    isDisabled={busy}
+                  <Button
+                    aria-label={(saved ? "Manage " : "Add ") + method.name}
+                    variant={saved ? "secondary" : "accent"}
+                    isDisabled={
+                      busy ||
+                      catalog.isPending ||
+                      !!catalog.error ||
+                      (method.profile !== "lan" &&
+                        (providers.isPending ||
+                          !!providers.error ||
+                          unavailable))
+                    }
                     onPress={() => {
-                      void work(async () => {
-                        try {
-                          const result = await api<CompanionVerification>(
-                            "/api/companion/access",
-                            {
-                              profile: method.profile,
-                              companion_url: saved.integration.companion_url,
-                            },
-                          );
-                          ToastQueue.positive(
-                            result.local_dns_pending
-                              ? cloudflareDnsPendingMessage
-                              : method.name + " access verified.",
-                          );
-                        } finally {
-                          await client.invalidateQueries({
-                            queryKey: ["companion-access"],
-                          });
-                        }
-                      });
+                      setEditing(
+                        saved?.integration ?? {
+                          profile: method.profile,
+                          companion_url: "",
+                          omni_url: "",
+                          s3_endpoint: "",
+                        },
+                      );
                     }}
                   >
-                    <Refresh />
-                  </ActionButton>
-                )}
-              </div>
+                    {saved ? "Manage" : "Add access"}
+                  </Button>
+                  {saved && (
+                    <ActionButton
+                      aria-label={"Check " + method.name}
+                      isDisabled={busy || unavailable}
+                      onPress={() => {
+                        void work(async () => {
+                          try {
+                            const result = await api<CompanionVerification>(
+                              "/api/companion/access",
+                              {
+                                profile: method.profile,
+                                companion_url: saved.integration.companion_url,
+                              },
+                            );
+                            ToastQueue.positive(
+                              result.local_dns_pending
+                                ? cloudflareDnsPendingMessage
+                                : method.name + " access verified.",
+                            );
+                          } finally {
+                            await client.invalidateQueries({
+                              queryKey: ["companion-access"],
+                            });
+                          }
+                        });
+                      }}
+                    >
+                      <Refresh />
+                    </ActionButton>
+                  )}
+                </div>
+              )}
             </Panel>
           );
         })}
@@ -239,6 +277,49 @@ export function CompanionAccess() {
   );
 }
 export function OmniConfiguration({ children }: { children?: ReactNode } = {}) {
+  const [mode, setMode] = useState<"new" | "existing" | null>(null);
+  return (
+    <>
+      <Panel>
+        <h2 className={documentClass("h2")}>Choose your Omni setup</h2>
+        <p className={documentClass("p")}>
+          Generate a configuration before starting a new Omni, or review
+          integration changes for an existing installation.
+        </p>
+        <ButtonGroup>
+          <Button
+            variant={mode === "new" ? "primary" : "secondary"}
+            onPress={() => {
+              setMode("new");
+            }}
+          >
+            Set up a new Omni instance
+          </Button>
+          <Button
+            variant={mode === "existing" ? "primary" : "secondary"}
+            onPress={() => {
+              setMode("existing");
+            }}
+          >
+            Connect an existing Omni instance
+          </Button>
+        </ButtonGroup>
+      </Panel>
+      {mode === "new" && (
+        <>
+          <OmniBootstrap />
+          {children}
+        </>
+      )}
+      {mode === "existing" && (
+        <ExistingOmniConfiguration>{children}</ExistingOmniConfiguration>
+      )}
+    </>
+  );
+}
+function ExistingOmniConfiguration({
+  children,
+}: { children?: ReactNode } = {}) {
   const catalog = useAccessCatalog();
   const client = useQueryClient();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -337,13 +418,23 @@ export function OmniConfiguration({ children }: { children?: ReactNode } = {}) {
                       {selected.companion_url}
                     </code>
                   </dd>
-                  <dt className={documentClass("dt")}>S3 backup receiver</dt>
+                  <dt className={documentClass("dt")}>
+                    Companion backup receiver (S3)
+                  </dt>
                   <dd className={documentClass("dd")}>
                     <code className={documentClass("code")}>
                       {selected.s3_endpoint}
                     </code>
                   </dd>
                 </dl>
+                <p className={documentClass("p")}>
+                  Omni sends its snapshots to Companion’s S3 receiver at this
+                  address. Depending on your access method, the receiver can use
+                  a different hostname or port from the Companion interface.
+                  When a manual or scheduled backup runs, Companion combines
+                  those snapshots with its own data in an encrypted recovery
+                  file and sends it to the selected backup destination.
+                </p>
                 {changesIssuer && (
                   <Checkbox
                     isSelected={accepted}

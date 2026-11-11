@@ -2,6 +2,7 @@ import Card from "./Panel";
 import { Link } from "@react-spectrum/s2/Link";
 import { documentClass } from "./layout";
 import RemoveAction from "./RemoveAction";
+import EditAccountDialog from "./EditAccountDialog";
 import FilePicker from "./FilePicker";
 import BackupDestinations, { BackupFrequency } from "./BackupSetup";
 import { classes, layout } from "./layout";
@@ -11,6 +12,8 @@ import Archive from "@react-spectrum/s2/icons/Archive";
 import SettingsIcon from "@react-spectrum/s2/icons/Settings";
 import Add from "@react-spectrum/s2/icons/Add";
 import Cloud from "@react-spectrum/s2/icons/Cloud";
+import Edit from "@react-spectrum/s2/icons/Edit";
+import { Tooltip, TooltipTrigger } from "@react-spectrum/s2/Tooltip";
 import People from "@react-spectrum/s2/icons/People";
 import {
   SideNav,
@@ -24,10 +27,12 @@ import { ProgressCircle } from "@react-spectrum/s2/ProgressCircle";
 import { StatusLight } from "@react-spectrum/s2/StatusLight";
 import { Button } from "@react-spectrum/s2/Button";
 import { Checkbox } from "@react-spectrum/s2/Checkbox";
+import { ContextualHelp } from "@react-spectrum/s2/ContextualHelp";
 import { Picker, PickerItem } from "@react-spectrum/s2/Picker";
 import { ToastQueue } from "@react-spectrum/s2/Toast";
 import { Avatar } from "@react-spectrum/s2/Avatar";
 import { ActionButton } from "@react-spectrum/s2/ActionButton";
+import { ActionButtonGroup } from "@react-spectrum/s2/ActionButtonGroup";
 import { DialogTrigger, DialogContainer } from "@react-spectrum/s2/AlertDialog";
 import { Popover } from "@react-spectrum/s2/Popover";
 import { Dialog } from "@react-spectrum/s2/Dialog";
@@ -104,8 +109,8 @@ type Overview = {
 };
 const views: View[] = [
   "Overview",
-  "Backups",
   "Companion access",
+  "Backups",
   "Omni configuration",
   "Accounts",
   "Settings",
@@ -156,15 +161,17 @@ function AccountFields({ optionalName = false }: { optionalName?: boolean }) {
   return (
     <>
       {!optionalName && (
-        <Input label="Display name" name="name" autoComplete="name" />
+        <Input compact label="Display name" name="name" autoComplete="name" />
       )}
       <Input
+        compact
         label="Email address"
         name="email"
         type="email"
         autoComplete="username"
       />
       <Input
+        compact
         label="Password"
         name="password"
         type="password"
@@ -333,6 +340,7 @@ export default function App() {
   const [credentialFile, setCredentialFile] = useState<File | null>(null);
   const [recoveryExpires, setRecoveryExpires] = useState<number | null>(null);
   const [addingAccount, setAddingAccount] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<User | null>(null);
   const [recovering, setRecovering] = useState(false);
   const signInHeading = useRef<HTMLHeadingElement>(null);
   const pageHeading = useRef<HTMLHeadingElement>(null);
@@ -1325,6 +1333,9 @@ export default function App() {
                       <Column id="person" isRowHeader minWidth={220}>
                         Account
                       </Column>
+                      <Column id="email" minWidth={220}>
+                        Email
+                      </Column>
                       <Column id="role" minWidth={120}>
                         Role
                       </Column>
@@ -1352,53 +1363,117 @@ export default function App() {
                                 alignItems: "center",
                               })}
                             >
-                              <Avatar
-                                {...(u.avatar_url ? { src: u.avatar_url } : {})}
-                                alt=""
-                                size={36}
-                              />
-                              <div>
-                                <b>{u.name}</b>
-                                <small
-                                  className={documentClass(
-                                    "small",
-                                    layout.brandDetail,
-                                  )}
-                                >
-                                  {u.email}
-                                </small>
-                              </div>
+                              <Link
+                                href="https://gravatar.com/profile"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`Open Gravatar to change your avatar (opens in a new tab)`}
+                              >
+                                <Avatar
+                                  {...(u.avatar_url
+                                    ? { src: u.avatar_url }
+                                    : {})}
+                                  alt=""
+                                  size={36}
+                                />
+                              </Link>
+                              <b>
+                                {u.name}
+                                {u.id === user.id ? " (you)" : ""}
+                              </b>
                             </div>
                           </Cell>
+                          <Cell>{u.email}</Cell>
                           <Cell>{u.admin ? "Administrator" : "Member"}</Cell>
                           <Cell>{u.created_by ?? "Not recorded"}</Cell>
                           <Cell>{accountDate(u.created_at)}</Cell>
                           <Cell>{accountDate(u.last_login_at)}</Cell>
                           <Cell>
-                            {u.id !== user.id ? (
+                            <ActionButtonGroup
+                              aria-label={"Actions for " + u.email}
+                            >
+                              <TooltipTrigger>
+                                <ActionButton
+                                  aria-label={"Edit " + u.email}
+                                  isDisabled={busy}
+                                  onPress={() => {
+                                    setEditingAccount(u);
+                                  }}
+                                >
+                                  <Edit />
+                                </ActionButton>
+                                <Tooltip>Edit account</Tooltip>
+                              </TooltipTrigger>
                               <RemoveAction
-                                title="Remove account?"
-                                isDisabled={busy}
+                                title="Delete account?"
+                                actionLabel="Delete"
+                                isActionButton
+                                disabledReason={
+                                  u.admin &&
+                                  users.filter((account) => account.admin)
+                                    .length === 1
+                                    ? "The last administrator cannot be deleted. Add another administrator first."
+                                    : undefined
+                                }
+                                ariaLabel={"Delete " + u.email}
+                                isDisabled={
+                                  busy ||
+                                  (u.admin &&
+                                    users.filter((account) => account.admin)
+                                      .length === 1)
+                                }
                                 onRemove={() => {
                                   void work(async () => {
                                     await api(
-                                      `/api/users/${u.id}`,
+                                      "/api/users/" + u.id,
                                       undefined,
                                       "DELETE",
                                     );
-                                    await refresh();
+                                    if (u.id === user.id) {
+                                      setUser(null);
+                                    } else {
+                                      await refresh();
+                                    }
                                   });
                                 }}
-                              >{`Remove ${u.email}? This revokes their companion sessions and future Omni sign-ins.`}</RemoveAction>
-                            ) : (
-                              "You"
-                            )}
+                              >
+                                {u.id === user.id
+                                  ? "Delete your account? You will be signed out and lose access to Companion and future Omni sign-ins."
+                                  : "Delete " +
+                                    u.email +
+                                    "? This revokes their Companion sessions and future Omni sign-ins."}
+                              </RemoveAction>
+                            </ActionButtonGroup>
                           </Cell>
                         </Row>
                       )}
                     </TableBody>
                   </TableView>
                 </div>
+                <DialogContainer
+                  onDismiss={() => {
+                    setEditingAccount(null);
+                  }}
+                >
+                  {editingAccount && (
+                    <EditAccountDialog
+                      account={editingAccount}
+                      lastAdmin={
+                        editingAccount.admin &&
+                        users.filter((account) => account.admin).length === 1
+                      }
+                      onClose={() => {
+                        setEditingAccount(null);
+                      }}
+                      onSaved={async (updated) => {
+                        if (updated.id === user.id) {
+                          setUser(updated);
+                        }
+                        await refresh();
+                      }}
+                    />
+                  )}
+                </DialogContainer>
                 <DialogContainer
                   onDismiss={() => {
                     setAddingAccount(false);
@@ -1433,12 +1508,41 @@ export default function App() {
                           }}
                         >
                           <AccountFields />
-                          <Checkbox
-                            name="admin"
-                            styles={style({ width: "full", marginY: 12 })}
+                          <div
+                            className={style({
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              gridColumn: "1 / -1",
+                            })}
                           >
-                            Administrator access
-                          </Checkbox>
+                            <Checkbox name="admin">
+                              Administrator access
+                            </Checkbox>
+                            <ContextualHelp aria-label="Account roles">
+                              <Heading>Administrator or Member?</Heading>
+                              <Content>
+                                <p className={documentClass("p")}>
+                                  <strong>Administrator (checked):</strong>{" "}
+                                  Manages Companion accounts, access methods,
+                                  Omni configuration, backups, stored
+                                  credentials, and settings.
+                                </p>
+                                <p className={documentClass("p")}>
+                                  <strong>Member (unchecked):</strong> Can sign
+                                  in through Companion and change their own
+                                  password. Cannot view or manage Companion
+                                  administration, backups, or stored
+                                  credentials.
+                                </p>
+                                <p className={documentClass("p")}>
+                                  Permissions inside Omni are managed separately
+                                  in Omni. This checkbox only controls Companion
+                                  administration.
+                                </p>
+                              </Content>
+                            </ContextualHelp>
+                          </div>
                         </Form>
                       </Content>
                       <ButtonGroup>

@@ -14,6 +14,52 @@ pub struct Configure {
     pub client_secret: String,
     pub folder_id: String,
 }
+
+fn redirect_uri(origin: &str, accesses: &[crate::connections::AccessMethod]) -> Result<String> {
+    if !origin.starts_with("https://")
+        || !accesses.iter().any(|access| {
+            access.verified_at > 0
+                && !access.local_dns_pending
+                && access.integration.companion_url == origin
+        })
+    {
+        return Err(bad(
+            "Open Companion through verified HTTPS Companion access before connecting Google Drive",
+        ));
+    }
+    Ok(format!("{origin}/oauth/google/callback"))
+}
+
+#[cfg(test)]
+mod access_tests {
+    use super::*;
+
+    #[test]
+    fn google_callback_requires_verified_https_access() {
+        let mut access = crate::connections::AccessMethod {
+            integration: crate::omni::Integration {
+                companion_url: "https://companion.example.test".into(),
+                ..Default::default()
+            },
+            verified_at: 1,
+            local_dns_pending: false,
+        };
+        let origin = access.integration.companion_url.clone();
+        assert_eq!(
+            redirect_uri(&origin, &[access.clone()]).ok(),
+            Some(format!("{origin}/oauth/google/callback"))
+        );
+        assert!(redirect_uri("https://unverified.example.test", &[access.clone()]).is_err());
+        access.verified_at = 0;
+        assert!(redirect_uri(&origin, &[access.clone()]).is_err());
+        access.verified_at = 1;
+        access.local_dns_pending = true;
+        assert!(redirect_uri(&origin, &[access.clone()]).is_err());
+        access.local_dns_pending = false;
+        access.integration.companion_url = "http://192.0.2.10:8080".into();
+        assert!(redirect_uri(&access.integration.companion_url, &[access.clone()]).is_err());
+    }
+}
 pub async fn configure(
     State(app): State<App>,
     headers: HeaderMap,
@@ -43,18 +89,23 @@ pub async fn connect(State(app): State<App>, headers: HeaderMap) -> Result<Json<
     if s.drive.client_id.is_empty() {
         return Err(bad("Configure Google Drive first"));
     }
+    let origin = headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|value| value.to_str().ok());
+    let redirect_uri = redirect_uri(
+        origin.unwrap_or(&app.issuer()),
+        &crate::connections::settings().accesses,
+    )?;
     let state = secret();
     let mut m = app.memory.lock().await;
-    m.drive_states.retain(|_, (_, exp)| *exp > now());
-    m.drive_states.insert(state.clone(), (u.id, now() + 600));
+    m.drive_states.retain(|_, (_, exp, _)| *exp > now());
+    m.drive_states
+        .insert(state.clone(), (u.id, now() + 600, redirect_uri.clone()));
     drop(m);
     let mut url = url::Url::parse("https://accounts.google.com/o/oauth2/v2/auth").unwrap();
     url.query_pairs_mut().extend_pairs([
         ("client_id", s.drive.client_id.as_str()),
-        (
-            "redirect_uri",
-            &format!("{}/oauth/google/callback", app.issuer()),
-        ),
+        ("redirect_uri", &redirect_uri),
         ("response_type", "code"),
         ("scope", "https://www.googleapis.com/auth/drive.file"),
         ("access_type", "offline"),
@@ -75,7 +126,7 @@ pub async fn callback(
     Query(q): Query<Callback>,
 ) -> Result<Redirect> {
     let u = auth::admin(&app, &headers).await?;
-    let (id, expires) = app
+    let (id, expires, redirect_uri) = app
         .memory
         .lock()
         .await
@@ -101,10 +152,7 @@ pub async fn callback(
                     .as_deref()
                     .ok_or_else(|| bad("Missing authorization code"))?,
             ),
-            (
-                "redirect_uri",
-                &format!("{}/oauth/google/callback", app.issuer()),
-            ),
+            ("redirect_uri", &redirect_uri),
             ("grant_type", "authorization_code"),
         ])
         .send()

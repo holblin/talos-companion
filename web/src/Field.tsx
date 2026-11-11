@@ -3,6 +3,8 @@ import { TextField } from "@react-spectrum/s2/TextField";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 
 type FieldProps = {
+  compact?: boolean;
+  description?: string | undefined;
   label: string;
   name?: string;
   type?: "text" | "email" | "password" | "url" | "number";
@@ -20,6 +22,8 @@ type FieldProps = {
 };
 
 export default function Field({
+  compact = false,
+  description,
   label,
   type = "text",
   required = true,
@@ -34,7 +38,10 @@ export default function Field({
   const common = {
     label,
     isRequired: required,
-    styles: style({ width: "full", marginY: 12 }),
+    styles: compact
+      ? style({ width: "full", marginY: 0 })
+      : style({ width: "full", marginY: 12 }),
+    ...(description === undefined ? {} : { description }),
     ...(props.name === undefined ? {} : { name: props.name }),
   };
   if (type === "number") {

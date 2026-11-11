@@ -1,3 +1,4 @@
+import { downloadOmni } from "./omniDownloads";
 import Panel from "./Panel";
 import {
   Disclosure,
@@ -1130,6 +1131,23 @@ export default function SetupFlow({
                 recovery copy.
               </Checkbox>
               <ButtonGroup slot={null}>
+                {source.trim() && (
+                  <Button
+                    variant="secondary"
+                    isDisabled={!accepted || busy}
+                    onPress={() => {
+                      void work(() =>
+                        downloadOmni("/api/omni/existing/config", {
+                          integration: settings,
+                          primary_config: source,
+                          revision: plan.revision,
+                        }),
+                      );
+                    }}
+                  >
+                    Download reviewed omni.yaml
+                  </Button>
+                )}
                 <Button
                   variant="accent"
                   isDisabled={

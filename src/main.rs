@@ -55,7 +55,9 @@ async fn overview(State(app): State<App>, headers: HeaderMap) -> Result<Json<Val
 async fn secure_headers(req: axum::extract::Request, next: Next) -> Response {
     let mut response = next.run(req).await;
     let headers = response.headers_mut();
-    headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+    headers
+        .entry(header::CACHE_CONTROL)
+        .or_insert("no-store".parse().unwrap());
     headers.insert("x-content-type-options", "nosniff".parse().unwrap());
     headers.insert("x-frame-options", "DENY".parse().unwrap());
     headers.insert("referrer-policy", "no-referrer".parse().unwrap());
@@ -117,7 +119,7 @@ fn router(app: App) -> Router {
             post(recovery::request_password_recovery),
         )
         .route("/api/users", get(auth::users).post(auth::add))
-        .route("/api/users/{id}", delete(auth::remove))
+        .route("/api/users/{id}", delete(auth::remove).put(auth::update))
         .route("/api/overview", get(overview))
         .route("/api/settings", get(settings::get).post(settings::update))
         .route("/api/oidc", post(oidc::configure))
@@ -140,6 +142,13 @@ fn router(app: App) -> Router {
             "/api/omni/identity",
             get(endpoint_checks::companion_identity),
         )
+        .route(
+            "/api/omni/bootstrap",
+            get(omni::bootstrap_status).post(omni::generate),
+        )
+        .route("/api/omni/bootstrap/config", get(omni::download_bootstrap))
+        .route("/api/omni/bootstrap/check", post(omni::check_bootstrap))
+        .route("/api/omni/existing/config", post(omni::download_existing))
         .route("/api/omni/plan", post(omni::preview))
         .route("/api/omni/discover", post(omni::discover))
         .route("/api/omni/location", post(connections::location))
