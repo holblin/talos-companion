@@ -7,6 +7,8 @@ import FilePicker from "./FilePicker";
 import BackupDestinations, { BackupFrequency } from "./BackupSetup";
 import { classes, layout } from "./layout";
 import Input from "./Field";
+import Secret from "./Secret";
+import { sortTableRows } from "./tableSorting";
 import Home from "@react-spectrum/s2/icons/Home";
 import Archive from "@react-spectrum/s2/icons/Archive";
 import SettingsIcon from "@react-spectrum/s2/icons/Settings";
@@ -46,6 +48,7 @@ import {
   TableBody,
   Row,
   Cell,
+  type SortDescriptor,
 } from "@react-spectrum/s2/TableView";
 import {
   Disclosure,
@@ -133,28 +136,6 @@ function Logo() {
     <span className={classes("logo")} aria-hidden="true">
       T<span>+</span>
     </span>
-  );
-}
-function Secret({ label, value }: { label: string; value: string }) {
-  const [show, setShow] = useState(false);
-  return (
-    <div className={classes("secret")}>
-      <span>{label}</span>
-      <div className={layout.secretValue}>
-        <code className={documentClass("code")}>
-          {show ? value : "••••••••••••••••••••••••"}
-        </code>
-        <Button
-          onPress={() => {
-            setShow(!show);
-          }}
-          type="button"
-          variant="secondary"
-        >
-          {show ? "Hide" : "Reveal"}
-        </Button>
-      </div>
-    </div>
   );
 }
 function AccountFields({ optionalName = false }: { optionalName?: boolean }) {
@@ -324,6 +305,18 @@ export default function App() {
   const overview = overviewQuery.data ?? null;
   const backups = backupsQuery.data ?? [];
   const users = usersQuery.data ?? [];
+  const [accountSort, setAccountSort] = useState<SortDescriptor>({
+    column: "person",
+    direction: "ascending",
+  });
+  const sortedUsers = sortTableRows(users, accountSort, {
+    person: (account) => account.name,
+    email: (account) => account.email,
+    role: (account) => (account.admin ? "Administrator" : "Member"),
+    creator: (account) => account.created_by,
+    created: (account) => account.created_at || null,
+    login: (account) => account.last_login_at || null,
+  });
   const vault = vaultQuery.data ?? [];
   const { busy, notice, setNotice, work } = useTask({ toastErrors: true });
   const loadError = status.error ?? session.error;
@@ -1323,6 +1316,8 @@ export default function App() {
                   <TableView
                     aria-label="Workspace accounts"
                     overflowMode="wrap"
+                    sortDescriptor={accountSort}
+                    onSortChange={setAccountSort}
                     styles={style({
                       width: "full",
                       maxWidth: "full",
@@ -1330,29 +1325,71 @@ export default function App() {
                     })}
                   >
                     <TableHeader>
-                      <Column id="person" isRowHeader minWidth={220}>
+                      <Column
+                        id="person"
+                        isRowHeader
+                        defaultWidth={220}
+                        minWidth={160}
+                        allowsSorting
+                        allowsResizing
+                      >
                         Account
                       </Column>
-                      <Column id="email" minWidth={220}>
-                        Email
-                      </Column>
-                      <Column id="role" minWidth={120}>
-                        Role
-                      </Column>
-                      <Column id="creator" minWidth={160}>
-                        Created by
-                      </Column>
-                      <Column id="created" minWidth={160}>
-                        Created at
-                      </Column>
-                      <Column id="login" minWidth={160}>
-                        Last login at
-                      </Column>
-                      <Column id="actions" minWidth={100}>
+                      <Column
+                        id="actions"
+                        defaultWidth={100}
+                        minWidth={100}
+                        allowsResizing
+                      >
                         Actions
                       </Column>
+                      <Column
+                        id="email"
+                        defaultWidth={220}
+                        minWidth={160}
+                        allowsSorting
+                        allowsResizing
+                      >
+                        Email
+                      </Column>
+                      <Column
+                        id="role"
+                        defaultWidth={120}
+                        minWidth={100}
+                        allowsSorting
+                        allowsResizing
+                      >
+                        Role
+                      </Column>
+                      <Column
+                        id="creator"
+                        defaultWidth={160}
+                        minWidth={120}
+                        allowsSorting
+                        allowsResizing
+                      >
+                        Created by
+                      </Column>
+                      <Column
+                        id="created"
+                        defaultWidth={160}
+                        minWidth={120}
+                        allowsSorting
+                        allowsResizing
+                      >
+                        Created at
+                      </Column>
+                      <Column
+                        id="login"
+                        defaultWidth={160}
+                        minWidth={120}
+                        allowsSorting
+                        allowsResizing
+                      >
+                        Last login at
+                      </Column>
                     </TableHeader>
-                    <TableBody items={users}>
+                    <TableBody items={sortedUsers}>
                       {(u) => (
                         <Row id={u.id} textValue={`${u.name} ${u.email}`}>
                           <Cell>
@@ -1383,11 +1420,6 @@ export default function App() {
                               </b>
                             </div>
                           </Cell>
-                          <Cell>{u.email}</Cell>
-                          <Cell>{u.admin ? "Administrator" : "Member"}</Cell>
-                          <Cell>{u.created_by ?? "Not recorded"}</Cell>
-                          <Cell>{accountDate(u.created_at)}</Cell>
-                          <Cell>{accountDate(u.last_login_at)}</Cell>
                           <Cell>
                             <ActionButtonGroup
                               aria-label={"Actions for " + u.email}
@@ -1445,6 +1477,11 @@ export default function App() {
                               </RemoveAction>
                             </ActionButtonGroup>
                           </Cell>
+                          <Cell>{u.email}</Cell>
+                          <Cell>{u.admin ? "Administrator" : "Member"}</Cell>
+                          <Cell>{u.created_by ?? "Not recorded"}</Cell>
+                          <Cell>{accountDate(u.created_at)}</Cell>
+                          <Cell>{accountDate(u.last_login_at)}</Cell>
                         </Row>
                       )}
                     </TableBody>
