@@ -17,8 +17,7 @@ existing Omni container. Omni has separate licensing, EULA, TLS and networking p
 | --- | --- |
 | `/data` | `/mnt/user/appdata/talos-companion` (read/write) |
 | `/data/backups` | Optional host-mounted backup directory (read/write), used by Local storage |
-| `8080/tcp` | Web/API/OIDC, typically behind your HTTPS proxy |
-| `9000/tcp` | S3 receiver, reachable from Omni |
+| `8080/tcp` | Web/API/OIDC and authenticated S3 receiver, typically behind your HTTPS proxy |
 
 Use the included `compose.yaml`, or create a Docker template with equivalent ports, paths, and environment variables. An example XML template is in `deploy/unraid/talos-companion.xml`; it assumes you have built and tagged `talos-companion:local` on that host.
 
@@ -31,6 +30,10 @@ chmod 700 /mnt/user/appdata/talos-companion
 ```
 
 Open Companion at your intended browser address and confirm the public URL in the setup wizard. Manage additional HTTPS URLs and migrations in Companion access. Leave `SETUP_TOKEN` and `BACKUP_PASSPHRASE` empty to generate persistent private secrets, or provide explicit overrides of 24+ and 16+ characters respectively. Find the generated setup token in first-start container logs or the private appdata `setup-token` file. At Review, save the shown backup passphrase outside Unraid and re-enter it after checking the saved box. The `backup-passphrase` file is also private persistent appdata. Real `.env` files, generated secrets, keys, and recovery archives must not be committed to Git.
+
+## Single-port upgrades
+
+Web access and S3 backups share container port `8080`. Set Omni's S3 endpoint to the same origin as Companion (scheme, hostname, and port), keeping bucket `omni` and the existing S3 credentials. Remove the old `9000` port mapping and `S3_PORT`/`S3_LISTEN_ADDR` overrides after upgrading the image. Update any custom S3 reverse proxy to forward to `8080`; do not append `/omni` to the endpoint because the S3 client adds the bucket path.
 
 ## Cloudflare hostname changes
 

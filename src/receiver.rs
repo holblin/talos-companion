@@ -1,79 +1,75 @@
 use crate::model::App;
-use s3s::{auth::SimpleAuth, service::S3ServiceBuilder};
+use axum::{
+    Extension, Json, Router,
+    extract::{DefaultBodyLimit, Request, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::{any, get},
+};
+use s3s::{
+    auth::SimpleAuth,
+    service::{S3Service, S3ServiceBuilder},
+};
+use std::sync::Arc;
+use tokio::sync::OnceCell;
 
-pub async fn run(app: App) -> anyhow::Result<()> {
-    // No receiver credentials or listener exist until setup/restore commits successfully.
-    let s = loop {
-        if let Some(s) = app.store.read().await.clone() {
-            break s;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+pub fn routes() -> Router<App> {
+    Router::new()
+        .route("/omni", any(receive))
+        .route("/omni/{*key}", any(receive))
+        .route("/.well-known/talos-companion", get(identity))
+        .layer(DefaultBodyLimit::disable())
+        .layer(Extension(Arc::new(OnceCell::<S3Service>::new())))
+}
+
+async fn identity(State(app): State<App>, request: Request) -> Response {
+    let store = app.store.read().await;
+    let Some(store) = store.as_ref() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
-    let root = app.data.join("receiver");
-    std::fs::create_dir_all(root.join("omni"))?;
-    let fs = s3s_fs::FileSystem::new(root)
-        .map_err(|e| anyhow::anyhow!("S3 filesystem initialization failed: {e:?}"))?;
-    let mut builder = S3ServiceBuilder::new(fs);
-    let identity_key = s.s3_secret_key.clone();
-    builder.set_auth(SimpleAuth::from_single(s.s3_access_key, s.s3_secret_key));
-    let service = builder.build();
-    let address = std::env::var("S3_LISTEN_ADDR").unwrap_or("0.0.0.0:9000".into());
-    let listener = tokio::net::TcpListener::bind(&address).await?;
-    tracing::info!(%address,"S3 receiver listening");
-    loop {
-        let (stream, _) = listener.accept().await?;
-        let service = service.clone();
-        let io = app.io.clone();
-        let identity_key = identity_key.clone();
-        tokio::spawn(async move {
-            let service =
-                hyper::service::service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
-                    let service = service.clone();
-                    let io = io.clone();
-                    let identity_key = identity_key.clone();
-                    async move {
-                        if req.method() == hyper::Method::GET
-                            && req.uri().path() == "/.well-known/talos-companion"
-                        {
-                            let challenge = url::form_urlencoded::parse(
-                                req.uri().query().unwrap_or("").as_bytes(),
-                            )
-                            .find(|(k, _)| k == "challenge")
-                            .map(|(_, v)| v.into_owned())
-                            .unwrap_or_default();
-                            let value =
-                                crate::endpoint_checks::identity(&identity_key, "s3", &challenge);
-                            let mut response = hyper::Response::new(s3s::Body::from(
-                                value
-                                    .as_ref()
-                                    .map_or_else(|| "{}".into(), serde_json::Value::to_string),
-                            ));
-                            *response.status_mut() = if value.is_some() {
-                                hyper::StatusCode::OK
-                            } else {
-                                hyper::StatusCode::BAD_REQUEST
-                            };
-                            response.headers_mut().insert(
-                                hyper::header::CONTENT_TYPE,
-                                hyper::header::HeaderValue::from_static("application/json"),
-                            );
-                            response.headers_mut().insert(
-                                hyper::header::CACHE_CONTROL,
-                                hyper::header::HeaderValue::from_static("no-store"),
-                            );
-                            return Ok(response);
-                        }
-                        let _guard = io.read().await;
-                        hyper::service::Service::call(&service, req).await
-                    }
-                });
-            if let Err(e) =
-                hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
-                    .serve_connection(hyper_util::rt::TokioIo::new(stream), service)
-                    .await
-            {
-                tracing::debug!(error=%e,"S3 connection closed");
-            }
-        });
+    let challenge = url::form_urlencoded::parse(request.uri().query().unwrap_or("").as_bytes())
+        .find(|(key, _)| key == "challenge")
+        .map(|(_, value)| value.into_owned())
+        .unwrap_or_default();
+    match crate::endpoint_checks::identity(&store.s3_secret_key, "s3", &challenge) {
+        Some(value) => Json(value).into_response(),
+        None => StatusCode::BAD_REQUEST.into_response(),
     }
+}
+
+async fn receive(
+    State(app): State<App>,
+    Extension(receiver): Extension<Arc<OnceCell<S3Service>>>,
+    request: Request,
+) -> Result<Response, StatusCode> {
+    let (access_key, secret_key) = {
+        let store = app.store.read().await;
+        let store = store.as_ref().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+        (store.s3_access_key.clone(), store.s3_secret_key.clone())
+    };
+    let _guard = app.io.read().await;
+    let service = receiver
+        .get_or_try_init(|| async {
+            let root = app.data.join("receiver");
+            std::fs::create_dir_all(root.join("omni"))?;
+            let filesystem = s3s_fs::FileSystem::new(root).map_err(|error| {
+                anyhow::anyhow!("S3 filesystem initialization failed: {error:?}")
+            })?;
+            let mut builder = S3ServiceBuilder::new(filesystem);
+            builder.set_auth(SimpleAuth::from_single(access_key, secret_key));
+            Ok::<_, anyhow::Error>(builder.build())
+        })
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "S3 receiver initialization failed");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    service
+        .call(request.map(s3s::Body::http_body_unsync))
+        .await
+        .map(|response| response.map(axum::body::Body::new))
+        .map_err(|error| {
+            tracing::error!(%error, "S3 request failed");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }

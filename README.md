@@ -188,8 +188,7 @@ Public URLs are configured in the setup wizard and Companion access UI. Setup re
 | `BACKUP_PASSPHRASE` | generated on fresh installation | Optional override encrypting new backups. Minimum 16 characters; otherwise persisted privately in `/data/backup-passphrase`. Save a separate recovery copy. |
 | `DATA_DIR` | `data` (`/data` in Docker) | State, S3 receiver files, and recovery files. |
 | `WEB_DIR` | `web/dist` (`/web` in Docker) | Compiled frontend. |
-| `LISTEN_ADDR` | `0.0.0.0:8080` | Web/API listener. |
-| `S3_LISTEN_ADDR` | `0.0.0.0:9000` | Authenticated S3 listener, starts after setup. |
+| `LISTEN_ADDR` | `0.0.0.0:8080` | Shared Web/API/OIDC and authenticated S3 listener. S3 becomes available after setup. |
 | `MOUNTED_BACKUP_DIR` | unset | Legacy additional local directory; new host mounts should use /data/backups with Local storage. |
 
 ## Recovery and limits

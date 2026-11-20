@@ -138,11 +138,11 @@ overlay directory, never Omni's database or encryption keys.
    backup scheduling, retention, and connection preparation. All backup settings can
    be updated later in Settings and persist in ``/data/config.json``.
 6. Open Identity to configure Omni's callback and copy the OIDC and S3 credentials.
-   Expose the S3 receiver (container port 9000) to Omni, not to the public internet.
+   Use the Companion origin as Omni's S3 endpoint; both share container port 8080.
 7. In Backups, upload Omni recovery keys/configuration and create your first recovery file.
 
 The setup token, account password, and backup passphrase are different secrets.
-The web listener is port 8080; the S3 receiver starts after initialization on port 9000.
+Web/API/OIDC and authenticated S3 share port 8080; S3 is available after initialization.
 The wizard can also encrypt a recovery copy of the passphrase to age or SSH public keys,
 including supported keys imported from GitHub. Keep the matching private key yourself.
 Decrypt the note locally with age, then use its recovered passphrase with the .tcb backup.

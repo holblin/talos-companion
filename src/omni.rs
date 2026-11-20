@@ -211,7 +211,7 @@ pub(crate) fn defaults(app: &App, store: &Store) -> Integration {
             .ok()
             .filter(|s| !s.is_empty())
             .or_else(|| agent.and_then(|v| v["s3_origin"].as_str().map(str::to_owned)))
-            .unwrap_or_default(),
+            .unwrap_or_else(|| app.issuer()),
     }
 }
 pub async fn status(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {

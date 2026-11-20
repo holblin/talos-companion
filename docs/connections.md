@@ -79,8 +79,8 @@ Omni’s service-address overrides.
 
 HTTP bootstrap and HTTPS share Companion’s existing published web port. Provider
 relays can continue using the internal HTTP listener. Local S3 uses the same HTTPS
-origin, with authenticated streaming access to the omni bucket. The original S3
-port remains available for existing deployments.
+origin, with authenticated streaming access to the omni bucket. There is no
+separate S3 container port; update older port mappings when upgrading.
 
 Use a stable LAN hostname or IP that Omni and browser clients can reach. If you
 opened Companion through a cloud route, enter its local address in Advanced settings
@@ -96,7 +96,9 @@ without appdata, recreate access methods and reinstall any regenerated local CA.
 ## Provider connections
 
 Cloudflare uses official cloudflared browser authorization, creates a tunnel and
-DNS routes for talos-companion.DOMAIN, omni.DOMAIN and s3.DOMAIN, and runs the tunnel.
+DNS routes for talos-companion.DOMAIN and omni.DOMAIN, and runs the tunnel.
+Companion and S3 share talos-companion.DOMAIN. Previously saved S3 hostname aliases
+remain usable through the existing connector relay.
 Choose **Continue with Cloudflare**, open its sign-in page, select a domain already
 managed by Cloudflare and approve it. Return to Companion; it detects the approved
 domain, creates the addresses and automatically checks Companion HTTPS before you
@@ -108,7 +110,7 @@ Existing DNS records are not forcibly overwritten. DNS/certificate propagation
 may require a recheck. Cloudflare request/upload limits apply to public traffic.
 
 Tailscale authorizes a dedicated userspace device and discovers its .ts.net hostname.
-Private HTTPS routes use ports 443, 8443 and 10000 automatically. Browser devices and
+Private HTTPS routes use port 443 for Companion and S3, and 8443 for Omni. Browser devices and
 Omni’s host need tailnet access. Funnel and privileged networking are not enabled.
 
 ## What live checks prove

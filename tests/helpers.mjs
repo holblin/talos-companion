@@ -29,7 +29,6 @@ export async function server(port, data, extraEnv = {}) {
       DATA_DIR: data,
       PUBLIC_URL: `http://127.0.0.1:${port}`,
       LISTEN_ADDR: `127.0.0.1:${port}`,
-      S3_LISTEN_ADDR: `127.0.0.1:${port + 1}`,
       SETUP_TOKEN: setupToken,
       BACKUP_PASSPHRASE: passphrase,
       MOUNTED_BACKUP_DIR: join(data, "mounted"),

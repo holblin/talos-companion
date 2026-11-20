@@ -62,9 +62,9 @@ FROM connectors-${CONNECTORS} AS connectors
 FROM scratch
 COPY --from=connectors / /
 COPY --from=build /out/ /
-ENV DATA_DIR=/data WEB_DIR=/web TMPDIR=/data LISTEN_ADDR=0.0.0.0:8080 S3_LISTEN_ADDR=0.0.0.0:9000 NO_AUTOUPDATE=true
+ENV DATA_DIR=/data WEB_DIR=/web TMPDIR=/data LISTEN_ADDR=0.0.0.0:8080 NO_AUTOUPDATE=true
 USER 99:100
-EXPOSE 8080 9000
+EXPOSE 8080
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s CMD ["/talos-companion", "--healthcheck"]
 ENTRYPOINT ["/talos-companion"]

@@ -23,6 +23,8 @@ test(
         b = 18390;
       const source = await server(a, join(dir, "source"));
       children.push(source.child);
+      assert.equal((await request(a, "/omni?list-type=2")).status, 503);
+      assert.equal((await request(a, "/.well-known/talos-companion?challenge=before-setup")).status, 503);
       const account = {
         name: "Homelab Admin",
         email: "admin@example.com",
@@ -480,19 +482,19 @@ test(
       );
       for (let i = 0; i < 30; i++) {
         try {
-          if ((await s3(a + 1, settings, "GET", "/omni?list-type=2")).ok) break;
+          if ((await s3(a, settings, "GET", "/omni?list-type=2")).ok) break;
         } catch {}
         await delay(100);
       }
       assert.equal(
-        (await fetch(`http://127.0.0.1:${a + 1}/omni?list-type=2`)).status,
+        (await fetch(`http://127.0.0.1:${a}/omni?list-type=2`)).status,
         403,
         "anonymous S3 access must be denied",
       );
       assert.equal(
         (
           await s3(
-            a + 1,
+            a,
             { ...settings, s3_secret_key: "invalid-secret" },
             "GET",
             "/omni?list-type=2",
@@ -501,9 +503,9 @@ test(
         403,
         "incorrect S3 signature must fail",
       );
-      const snapshot = "test Omni encrypted etcd snapshot";
+      const snapshot = "test Omni encrypted etcd snapshot".repeat(100000);
       const put = await s3(
-        a + 1,
+        a,
         settings,
         "PUT",
         "/omni/cluster/snapshot",
@@ -512,12 +514,12 @@ test(
       assert.equal(put.status, 200, await put.text());
       assert.equal(
         await (
-          await s3(a + 1, settings, "GET", "/omni/cluster/snapshot")
+          await s3(a, settings, "GET", "/omni/cluster/snapshot")
         ).text(),
         snapshot,
       );
       const initiate = await s3(
-        a + 1,
+        a,
         settings,
         "POST",
         "/omni/cluster/multipart?uploads=",
@@ -527,7 +529,7 @@ test(
         /<UploadId>([^<]+)<\/UploadId>/,
       )[1];
       const upload = await s3(
-        a + 1,
+        a,
         settings,
         "PUT",
         `/omni/cluster/multipart?partNumber=1&uploadId=${encodeURIComponent(uploadId)}`,
@@ -536,7 +538,7 @@ test(
       assert.equal(upload.status, 200);
       const etag = upload.headers.get("etag");
       const complete = await s3(
-        a + 1,
+        a,
         settings,
         "POST",
         `/omni/cluster/multipart?uploadId=${encodeURIComponent(uploadId)}`,
@@ -545,7 +547,7 @@ test(
       assert.equal(complete.status, 200, await complete.text());
       assert.equal(
         await (
-          await s3(a + 1, settings, "GET", "/omni/cluster/multipart")
+          await s3(a, settings, "GET", "/omni/cluster/multipart")
         ).text(),
         snapshot,
       );
@@ -566,7 +568,7 @@ test(
         assert.equal(
           (
             await s3(
-              a + 1,
+              a,
               settings,
               "PUT",
               snapshotKey(seconds),
@@ -583,12 +585,12 @@ test(
       assert.equal(backup.status, 200);
       const { name } = await backup.json();
       assert.equal(
-        (await s3(a + 1, settings, "GET", snapshotKey(100))).status,
+        (await s3(a, settings, "GET", snapshotKey(100))).status,
         404,
         "source retention must remove the oldest recognized Omni snapshot",
       );
       assert.equal(
-        await (await s3(a + 1, settings, "GET", snapshotKey(300))).text(),
+        await (await s3(a, settings, "GET", snapshotKey(300))).text(),
         "snapshot-300",
       );
       const exported = await request(a, `/api/backups/${name}`, { cookie });
@@ -771,28 +773,28 @@ test(
       );
       for (let i = 0; i < 30; i++) {
         try {
-          if ((await s3(b + 1, settings, "GET", "/omni?list-type=2")).ok) break;
+          if ((await s3(b, settings, "GET", "/omni?list-type=2")).ok) break;
         } catch {}
         await delay(100);
       }
       assert.equal(
         await (
-          await s3(b + 1, settings, "GET", "/omni/cluster/snapshot")
+          await s3(b, settings, "GET", "/omni/cluster/snapshot")
         ).text(),
         snapshot,
       );
       assert.equal(
-        (await s3(b + 1, settings, "GET", snapshotKey(100))).status,
+        (await s3(b, settings, "GET", snapshotKey(100))).status,
         404,
         "expired snapshots must not be included in the recovery archive",
       );
       assert.equal(
-        await (await s3(b + 1, settings, "GET", snapshotKey(300))).text(),
+        await (await s3(b, settings, "GET", snapshotKey(300))).text(),
         "snapshot-300",
       );
       assert.equal(
         await (
-          await s3(b + 1, settings, "GET", "/omni/cluster/multipart")
+          await s3(b, settings, "GET", "/omni/cluster/multipart")
         ).text(),
         snapshot,
       );

@@ -11,9 +11,15 @@ const root=resolve(import.meta.dirname,'..');
 const read=path=>readFileSync(resolve(root,path),'utf8');
 const sorted=values=>[...values].sort();
 
+test('the image and receiver use only the shared listener',()=>{
+  assert.match(read('Dockerfile'),/^EXPOSE 8080$/m);
+  assert.doesNotMatch(read('Dockerfile'),/S3_LISTEN_ADDR/);
+  assert.doesNotMatch(read('src/receiver.rs'),/TcpListener|S3_LISTEN_ADDR/);
+});
+
 for(const [file,variables,environment] of [
-  ['compose.yaml',['PUID','PGID','WEB_PORT','S3_PORT','SETUP_TOKEN','BACKUP_PASSPHRASE','DATA_PATH'],['SETUP_TOKEN','BACKUP_PASSPHRASE','RUST_LOG']],
-  ['deploy/compose.hub.yaml',['TALOS_COMPANION_IMAGE','PUID','PGID','WEB_PORT','S3_PORT','SETUP_TOKEN','BACKUP_PASSPHRASE','DATA_PATH'],['SETUP_TOKEN','BACKUP_PASSPHRASE']],
+  ['compose.yaml',['PUID','PGID','WEB_PORT','SETUP_TOKEN','BACKUP_PASSPHRASE','DATA_PATH'],['SETUP_TOKEN','BACKUP_PASSPHRASE','RUST_LOG']],
+  ['deploy/compose.hub.yaml',['TALOS_COMPANION_IMAGE','PUID','PGID','WEB_PORT','SETUP_TOKEN','BACKUP_PASSPHRASE','DATA_PATH'],['SETUP_TOKEN','BACKUP_PASSPHRASE']],
 ]) test(`${file} keeps the existing Docker setup contract`,()=>{
   const source=read(file);
   assert.deepEqual(sorted(new Set([...source.matchAll(/\$\{([A-Z0-9_]+)/g)].map(m=>m[1]))),sorted(variables),reason);
@@ -23,7 +29,7 @@ for(const [file,variables,environment] of [
   const keys=[...block.matchAll(/^      ([A-Z_]+):/gm)].map(m=>m[1]);
   assert.equal(lines.length,keys.length,reason);
   assert.deepEqual(sorted(keys),sorted(environment),reason);
-  assert.deepEqual(sorted([...source.matchAll(/^      - "([^"]+)"/gm)].map(m=>m[1])),sorted(['${WEB_PORT:-8080}:8080','${S3_PORT:-9000}:9000','${DATA_PATH:-./data}:/data']),reason);
+  assert.deepEqual(sorted([...source.matchAll(/^      - "([^"]+)"/gm)].map(m=>m[1])),sorted(['${WEB_PORT:-8080}:8080','${DATA_PATH:-./data}:/data']),reason);
   assert.deepEqual([...source.matchAll(/^        target: (.+)$/gm)].map(m=>m[1].trim()),[],reason);
 });
 
@@ -34,7 +40,7 @@ for(const file of ['deploy/unraid/talos-companion.xml','dist/community-apps/temp
       const attr=name=>new RegExp(`${name}="([^"]*)"`).exec(attrs)?.[1];
       return `${attr('Type')}:${attr('Target')}`;
     });
-    assert.deepEqual(sorted(parameters),sorted(['Port:8080','Port:9000','Path:/data','Path:/omni-managed','Variable:SETUP_TOKEN','Variable:BACKUP_PASSPHRASE']),reason);
+    assert.deepEqual(sorted(parameters),sorted(['Port:8080','Path:/data','Path:/omni-managed','Variable:SETUP_TOKEN','Variable:BACKUP_PASSPHRASE']),reason);
     assert.equal(/<ExtraParams>([^<]*)<\/ExtraParams>/.exec(source)?.[1],'--user 99:100 --read-only --cap-drop ALL --security-opt no-new-privileges:true',reason);
     assert.match(source,/<Privileged>false<\/Privileged>/,reason);
   });

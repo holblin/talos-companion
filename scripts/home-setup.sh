@@ -103,7 +103,7 @@ fi
 chmod 600 "$CERTS/tls.key"
 COMPANION_URL="https://$COMPANION_HOST:18443"
 OMNI_URL="https://$OMNI_HOST:19443"
-S3_URL="https://$COMPANION_HOST:19444"
+S3_URL="$COMPANION_URL"
 if [[ $PHASE == renew ]]; then
   docker restart talos-home-proxy omni-companion >/dev/null
   printf 'Certificates refreshed. Managed proxy and Omni restarted.\n'
@@ -140,7 +140,7 @@ jq -n --arg issuer "$COMPANION_URL" --arg id "$(jq -r .client_id "$COMPANION_DAT
 jq -n --arg endpoint "$S3_URL" --arg access "$(jq -r .s3_access_key "$COMPANION_DATA/state.json")" --arg secret "$(jq -r .s3_secret_key "$COMPANION_DATA/state.json")" \
   '{metadata:{namespace:"default",type:"EtcdBackupS3Configs.omni.sidero.dev",id:"etcd-backup-s3-conf"},spec:{bucket:"omni",region:"us-east-1",endpoint:$endpoint,accesskeyid:$access,secretaccesskey:$secret,sessiontoken:""}}' > "$BASE/config/s3.json"
 printf '%s\n' "$PROFILE" > "$BASE/pending-profile"
-printf '{\n admin off\n auto_https disable_redirects\n}\nhttps://%s:18443 {\n tls /certs/tls.crt /certs/tls.key\n reverse_proxy 127.0.0.1:18480\n}\nhttps://%s:19444 {\n tls /certs/tls.crt /certs/tls.key\n reverse_proxy 127.0.0.1:19000 {\n  flush_interval -1\n }\n}\n' "$COMPANION_HOST" "$COMPANION_HOST" > "$BASE/proxy-config/Caddyfile.next"
+printf '{\n admin off\n auto_https disable_redirects\n}\nhttps://%s:18443 {\n tls /certs/tls.crt /certs/tls.key\n reverse_proxy 127.0.0.1:18480 {\n  flush_interval -1\n }\n}\n' "$COMPANION_HOST" > "$BASE/proxy-config/Caddyfile.next"
 if [[ $PHASE == prepare ]]; then
   printf 'Prepared %s profile. No application container has been changed.\nCompanion: %s\nOmni: %s\nS3: %s\n' "$PROFILE" "$COMPANION_URL" "$OMNI_URL" "$S3_URL"
   if [[ $PROFILE == lan ]]; then printf 'Install this public root on your clients first: %s/root-ca.crt\n' "$CERTS"; fi
@@ -158,7 +158,7 @@ if ! jq -e '.eulaAccept.name and .eulaAccept.email' "$BASE/config/omni.next.json
   jq --arg name "$EULA_NAME" --arg email "$EULA_EMAIL" '.eulaAccept={name:$name,email:$email}' "$BASE/config/omni.next.json" > "$BASE/config/omni.accepted.json"
   mv "$BASE/config/omni.accepted.json" "$BASE/config/omni.next.json"
 fi
-for port in 18443 19443 19444 19090 19100 51180; do
+for port in 18443 19443 19090 19100 51180; do
   listeners=$(ss -H -lntup | awk -v port=":$port" '$5 ~ (port "$")')
   if [[ -n $listeners ]]; then
     owned=false
@@ -197,7 +197,7 @@ for name in talos-companion omni-companion talos-home-proxy; do
   if docker container inspect "$name" >/dev/null 2>&1; then docker rm -f "$name" >/dev/null; fi
 done
 docker run -d --name talos-companion --restart unless-stopped --user 99:100 --read-only --cap-drop ALL --security-opt no-new-privileges:true \
-  -p 18480:8080 -p 19000:9000 -v "$COMPANION_DATA:/data" -v "$BASE/managed:/omni-managed" \
+  -p 18480:8080 -v "$COMPANION_DATA:/data" -v "$BASE/managed:/omni-managed" \
   -l net.unraid.docker.managed=dockerman -l "net.unraid.docker.webui=$COMPANION_URL" "$IMAGE" >/dev/null
 # The official Caddy binary carries cap_net_bind_service; keep that capability in
 # the bounding set or Linux refuses exec even though our listeners use high ports.

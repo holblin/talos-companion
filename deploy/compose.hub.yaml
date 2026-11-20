@@ -6,7 +6,6 @@ services:
     user: "${PUID:-99}:${PGID:-100}"
     ports:
       - "${WEB_PORT:-8080}:8080"
-      - "${S3_PORT:-9000}:9000"
     environment:
       SETUP_TOKEN: "${SETUP_TOKEN:-}"
       BACKUP_PASSPHRASE: "${BACKUP_PASSPHRASE:-}"

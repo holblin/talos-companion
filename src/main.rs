@@ -26,7 +26,7 @@ use axum::{
     http::{HeaderMap, header},
     middleware::{self, Next},
     response::Response,
-    routing::{any, delete, get, post},
+    routing::{delete, get, post},
 };
 use model::*;
 use serde_json::{Value, json};
@@ -90,16 +90,7 @@ fn router(app: App) -> Router {
     Router::new()
         .merge(frontend_routes(&static_dir))
         .route("/healthz", get(|| async { Json(json!({"ok":true})) }))
-        .merge(
-            Router::new()
-                .route("/omni", any(companion_setup::backup_proxy))
-                .route("/omni/{*key}", any(companion_setup::backup_proxy))
-                .route(
-                    "/.well-known/talos-companion",
-                    get(companion_setup::backup_proxy),
-                )
-                .layer(DefaultBodyLimit::disable()),
-        )
+        .merge(receiver::routes())
         .route("/api/status", get(auth::status))
         .route("/api/setup", post(auth::setup))
         .route("/api/setup/check", post(auth::setup_check))
@@ -218,14 +209,11 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
     let app = App::load().await?;
-    let receiver_app = app.clone();
-    // A failed receiver stops the application so that Docker can restart it instead of reporting a healthy but incomplete service.
-    let receiver = receiver::run(receiver_app);
     let scheduled = settings::run(&app);
     let address = std::env::var("LISTEN_ADDR").unwrap_or("0.0.0.0:8080".into());
     let listener = tokio::net::TcpListener::bind(&address).await?;
     tracing::info!(%address,"Companion listening");
-    tokio::select! {result=companion_setup::serve(listener,router(app.clone()))=>{result?;},result=receiver=>{result?;},_=scheduled=>{},_=connections::supervise()=>{},_=tokio::signal::ctrl_c()=>{}}
+    tokio::select! {result=companion_setup::serve(listener,router(app.clone()))=>{result?;},_=scheduled=>{},_=connections::supervise()=>{},_=tokio::signal::ctrl_c()=>{}}
     Ok(())
 }
 fn healthcheck() -> anyhow::Result<()> {

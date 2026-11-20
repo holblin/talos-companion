@@ -17,8 +17,8 @@ Version and commit tags use the same suffixes. All variants retain the same depl
   Google Drive, and native remote NFSv3/SMB destinations.
 - Unprivileged UID 99:100, read-only root filesystem, no privileged mode or mount capabilities.
 
-Map persistent storage to `/data` with ownership `99:100`. Expose web port `8080` through
-your HTTPS reverse proxy, and make S3 port `9000` reachable from Omni.
+Map persistent storage to `/data` with ownership `99:100`. Expose the shared web/S3 port `8080` through
+your HTTPS reverse proxy. Omni uses the same origin as Companion for S3 backups, with bucket `omni`.
 Configure public URLs in the setup wizard and Companion access UI. Leave `SETUP_TOKEN` and `BACKUP_PASSPHRASE`
 unset to generate persistent private startup secrets, or supply explicit overrides.
 Find the generated setup token in first-start container logs or `/data/setup-token`.

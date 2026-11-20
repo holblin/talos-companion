@@ -54,7 +54,7 @@ Companion supports a single confidential OIDC client with authorization-code gra
 
 Enable S3 etcd backups when starting Omni. The current Omni configuration has `etcdBackup.s3Enabled: true` (CLI: `--etcd-backup-s3`). Local and S3 modes are mutually exclusive.
 
-After Companion’s initial account setup, its S3 listener starts on port 9000 and creates the `omni` bucket. It supports path-style S3 requests with AWS signatures. Apply this resource through `omnictl`, replacing endpoint and credentials with the values from Companion → Identity:
+After Companion’s initial account setup, its authenticated S3 receiver is available on the same port as the web UI (8080 by default), with bucket `omni`. Use the Companion origin as the S3 endpoint without adding a path. It supports path-style S3 requests with AWS signatures. Apply this resource through `omnictl`, replacing endpoint and credentials with the values from Companion → Identity:
 
 ```yaml
 metadata:

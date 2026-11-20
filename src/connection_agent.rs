@@ -167,6 +167,9 @@ impl Agent {
                 return Err(error);
             }
         };
+        if integration.s3_endpoint == integration.companion_url {
+            integration.s3_endpoint = format!("https://{host}");
+        }
         integration.companion_url = format!("https://{host}");
         Ok((integration, child))
     }
@@ -203,7 +206,7 @@ impl Agent {
             }
             anyhow::ensure!(matched, "Tailscale did not assign the requested hostname. Check for a duplicate or an admin-console name override.");
             api.serve(&host).await?;
-            Ok(Integration { profile: Profile::Tailscale, companion_url: format!("https://{host}"), omni_url: format!("https://{host}:8443"), s3_endpoint: format!("https://{host}:10000") })
+            Ok(Integration { profile: Profile::Tailscale, companion_url: format!("https://{host}"), omni_url: format!("https://{host}:8443"), s3_endpoint: format!("https://{host}") })
         }.await;
         if result.is_err() {
             let old_name = old.split('.').next().unwrap_or("talos-companion");
@@ -400,7 +403,6 @@ impl Agent {
         let hostnames = [
             format!("talos-companion.{domain}"),
             format!("omni.{domain}"),
-            format!("s3.{domain}"),
         ];
         for hostname in &hostnames {
             self.output(
@@ -421,7 +423,6 @@ impl Agent {
         let configuration = json!({"tunnel":id,"credentials-file":credential,"ingress":[
             {"hostname":hostnames[0],"service":"http://127.0.0.1:18081"},
             {"hostname":hostnames[1],"service":"http://127.0.0.1:18082"},
-            {"hostname":hostnames[2],"service":"http://127.0.0.1:18083"},
             {"service":"http_status:404"}
         ]});
         write_json(&config, &configuration)?;
@@ -441,7 +442,7 @@ impl Agent {
             profile: Profile::Cloudflare,
             companion_url: format!("https://{}", hostnames[0]),
             omni_url: format!("https://{}", hostnames[1]),
-            s3_endpoint: format!("https://{}", hostnames[2]),
+            s3_endpoint: format!("https://{}", hostnames[0]),
         };
         Ok((integration, child))
     }
@@ -539,7 +540,7 @@ impl Agent {
             profile: Profile::Tailscale,
             companion_url: format!("https://{hostname}"),
             omni_url: format!("https://{hostname}:8443"),
-            s3_endpoint: format!("https://{hostname}:10000"),
+            s3_endpoint: format!("https://{hostname}"),
         })
     }
 }
@@ -699,16 +700,18 @@ pub async fn run() -> anyhow::Result<()> {
         );
         Ok(value)
     };
+    let companion = source("COMPANION_ORIGIN", "http://127.0.0.1:8080")?;
+    let s3 = source("S3_ORIGIN", &companion)?;
     let agent = std::sync::Arc::new(Agent {
         control: control.clone(),
         state,
-        companion: source("COMPANION_ORIGIN", "http://127.0.0.1:8080")?,
+        companion,
         omni: if settings().omni_origin.is_empty() {
             "https://127.0.0.1:19443".into()
         } else {
             settings().omni_origin
         },
-        s3: source("S3_ORIGIN", "http://127.0.0.1:9000")?,
+        s3,
     });
     let mut client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none());
     if let Ok(bytes) = std::fs::read(private_dir().join("origin-ca.crt")) {
@@ -885,10 +888,7 @@ mod tests {
             let integration = agent.tailscale_connect(&request, &api).await.unwrap();
             assert_eq!(integration.companion_url, "https://companion.test.ts.net");
             assert_eq!(integration.omni_url, "https://companion.test.ts.net:8443");
-            assert_eq!(
-                integration.s3_endpoint,
-                "https://companion.test.ts.net:10000"
-            );
+            assert_eq!(integration.s3_endpoint, "https://companion.test.ts.net");
             assert_eq!(
                 login_calls.load(Ordering::SeqCst),
                 usize::from(!already_logged_in)

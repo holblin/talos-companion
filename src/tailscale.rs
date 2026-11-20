@@ -155,7 +155,7 @@ impl LocalApi {
             config = json!({});
         }
         anyhow::ensure!(config.is_object(), "Invalid Tailscale serve configuration");
-        for (port, origin) in [(443, 18081), (8443, 18082), (10000, 18083)] {
+        for (port, origin) in [(443, 18081), (8443, 18082)] {
             config["TCP"][port.to_string()] = json!({"HTTPS": true});
             let host_port = format!("{hostname}:{port}");
             config["Web"][&host_port] =
@@ -236,7 +236,7 @@ mod tests {
             assert_eq!(requests[4].1, "/localapi/v0/query-feature?feature=serve");
             let (_, _, headers, config) = requests.last().unwrap();
             assert_eq!(headers["if-match"], "\"saved-config\"");
-            for (port, origin) in [(443, 18081), (8443, 18082), (10000, 18083)] {
+            for (port, origin) in [(443, 18081), (8443, 18082)] {
                 assert_eq!(config["TCP"][port.to_string()], json!({"HTTPS":true}));
                 assert_eq!(
                     config["Web"][format!("companion.example.ts.net:{port}")]["Handlers"]["/"]["Proxy"],
@@ -244,6 +244,7 @@ mod tests {
                 );
             }
             assert_eq!(config["TCP"]["9443"]["HTTPS"], true);
+            assert!(config["TCP"].get("10000").is_none());
             assert_eq!(config["AllowFunnel"]["other.example.ts.net:9443"], true);
             assert!(
                 config["AllowFunnel"]

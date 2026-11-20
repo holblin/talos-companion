@@ -521,26 +521,6 @@ pub async fn serve(listener: tokio::net::TcpListener, router: axum::Router) -> a
     }
 }
 
-pub async fn backup_proxy(
-    request: axum::extract::Request,
-) -> std::result::Result<axum::response::Response, hyper::StatusCode> {
-    let address = std::env::var("S3_LISTEN_ADDR")
-        .unwrap_or("0.0.0.0:9000".into())
-        .replace("0.0.0.0:", "127.0.0.1:")
-        .replace("[::]:", "[::1]:");
-    let proxy = crate::connection_agent::Proxy {
-        dynamic: false,
-        origin: format!("http://{address}")
-            .parse()
-            .map_err(|_| hyper::StatusCode::BAD_GATEWAY)?,
-        client: reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .map_err(|_| hyper::StatusCode::BAD_GATEWAY)?,
-    };
-    crate::connection_agent::forward(State(proxy), request).await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

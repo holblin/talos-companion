@@ -53,17 +53,16 @@ VPN/routed UDP path or explicitly configured upstream gRPC tunnel mode.
 
 | Service | Host port |
 | --- | --- |
-| Companion HTTPS | 18443/TCP |
+| Companion HTTPS and S3 receiver | 18443/TCP |
 | Fresh Omni HTTPS | 19443/TCP |
-| S3 HTTPS receiver | 19444/TCP |
 | Omni machine API (TLS) | 19090/TCP |
 | Kubernetes proxy (TLS) | 19100/TCP |
 | SideroLink WireGuard | 51180/UDP |
 | Internal event / log sinks | 19091 / 19092 |
 | Metrics | 127.0.0.1:12122 |
 
-The existing HTTP Companion mapping 18480 and S3 mapping 19000 remain backend listeners.
-Do not forward them to untrusted networks. Companion's final image has separate connector and application layers;
+The HTTP Companion mapping 18480 is the shared web/S3 backend listener.
+Do not forward it to untrusted networks. When upgrading, update Omni's S3 endpoint to the Companion HTTPS origin on 18443; the separate 19444/19000 S3 listeners are removed. Companion's final image has separate connector and application layers;
 Caddy, Omni and one-off certificate/key tools are separate official images.
 
 ## Prepare a LAN installation

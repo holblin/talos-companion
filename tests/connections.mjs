@@ -17,9 +17,9 @@ test('guided connections require admin/CSRF, bind jobs, and check receiver ident
   });
   await new Promise(resolve=>impostor.listen(0,'127.0.0.1',resolve));
   const fakeOrigin=`http://127.0.0.1:${impostor.address().port}`;
-  const info=(providers=['cloudflare','tailscale'])=>writeFile(join(control,'agent.json'),JSON.stringify({updated_at:Math.floor(Date.now()/1000),providers,s3_origin:`http://127.0.0.1:${port+1}`,omni_origin:fakeOrigin}));
+  const info=(providers=['cloudflare','tailscale'])=>writeFile(join(control,'agent.json'),JSON.stringify({updated_at:Math.floor(Date.now()/1000),providers,s3_origin:`http://127.0.0.1:${port}`,omni_origin:fakeOrigin}));
   try {
-    const running=await server(port,data,{CONNECTION_CONTROL_DIR:control,S3_PUBLIC_URL:`http://127.0.0.1:${port+1}`});child=running.child;
+    const running=await server(port,data,{CONNECTION_CONTROL_DIR:control,S3_PUBLIC_URL:`http://127.0.0.1:${port}`});child=running.child;
     assert.equal((await request(port,'/api/setup',{setup:true,body:{name:'Connections Test',email:'connections@example.test',password:'initial connections password',backup_passphrase_confirmation:passphrase}})).status,200);
     const cookie=await login(port,'connections@example.test','initial connections password');
     const connect=(body)=>request(port,'/api/omni/connection',{cookie,body});
@@ -43,7 +43,7 @@ test('guided connections require admin/CSRF, bind jobs, and check receiver ident
     result=await (await request(port,'/api/omni/connection',{cookie})).json();assert.equal(result.connection.state,'starting');
     await writeFile(join(control,'status.json'),JSON.stringify({id,state:'authorizing',profile:'cloudflare',auth_url:'https://dash.cloudflare.com/argotunnel?test-only',message:'Approve provider',expires_at:job.expires_at}));
     result=await (await request(port,'/api/omni/connection',{cookie})).json();assert.equal(result.connection.state,'authorizing');
-    const integration={profile:'lan',companion_url:`http://127.0.0.1:${port}`,omni_url:fakeOrigin,s3_endpoint:`http://127.0.0.1:${port+1}`};
+    const integration={profile:'lan',companion_url:`http://127.0.0.1:${port}`,omni_url:fakeOrigin,s3_endpoint:`http://127.0.0.1:${port}`};
     const defaults=await(await request(port,'/api/omni',{cookie})).json();assert.equal(defaults.defaults.companion_url,integration.companion_url);assert.equal(defaults.defaults.s3_endpoint,integration.s3_endpoint);
     for(let n=0;n<40;n++){try{if((await fetch(`${integration.s3_endpoint}/.well-known/talos-companion?challenge=${'a'.repeat(64)}`)).ok)break;}catch{} await new Promise(resolve=>setTimeout(resolve,50));}
     assert.equal((await request(port,'/api/omni/check',{body:integration})).status,401);
