@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { server, stop, request, passphrase } from './helpers.mjs';
+const fsReadManifest = () => readFile(new URL('../Cargo.toml', import.meta.url), 'utf8');
 test('setup detects browser URL without Docker configuration, blocks mismatches and persists it', { timeout: 60000 }, async () => {
   const data = await mkdtemp(join(tmpdir(), 'public-urls-'));
   const port = 18594;
@@ -18,7 +19,10 @@ test('setup detects browser URL without Docker configuration, blocks mismatches 
     let response = await request(port, '/api/setup', { setup: true, origin, body: { ...account, public_url: 'https://different.example.test' } });
     assert.equal(response.status, 400);
     assert.match(await response.text(), /Installation blocked/);
-    assert.equal((await (await request(port, '/api/status')).json()).initialized, false);
+    const status = await (await request(port, '/api/status')).json();
+    assert.equal(status.initialized, false);
+    const manifest = await fsReadManifest();
+    assert.equal(status.version, manifest.match(/^version = "([^"]+)"/m)[1]);
     response = await request(port, '/api/setup', { setup: true, origin, body: { ...account, public_url: origin } });
     assert.equal(response.status, 200, await response.text());
     await stop(child);

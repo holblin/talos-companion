@@ -151,7 +151,9 @@ pub fn make_user(input: Account) -> Result<User> {
     })
 }
 pub async fn status(State(app): State<App>) -> Json<Value> {
-    Json(json!({"initialized":app.store.read().await.is_some()}))
+    Json(
+        json!({"initialized":app.store.read().await.is_some(),"version":env!("CARGO_PKG_VERSION")}),
+    )
 }
 #[derive(Deserialize)]
 pub struct Setup {

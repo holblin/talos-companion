@@ -26,7 +26,9 @@ type Deployment = {
 };
 export default function SetupWizard({
   onComplete,
+  version,
 }: {
+  version: string;
   onComplete: () => void;
 }) {
   const [mode, setMode] = useState<"create" | "restore">("create");
@@ -193,6 +195,7 @@ export default function SetupWizard({
         <p className={documentClass("p", classes("eyebrow"))}>
           FIRST-TIME SETUP · STEP {step + 1} OF {labels.length}
         </p>
+        <p className={classes("footnote")}>Version {version}</p>
         <ol className={classes("wizard-progress")} aria-label="Setup progress">
           {labels.map((label, i) => (
             <li

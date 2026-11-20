@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { User as AriaUser } from "@react-aria/test-utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -51,7 +52,8 @@ beforeEach(() => {
       requests.push({ path, body });
       let value: unknown;
       let status = 200;
-      if (path === "/api/status") value = { initialized };
+      if (path === "/api/status")
+        value = { initialized, version: "0.3.16-server" };
       else if (path === "/api/me") {
         value = authenticated ? user : { error: "Sign in required" };
         status = authenticated ? 200 : 401;
@@ -113,6 +115,128 @@ function mount() {
 }
 
 describe("Spectrum frontend workflows", () => {
+  it.each([
+    [false, false],
+    [true, false],
+    [true, true],
+  ])(
+    "shows the backend version with initialized=%s and authenticated=%s",
+    async (isInitialized, isAuthenticated) => {
+      initialized = isInitialized;
+      authenticated = isAuthenticated;
+      mount();
+      expect(await screen.findByText("Version 0.3.16-server")).toBeTruthy();
+    },
+  );
+
+  it("sorts every account data column and keeps actions resize-only", async () => {
+    initialized = true;
+    authenticated = true;
+    const accounts = [
+      {
+        ...user,
+        id: "alpha",
+        name: "alpha",
+        email: "z@example.test",
+        admin: false,
+        created_by: "zoe",
+        created_at: 100,
+        last_login_at: 300,
+      },
+      {
+        ...user,
+        id: "beta",
+        name: "Beta",
+        email: "a@example.test",
+        created_by: "amy",
+        created_at: 200,
+        last_login_at: 100,
+      },
+      {
+        ...user,
+        id: "legacy",
+        name: "legacy",
+        email: "m@example.test",
+        created_by: null,
+        created_at: null,
+        last_login_at: null,
+      },
+    ];
+    const fallback = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) =>
+        input === "/api/users"
+          ? Promise.resolve(new Response(JSON.stringify(accounts)))
+          : fallback(input, init),
+      ),
+    );
+    router = createAppRouter(
+      createMemoryHistory({ initialEntries: ["/accounts"] }),
+    );
+    mount();
+    const grid = await screen.findByRole("grid", {
+      name: "Workspace accounts",
+    });
+    await within(grid).findByText("Beta");
+    const table = new AriaUser({ interactionType: "mouse" }).createTester(
+      "Table",
+      { root: grid },
+    );
+    const names = () =>
+      table.getRowHeaders().map((header) => header.textContent);
+    expect(names()).toEqual(["alpha", "Beta", "legacy"]);
+    const expectations = [
+      {
+        column: "Account",
+        ascending: ["alpha", "Beta", "legacy"],
+        descending: ["legacy", "Beta", "alpha"],
+      },
+      {
+        column: "Email",
+        ascending: ["Beta", "legacy", "alpha"],
+        descending: ["alpha", "legacy", "Beta"],
+      },
+      {
+        column: "Role",
+        ascending: ["Beta", "legacy", "alpha"],
+        descending: ["alpha", "Beta", "legacy"],
+      },
+      {
+        column: "Created by",
+        ascending: ["Beta", "alpha", "legacy"],
+        descending: ["alpha", "Beta", "legacy"],
+      },
+      {
+        column: "Created at",
+        ascending: ["alpha", "Beta", "legacy"],
+        descending: ["Beta", "alpha", "legacy"],
+      },
+      {
+        column: "Last login at",
+        ascending: ["Beta", "alpha", "legacy"],
+        descending: ["alpha", "Beta", "legacy"],
+      },
+    ];
+    for (const expectation of expectations) {
+      await table.triggerColumnHeaderAction({
+        column: expectation.column,
+        action: 0,
+      });
+      expect(names()).toEqual(expectation.ascending);
+      await table.triggerColumnHeaderAction({
+        column: expectation.column,
+        action: 1,
+      });
+      expect(names()).toEqual(expectation.descending);
+    }
+    await userEvent.click(
+      within(grid).getByRole("button", { name: "Actions" }),
+    );
+    expect(screen.getByRole("menuitem", { name: /Resize/i })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: /Sort/i })).toBeNull();
+  });
+
   it("puts all backup destinations before the history table and settings", async () => {
     initialized = true;
     authenticated = true;
@@ -129,7 +253,7 @@ describe("Spectrum frontend workflows", () => {
       ).toBeTruthy();
     }
     expect(
-      within(table).getByRole("columnheader", { name: "Download" }),
+      within(table).getByRole("columnheader", { name: /^Download/ }),
     ).toBeTruthy();
     expect(
       table.compareDocumentPosition(
@@ -144,16 +268,16 @@ describe("Spectrum frontend workflows", () => {
     mount();
     await events.click(await screen.findByRole("link", { name: "Accounts" }));
     await screen.findByRole("grid", { name: "Workspace accounts" });
-    expect(screen.getByRole("columnheader", { name: "Email" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: /^Email/ })).toBeTruthy();
     expect(screen.getByRole("gridcell", { name: user.email })).toBeTruthy();
     expect(
-      screen.getByRole("columnheader", { name: "Created by" }),
+      screen.getByRole("columnheader", { name: /^Created by/ }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("columnheader", { name: "Created at" }),
+      screen.getByRole("columnheader", { name: /^Created at/ }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("columnheader", { name: "Last login at" }),
+      screen.getByRole("columnheader", { name: /^Last login at/ }),
     ).toBeTruthy();
     await events.click(screen.getByRole("button", { name: "Add account" }));
     const dialog = await screen.findByRole("dialog");
@@ -226,6 +350,22 @@ describe("Spectrum frontend workflows", () => {
     const events = userEvent.setup();
     mount();
     await events.click(await screen.findByRole("link", { name: "Accounts" }));
+    const accountTable = await screen.findByRole("grid", {
+      name: "Workspace accounts",
+    });
+    expect(
+      within(accountTable)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual([
+      "Account",
+      "Actions",
+      "Email",
+      "Role",
+      "Created by",
+      "Created at",
+      "Last login at",
+    ]);
     const remove = await screen.findByRole<HTMLButtonElement>("button", {
       name: "Delete " + user.email,
     });

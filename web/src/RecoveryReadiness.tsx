@@ -1,6 +1,8 @@
 import { Button } from "@react-spectrum/s2/Button";
 import { StatusLight } from "@react-spectrum/s2/StatusLight";
 import { Link } from "@react-spectrum/s2/Link";
+import { InlineAlert, Heading, Content } from "@react-spectrum/s2/InlineAlert";
+import type { NetworkShare } from "./BackupSetup";
 import {
   backupDate,
   backupTime,
@@ -20,6 +22,7 @@ type RecoverySettings = {
   };
   drive: { connected: boolean };
   mounted: string | null;
+  network?: NetworkShare | null;
 };
 
 export default function RecoveryReadiness({
@@ -41,6 +44,9 @@ export default function RecoveryReadiness({
       : latest;
   }, undefined);
   const schedule = overview?.settings.schedule;
+  const hasExternalDestination = Boolean(
+    overview?.drive.connected || overview?.network || overview?.mounted,
+  );
   return (
     <>
       <dl className={layout.readiness}>
@@ -80,13 +86,26 @@ export default function RecoveryReadiness({
           </Button>
         </div>
       </dl>
-      <StatusLight variant="neutral">
-        {overview
-          ? overview.drive.connected || overview.mounted
+      {overview && !hasExternalDestination ? (
+        <InlineAlert variant="notice">
+          <Heading>Add an external recovery copy</Heading>
+          <Content>
+            <p className={documentClass("p")}>
+              Only local storage is configured. Keep a copy outside this
+              instance.
+            </p>
+            <Button variant="secondary" onPress={onManage}>
+              Configure backup destinations
+            </Button>
+          </Content>
+        </InlineAlert>
+      ) : (
+        <StatusLight variant="neutral">
+          {overview
             ? "External destination configured; confirm your copy is current"
-            : "Only local storage configured — add an external copy"
-          : "External destination status unavailable"}
-      </StatusLight>
+            : "External destination status unavailable"}
+        </StatusLight>
+      )}
       <p className={documentClass("p", layout.helpText)}>
         A listed archive is not a verified restore. Keep its passphrase
         separately and test restoration on a fresh instance. Include Omni’s
