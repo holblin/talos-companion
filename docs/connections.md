@@ -113,6 +113,30 @@ Tailscale authorizes a dedicated userspace device and discovers its .ts.net host
 Private HTTPS routes use port 443 for Companion and S3, and 8443 for Omni. Browser devices and
 Omni’s host need tailnet access. Funnel and privileged networking are not enabled.
 
+## Remove an address or disconnect a provider
+
+Each saved Cloudflare or Tailscale address offers two separate actions:
+
+- **Remove** forgets only that saved URL. It leaves the provider, remote routes,
+  authorization and local credentials running unchanged.
+- **Disconnect Cloudflare** or **Disconnect Tailscale** requires confirmation and
+  disconnects this installation's entire provider, including its shared Omni and
+  backup routes and all saved addresses for that provider.
+
+Cloudflare disconnect stops the managed connector, removes matching managed CNAME
+records and its tunnel, then clears local connector credentials. Unrelated DNS
+records and account-wide authorization are not revoked. Tailscale disconnect clears
+managed HTTPS routes, logs out to expire the device's node key, stops its daemon and
+removes the local identity. An expired device record can remain in the Tailscale
+admin console; remove that record there if needed. Neither action revokes your
+provider account or credentials used by other installations.
+
+Switch the active Companion issuer to another verified provider and open Companion
+through another address before disconnecting. Cleanup is unavailable during pending
+authorization. Failed or interrupted cleanup preserves saved addresses and remaining
+credentials for an explicit retry; some remote changes may already have completed.
+Reconnect through the provider sign-in flow after a successful disconnect.
+
 ## What live checks prove
 
 | Service | Verification |

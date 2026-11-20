@@ -379,10 +379,40 @@ pub async fn save_access(
         json!({"ok":true,"integration":integration,"active_issuer":app.issuer(),"local_dns_pending":local_dns_pending}),
     ))
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RemoveAccess {
+    companion_url: String,
+    profile: Profile,
+    #[serde(default)]
+    cleanup_provider: bool,
+}
+
+fn ensure_cleanup_safe(
+    profile: &Profile,
+    issuer: &str,
+    active_profile: Option<&Profile>,
+    integrations: &[crate::omni::Integration],
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        *profile != Profile::Lan,
+        "Local HTTPS has no provider to disconnect"
+    );
+    anyhow::ensure!(
+        active_profile != Some(profile)
+            && !integrations
+                .iter()
+                .any(|integration| integration.profile == *profile
+                    && integration.companion_url == issuer),
+        "Migrate the active public URL to another provider or Local HTTPS before disconnecting this provider. Update Omni’s sign-in configuration first."
+    );
+    Ok(())
+}
+
 pub async fn remove_access(
     State(app): State<App>,
     headers: HeaderMap,
-    Json(input): Json<Endpoint>,
+    Json(input): Json<RemoveAccess>,
 ) -> Result<Json<Value>> {
     auth::csrf(&app, &headers)?;
     auth::admin(&app, &headers).await?;
@@ -394,6 +424,75 @@ pub async fn remove_access(
         ));
     }
     let mut saved = connections::settings();
+    let mut message =
+        "Saved address removed. Provider routes and authorization are unchanged.".to_owned();
+    if input.cleanup_provider {
+        let catalog = accesses(State(app.clone()), headers.clone()).await?.0;
+        let entries: Vec<connections::AccessMethod> =
+            serde_json::from_value(catalog["accesses"].clone()).map_err(anyhow::Error::from)?;
+        let mut integrations: Vec<_> = entries
+            .into_iter()
+            .map(|access| access.integration)
+            .collect();
+        if let Ok(provider) = connections::read_json::<crate::omni::Integration>(
+            &connections::provider_path(&input.profile),
+        ) {
+            integrations.push(provider);
+        }
+        let active_profile = app
+            .store
+            .read()
+            .await
+            .as_ref()
+            .filter(|store| store.integration.companion_url == app.issuer())
+            .map(|store| store.integration.profile.clone());
+        ensure_cleanup_safe(
+            &input.profile,
+            &app.issuer(),
+            active_profile.as_ref(),
+            &integrations,
+        )
+        .map_err(|error| bad(&error.to_string()))?;
+        if headers
+            .get("origin")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|browser| {
+                integrations.iter().any(|integration| {
+                    integration.profile == input.profile && integration.companion_url == browser
+                })
+            })
+        {
+            return Err(bad(
+                "Open Companion through another provider or Local HTTPS before disconnecting this provider, so this page stays connected.",
+            ));
+        }
+        if !integrations.iter().any(|integration| {
+            integration.profile == input.profile && integration.companion_url == origin
+        }) {
+            return Err(bad("The saved URL does not match this provider"));
+        }
+        message = connections::cleanup_provider(input.profile.clone())
+            .await
+            .map_err(|error| bad(&error.to_string()))?;
+        for integration in integrations
+            .iter()
+            .filter(|integration| integration.profile == input.profile)
+        {
+            if !saved.removed_urls.contains(&integration.companion_url) {
+                saved.removed_urls.push(integration.companion_url.clone());
+            }
+        }
+        saved
+            .accesses
+            .retain(|access| access.integration.profile != input.profile);
+        if saved
+            .integration
+            .as_ref()
+            .is_some_and(|integration| integration.profile == input.profile)
+        {
+            saved.integration = None;
+        }
+    }
     saved
         .accesses
         .retain(|a| a.integration.companion_url != origin);
@@ -409,7 +508,7 @@ pub async fn remove_access(
     }
     connections::private_directory(&connections::root())?;
     connections::write_json(&connections::settings_path(), &saved)?;
-    Ok(Json(json!({"ok":true})))
+    Ok(Json(json!({"ok":true,"message":message})))
 }
 pub async fn health(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     auth::csrf(&app, &headers)?;
@@ -524,6 +623,58 @@ pub async fn serve(listener: tokio::net::TcpListener, router: axum::Router) -> a
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cleanup_requires_another_active_provider_including_aliases() {
+        for profile in [Profile::Cloudflare, Profile::Tailscale] {
+            let integration = crate::omni::Integration {
+                profile: profile.clone(),
+                companion_url: "https://active.example.test".into(),
+                ..Default::default()
+            };
+            assert!(
+                ensure_cleanup_safe(
+                    &profile,
+                    &integration.companion_url,
+                    None,
+                    std::slice::from_ref(&integration)
+                )
+                .is_err()
+            );
+            assert!(
+                ensure_cleanup_safe(
+                    &profile,
+                    "https://hidden-alias.example.test",
+                    Some(&profile),
+                    &[]
+                )
+                .is_err()
+            );
+            assert!(
+                ensure_cleanup_safe(
+                    &profile,
+                    "https://local.example.test",
+                    Some(&Profile::Lan),
+                    &[integration]
+                )
+                .is_ok()
+            );
+        }
+        assert!(
+            ensure_cleanup_safe(&Profile::Lan, "https://local.example.test", None, &[]).is_err()
+        );
+    }
+
+    #[test]
+    fn saved_only_removal_is_the_default() {
+        let input: RemoveAccess = serde_json::from_value(
+            json!({"profile":"cloudflare", "companion_url":"https://example.test"}),
+        )
+        .unwrap();
+        assert!(!input.cleanup_provider);
+        assert!(serde_json::from_value::<RemoveAccess>(json!({"profile":"cloudflare", "companion_url":"https://example.test", "cleanup_provider":true})).unwrap().cleanup_provider);
+        assert!(serde_json::from_value::<RemoveAccess>(json!({"profile":"cloudflare", "companion_url":"https://example.test", "cleanup":true})).is_err());
+    }
     use rsa::pkcs8::EncodePrivateKey;
 
     #[tokio::test]

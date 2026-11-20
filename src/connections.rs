@@ -34,6 +34,75 @@ pub struct ConnectionStatus {
     pub expires_at: u64,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CleanupRequest {
+    pub id: String,
+    pub profile: Profile,
+    pub expires_at: u64,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct CleanupStatus {
+    pub id: String,
+    pub state: String,
+    pub message: String,
+}
+
+fn cleanup_pending(dir: &Path) -> bool {
+    read_json::<CleanupRequest>(&dir.join("cleanup-request.json")).is_ok_and(|request| {
+        request.expires_at > now()
+            && !read_json::<CleanupStatus>(&dir.join("cleanup-status.json")).is_ok_and(|status| {
+                status.id == request.id && matches!(status.state.as_str(), "succeeded" | "failed")
+            })
+    })
+}
+
+pub async fn cleanup_provider(profile: Profile) -> anyhow::Result<String> {
+    anyhow::ensure!(
+        profile != Profile::Lan,
+        "Local HTTPS has no provider to disconnect"
+    );
+    anyhow::ensure!(
+        provider_available(&profile),
+        "The provider connector is unavailable. Use an image with this provider and try again."
+    );
+    let dir = control_dir().ok_or_else(|| anyhow::anyhow!("Missing connection directory"))?;
+    anyhow::ensure!(
+        !pending(&dir).is_some_and(|status| matches!(
+            status.state.as_str(),
+            "starting" | "authorizing" | "configuring"
+        )),
+        "Finish the current provider authorization before disconnecting"
+    );
+    anyhow::ensure!(
+        !cleanup_pending(&dir),
+        "Provider cleanup is already in progress. Wait for it to finish."
+    );
+    let request = CleanupRequest {
+        id: uuid::Uuid::new_v4().to_string(),
+        profile,
+        expires_at: now() + 180,
+    };
+    write_json(&dir.join("cleanup-request.json"), &request)?;
+    loop {
+        if let Ok(status) = read_json::<CleanupStatus>(&dir.join("cleanup-status.json"))
+            && status.id == request.id
+        {
+            match status.state.as_str() {
+                "succeeded" => return Ok(status.message),
+                "failed" => anyhow::bail!("{}", status.message),
+                _ => {}
+            }
+        }
+        anyhow::ensure!(
+            now() < request.expires_at,
+            "Provider cleanup has not confirmed completion. Saved addresses are unchanged. Check provider status before retrying."
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+}
+
 pub fn control_dir() -> Option<PathBuf> {
     Some(
         std::env::var_os("CONNECTION_CONTROL_DIR")
@@ -279,6 +348,9 @@ pub async fn start(
     auth::csrf(&app, &headers)?;
     auth::admin(&app, &headers).await?;
     let _serial = app.backup_lock.lock().await;
+    if control_dir().is_some_and(|dir| cleanup_pending(&dir)) {
+        return Err(bad("Wait for provider cleanup to finish before connecting"));
+    }
     let agent = agent_info();
     if agent.is_none() {
         return Err(bad(
@@ -470,6 +542,33 @@ pub async fn finish(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cleanup_blocks_connections_until_matching_completion_or_expiry() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut request = CleanupRequest {
+            id: "new".into(),
+            profile: Profile::Cloudflare,
+            expires_at: now() + 180,
+        };
+        write_json(&dir.path().join("cleanup-request.json"), &request).unwrap();
+        assert!(cleanup_pending(dir.path()));
+        let mut status = CleanupStatus {
+            id: "old".into(),
+            state: "succeeded".into(),
+            message: String::new(),
+        };
+        write_json(&dir.path().join("cleanup-status.json"), &status).unwrap();
+        assert!(cleanup_pending(dir.path()));
+        status.id = request.id.clone();
+        write_json(&dir.path().join("cleanup-status.json"), &status).unwrap();
+        assert!(!cleanup_pending(dir.path()));
+        status.state = "running".into();
+        write_json(&dir.path().join("cleanup-status.json"), &status).unwrap();
+        request.expires_at = 0;
+        write_json(&dir.path().join("cleanup-request.json"), &request).unwrap();
+        assert!(!cleanup_pending(dir.path()));
+    }
+
     #[test]
     fn provider_edits_accept_only_https_origins_and_same_tailnet_names() {
         assert_eq!(

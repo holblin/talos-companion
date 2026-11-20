@@ -68,9 +68,12 @@ beforeEach(() => {
     vi.fn((path: string, init?: RequestInit) => {
       const body =
         typeof init?.body === "string"
-          ? (JSON.parse(init.body) as Partial<Integration>)
+          ? (JSON.parse(init.body) as Partial<Integration> & {
+              cleanup_provider?: boolean;
+            })
           : {};
-      if (init?.method === "POST") posted.push({ path, body });
+      if (init?.method === "POST" || init?.method === "DELETE")
+        posted.push({ path, body });
       let value: unknown = { ok: true },
         status = 200;
       if (path === "/api/companion/access/health") {
@@ -82,6 +85,32 @@ beforeEach(() => {
           })),
         };
       } else if (path === "/api/companion/access") {
+        if (init?.method === "DELETE") {
+          if (body.cleanup_provider && rejectProvider) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  error:
+                    "Provider cleanup failed. Retry after checking provider permissions.",
+                }),
+                { status: 400 },
+              ),
+            );
+          }
+          accesses = accesses.filter((access) =>
+            body.cleanup_provider
+              ? access.integration.profile !== body.profile
+              : access.integration.companion_url !== body.companion_url,
+          );
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                ok: true,
+                message: "Provider disconnected and cleaned up.",
+              }),
+            ),
+          );
+        }
         if (init?.method === "POST") {
           const base =
             [local, cloud, tailscale].find((i) => i.profile === body.profile) ??
@@ -633,6 +662,114 @@ it("checks old URLs automatically and proposes migration or removal when unavail
   expect(
     within(address).queryByRole("button", { name: "Migrate public URL" }),
   ).toBeNull();
+  expect(
+    within(address).getByRole<HTMLButtonElement>("button", { name: "Remove" })
+      .disabled,
+  ).toBe(false);
+});
+
+it.each([
+  [cloud, "Cloudflare"],
+  [tailscale, "Tailscale"],
+] as const)(
+  "offers saved-only removal and confirmed cleanup for %s",
+  async (integration, name) => {
+    accesses = [
+      { integration: local, verified_at: 100 },
+      { integration, verified_at: 100 },
+    ];
+    issuer = local.companion_url;
+    const events = userEvent.setup();
+    mount();
+    const address = await screen.findByRole("region", {
+      name: integration.companion_url,
+    });
+    await events.click(within(address).getByRole("button", { name: "Remove" }));
+    await screen.findByText(/Provider tunnels keep running/);
+    await events.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      posted.filter((request) => request.path === "/api/companion/access"),
+    ).toHaveLength(0);
+    await events.click(
+      within(address).getByRole("button", { name: `Disconnect ${name}` }),
+    );
+    const dialog = await screen.findByRole("alertdialog", {
+      name: `Disconnect ${name} and clean up?`,
+    });
+    expect(within(dialog).getByText(/Omni and backups/)).toBeTruthy();
+    await events.click(
+      within(dialog).getByRole("button", { name: `Disconnect ${name}` }),
+    );
+    await waitFor(() => {
+      expect(accesses).toHaveLength(1);
+    });
+    expect(
+      posted.find((request) => request.path === "/api/companion/access")?.body,
+    ).toEqual({
+      profile: integration.profile,
+      companion_url: integration.companion_url,
+      cleanup_provider: true,
+    });
+  },
+);
+
+it("does not request provider cleanup when only removing the saved URL", async () => {
+  accesses = [{ integration: cloud, verified_at: 100 }];
+  const events = userEvent.setup();
+  mount();
+  const address = await screen.findByRole("region", {
+    name: cloud.companion_url,
+  });
+  await events.click(within(address).getByRole("button", { name: "Remove" }));
+  const dialog = await screen.findByRole("alertdialog", {
+    name: "Remove public URL?",
+  });
+  await events.click(within(dialog).getByRole("button", { name: "Remove" }));
+  await waitFor(() => {
+    expect(accesses).toHaveLength(0);
+  });
+  expect(
+    posted.find((request) => request.path === "/api/companion/access")?.body,
+  ).toEqual({ profile: cloud.profile, companion_url: cloud.companion_url });
+});
+
+it("preserves saved addresses when provider cleanup fails", async () => {
+  accesses = [{ integration: cloud, verified_at: 100 }];
+  rejectProvider = true;
+  const events = userEvent.setup();
+  mount();
+  const address = await screen.findByRole("region", {
+    name: cloud.companion_url,
+  });
+  await events.click(
+    within(address).getByRole("button", { name: "Disconnect Cloudflare" }),
+  );
+  const dialog = await screen.findByRole("alertdialog", {
+    name: "Disconnect Cloudflare and clean up?",
+  });
+  await events.click(
+    within(dialog).getByRole("button", { name: "Disconnect Cloudflare" }),
+  );
+  await screen.findByText(/Provider cleanup failed/);
+  expect(accesses).toHaveLength(1);
+});
+
+it("blocks cleanup of every alias on the active provider", async () => {
+  const alias = { ...cloud, companion_url: "https://alias.example.test" };
+  accesses = [
+    { integration: cloud, verified_at: 100 },
+    { integration: alias, verified_at: 100 },
+  ];
+  issuer = cloud.companion_url;
+  mount();
+  const address = await screen.findByRole("region", {
+    name: alias.companion_url,
+  });
+  expect(
+    within(address).getByRole<HTMLButtonElement>("button", {
+      name: "Disconnect Cloudflare",
+    }).disabled,
+  ).toBe(true);
   expect(
     within(address).getByRole<HTMLButtonElement>("button", { name: "Remove" })
       .disabled,

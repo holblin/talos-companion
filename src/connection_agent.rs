@@ -5,7 +5,7 @@ use crate::{
     omni::{Integration, Profile},
 };
 use base64::Engine;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -31,9 +31,197 @@ struct Agent {
 struct CloudflareAuthorization {
     #[serde(rename = "zoneID")]
     zone_id: String,
+    #[serde(rename = "accountID", default)]
+    account_id: String,
     api_token: String,
     #[serde(default)]
     endpoint: String,
+}
+
+const CLOUDFLARE_CLEANUP: &str = "cloudflare-cleanup.json";
+const TAILSCALE_LOGGED_OUT: &str = "tailscale-logged-out.json";
+
+#[derive(Deserialize, Serialize)]
+struct CloudflareCleanup {
+    tunnel: uuid::Uuid,
+    account: String,
+    credential: String,
+    hosts: std::collections::BTreeSet<String>,
+    remote_done: bool,
+}
+
+fn optional_json<T: serde::de::DeserializeOwned>(path: &Path) -> anyhow::Result<Option<T>> {
+    match read_json(path) {
+        Ok(value) => Ok(Some(value)),
+        Err(error)
+            if error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn remove_local_file(path: &Path) -> anyhow::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn cloudflare_credential_name(name: &str) -> bool {
+    name.strip_prefix("tunnel-")
+        .and_then(|name| name.strip_suffix(".json"))
+        .is_some_and(|id| id.len() == 16 && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+}
+
+fn managed_cloudflare_host(rule: &Value) -> Option<String> {
+    match rule["service"].as_str()? {
+        "http://127.0.0.1:18081" | "http://127.0.0.1:18082" | "http://127.0.0.1:18083"
+            if rule.get("path").is_none() => {}
+        _ => return None,
+    }
+    let host = rule["hostname"].as_str()?.to_ascii_lowercase();
+    domain(&host).then_some(host)
+}
+
+fn exact_tunnel_record(record: &Value, host: &str, target: &str) -> bool {
+    let matches_dns_name = |value: &Value, name: &str| {
+        value
+            .as_str()
+            .is_some_and(|value| value.trim_end_matches('.').eq_ignore_ascii_case(name))
+    };
+    record["type"] == "CNAME"
+        && matches_dns_name(&record["name"], host)
+        && matches_dns_name(&record["content"], target)
+}
+
+fn listed_tunnel(list: &Value, tunnel: uuid::Uuid) -> Option<&Value> {
+    list.as_array()?.iter().find(|entry| {
+        entry["id"]
+            .as_str()
+            .and_then(|id| uuid::Uuid::parse_str(id).ok())
+            == Some(tunnel)
+    })
+}
+
+fn tunnel_deleted(entry: &Value) -> bool {
+    entry["deleted_at"]
+        .as_str()
+        .is_some_and(|date| !date.is_empty() && !date.starts_with("0001-01-01"))
+}
+
+async fn remove_cloudflare_dns(
+    auth: &CloudflareAuthorization,
+    plan: &CloudflareCleanup,
+) -> anyhow::Result<()> {
+    let host = match auth.endpoint.as_str() {
+        "" => "api.cloudflare.com",
+        "fed" => "api.fed.cloudflare.com",
+        _ => anyhow::bail!("Unsupported Cloudflare authorization endpoint"),
+    };
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(12))
+        .build()?;
+    let endpoint = format!(
+        "https://{host}/client/v4/zones/{}/dns_records",
+        auth.zone_id
+    );
+    remove_tunnel_dns(&client, &endpoint, &auth.api_token, plan).await
+}
+
+async fn remove_tunnel_dns(
+    client: &reqwest::Client,
+    endpoint: &str,
+    token: &str,
+    plan: &CloudflareCleanup,
+) -> anyhow::Result<()> {
+    let target = format!("{}.cfargotunnel.com", plan.tunnel);
+    let mut records = std::collections::BTreeMap::new();
+    let failed = || {
+        anyhow::anyhow!(
+            "Could not verify or remove managed Cloudflare DNS records. Local credentials were preserved; check DNS permissions and retry."
+        )
+    };
+    for host in &plan.hosts {
+        let response = client
+            .get(endpoint)
+            .query(&[
+                ("type", "CNAME"),
+                ("name.exact", host.as_str()),
+                ("per_page", "25"),
+            ])
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|_| failed())?;
+        let value = crate::endpoint_checks::small_json(response)
+            .await
+            .map_err(|_| failed())?;
+        anyhow::ensure!(
+            value["success"] == true
+                && value["result_info"]["total_pages"]
+                    .as_u64()
+                    .is_some_and(|pages| pages <= 1),
+            failed()
+        );
+        for record in value["result"].as_array().ok_or_else(failed)? {
+            if exact_tunnel_record(record, host, &target) {
+                let id = record["id"]
+                    .as_str()
+                    .filter(|id| id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                    .ok_or_else(failed)?;
+                records.insert(id.to_owned(), host);
+            }
+        }
+    }
+    for (id, host) in records {
+        let record_url = format!("{endpoint}/{id}");
+        let response = client
+            .get(&record_url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|_| failed())?;
+        let value = crate::endpoint_checks::small_json(response)
+            .await
+            .map_err(|_| failed())?;
+        anyhow::ensure!(
+            value["success"] == true && value["result"]["id"] == id,
+            failed()
+        );
+        if !exact_tunnel_record(&value["result"], host, &target) {
+            continue;
+        }
+        let response = client
+            .delete(&record_url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|_| failed())?;
+        let value = crate::endpoint_checks::small_json(response)
+            .await
+            .map_err(|_| failed())?;
+        anyhow::ensure!(
+            value["success"] == true && value["result"]["id"] == id,
+            failed()
+        );
+    }
+    Ok(())
+}
+
+async fn stop_child(slot: &mut Option<Child>) -> anyhow::Result<()> {
+    if let Some(child) = slot.as_mut()
+        && child.try_wait()?.is_none()
+    {
+        child.kill().await?;
+    }
+    *slot = None;
+    Ok(())
 }
 
 fn cloudflare_authorization(pem: &str) -> anyhow::Result<CloudflareAuthorization> {
@@ -119,6 +307,322 @@ fn cloudflare_alias(mut configuration: Value, host: &str) -> anyhow::Result<Valu
     Ok(configuration)
 }
 impl Agent {
+    fn cloudflare_cleanup_plan(&self) -> anyhow::Result<Option<CloudflareCleanup>> {
+        let mut plan: Option<CloudflareCleanup> = None;
+        for name in ["cloudflare.json", "cloudflare-next.json"] {
+            let Some(config) = optional_json::<Value>(&self.state.join(name))? else {
+                continue;
+            };
+            let invalid =
+                || anyhow::anyhow!("Could not verify the managed Cloudflare tunnel and ingress");
+            let tunnel = config["tunnel"]
+                .as_str()
+                .and_then(|id| uuid::Uuid::parse_str(id).ok())
+                .ok_or_else(invalid)?;
+            let path = config["credentials-file"]
+                .as_str()
+                .map(Path::new)
+                .ok_or_else(invalid)?;
+            let credential = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .filter(|name| cloudflare_credential_name(name) && self.state.join(name) == path)
+                .ok_or_else(invalid)?;
+            let saved: Value = read_json(&self.state.join(credential)).map_err(|_| invalid())?;
+            let account = saved["AccountTag"]
+                .as_str()
+                .filter(|id| id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                .ok_or_else(invalid)?;
+            anyhow::ensure!(
+                saved["TunnelID"]
+                    .as_str()
+                    .and_then(|id| uuid::Uuid::parse_str(id).ok())
+                    == Some(tunnel),
+                invalid()
+            );
+            let current = plan.get_or_insert_with(|| CloudflareCleanup {
+                tunnel,
+                account: account.to_owned(),
+                credential: credential.to_owned(),
+                hosts: Default::default(),
+                remote_done: false,
+            });
+            anyhow::ensure!(
+                current.tunnel == tunnel
+                    && current.credential == credential
+                    && current.account == account,
+                invalid()
+            );
+            let hosts = config["ingress"].as_array().ok_or_else(invalid)?;
+            current
+                .hosts
+                .extend(hosts.iter().filter_map(managed_cloudflare_host));
+        }
+        for entry in std::fs::read_dir(&self.state)? {
+            let name = entry?.file_name();
+            if let Some(name) = name
+                .to_str()
+                .filter(|name| cloudflare_credential_name(name))
+            {
+                anyhow::ensure!(
+                    plan.as_ref().is_some_and(|plan| plan.credential == name),
+                    "Cloudflare has credentials without matching managed ingress. Verify those tunnels in Cloudflare before retrying; no credentials were removed."
+                );
+            }
+        }
+        if let Some(plan) = &plan {
+            anyhow::ensure!(
+                !plan.hosts.is_empty(),
+                "No managed Cloudflare ingress could be verified"
+            );
+        }
+        Ok(plan)
+    }
+
+    async fn guard_cleanup(
+        &self,
+        profile: &Profile,
+        hosts: &std::collections::BTreeSet<String>,
+    ) -> anyhow::Result<()> {
+        let unavailable = || {
+            anyhow::anyhow!(
+                "Could not verify Companion's active issuer. Start Companion and retry."
+            )
+        };
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(8))
+            .build()?;
+        let response = client
+            .get(format!(
+                "{}/.well-known/openid-configuration",
+                self.companion.trim_end_matches('/')
+            ))
+            .send()
+            .await
+            .map_err(|_| unavailable())?;
+        anyhow::ensure!(response.status().is_success(), unavailable());
+        let discovery = crate::endpoint_checks::small_json(response)
+            .await
+            .map_err(|_| unavailable())?;
+        let issuer =
+            crate::endpoint_checks::origin(discovery["issuer"].as_str().ok_or_else(unavailable)?)
+                .map_err(|_| unavailable())?;
+        let host = issuer
+            .host_str()
+            .ok_or_else(unavailable)?
+            .trim_end_matches('.');
+        let matches = |integration: &Integration| {
+            integration.profile == *profile
+                && url::Url::parse(&integration.companion_url).is_ok_and(|candidate| {
+                    candidate
+                        .host_str()
+                        .is_some_and(|candidate| candidate.trim_end_matches('.') == host)
+                })
+        };
+        let saved = optional_json::<Settings>(&settings_path())
+            .map_err(|_| unavailable())?
+            .unwrap_or_default();
+        let provider =
+            optional_json::<Integration>(&provider_path(profile)).map_err(|_| unavailable())?;
+        anyhow::ensure!(
+            !hosts.contains(host)
+                && !(profile == &Profile::Tailscale && host.ends_with(".ts.net"))
+                && !saved
+                    .accesses
+                    .iter()
+                    .any(|access| matches(&access.integration))
+                && !saved.integration.iter().any(matches)
+                && !provider.iter().any(matches),
+            "Switch Companion's active issuer before disconnecting this provider"
+        );
+        Ok(())
+    }
+
+    fn clear_provider_state(&self, profile: &Profile) -> anyhow::Result<()> {
+        let active_path = self.state.join("active.json");
+        if optional_json::<Integration>(&active_path)
+            .map_err(|_| anyhow::anyhow!("Could not read the local provider state"))?
+            .is_some_and(|active| active.profile == *profile)
+        {
+            remove_local_file(&active_path)?;
+        }
+        remove_local_file(&provider_path(profile))
+    }
+
+    async fn cleanup_tailscale(&self, daemon: &mut Option<Child>) -> anyhow::Result<&'static str> {
+        self.guard_cleanup(&Profile::Tailscale, &Default::default())
+            .await?;
+        let identity = self.state.join("tailscaled.state");
+        let logged_out = self.state.join(TAILSCALE_LOGGED_OUT);
+        let confirmed = optional_json::<bool>(&logged_out)
+            .map_err(|_| anyhow::anyhow!("Could not read the Tailscale logout journal"))?
+            == Some(true);
+        if !confirmed && (identity.try_exists()? || daemon.is_some()) {
+            if daemon.is_none() {
+                *daemon = Some(self.daemon_command().spawn()?);
+            }
+            let api = crate::tailscale::LocalApi::new(&self.state.join("tailscale.sock"))?;
+            tokio::time::timeout(Duration::from_secs(15), async {
+                while api.status().await.is_err() {
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+            })
+            .await
+            .map_err(|_| anyhow::anyhow!("Tailscale did not become ready for logout"))?;
+            api.disconnect().await?;
+            write_json(&logged_out, &true)?;
+        } else if !confirmed {
+            anyhow::ensure!(
+                !provider_path(&Profile::Tailscale).try_exists()?,
+                "The local Tailscale identity is missing. Check the device in the Tailscale admin console before retrying."
+            );
+            self.clear_provider_state(&Profile::Tailscale)?;
+            return Ok(
+                "No local Tailscale identity was found. Check the Tailscale admin console for any device records.",
+            );
+        }
+        stop_child(daemon).await?;
+        remove_local_file(&identity)?;
+        self.clear_provider_state(&Profile::Tailscale)?;
+        remove_local_file(&logged_out)?;
+        Ok(
+            "Disconnected Tailscale and removed the local identity. Logout expires the device's node key; the expired device may remain in the Tailscale admin console.",
+        )
+    }
+
+    async fn cleanup_cloudflare(&self, tunnel: &mut Option<Child>) -> anyhow::Result<&'static str> {
+        let journal = self.state.join(CLOUDFLARE_CLEANUP);
+        let mut plan = match optional_json::<CloudflareCleanup>(&journal)
+            .map_err(|_| anyhow::anyhow!("Could not read the Cloudflare cleanup journal"))?
+        {
+            Some(plan) => Some(plan),
+            None => self.cloudflare_cleanup_plan()?,
+        };
+        self.guard_cleanup(
+            &Profile::Cloudflare,
+            &plan
+                .as_ref()
+                .map(|plan| plan.hosts.clone())
+                .unwrap_or_default(),
+        )
+        .await?;
+        let cert = self.state.join(".cloudflared/cert.pem");
+        if let Some(plan) = plan.as_mut() {
+            anyhow::ensure!(
+                cloudflare_credential_name(&plan.credential),
+                "Invalid managed Cloudflare credential path"
+            );
+            if !plan.remote_done {
+                let zone = cloudflare_domain(&cert).await?;
+                anyhow::ensure!(
+                    plan.hosts
+                        .iter()
+                        .all(|host| domain(host) && host.ends_with(&format!(".{zone}"))),
+                    "Managed Cloudflare ingress is outside the authorized zone; no DNS was changed"
+                );
+                let auth = cloudflare_authorization(&std::fs::read_to_string(&cert)?)?;
+                anyhow::ensure!(
+                    auth.account_id.eq_ignore_ascii_case(&plan.account),
+                    "Cloudflare authorization does not match this installation's tunnel account"
+                );
+                write_json(&journal, plan)?;
+                stop_child(tunnel).await?;
+                remove_cloudflare_dns(&auth, plan).await?;
+                let cert_arg = cert.to_string_lossy();
+                let tunnel_id = plan.tunnel.to_string();
+                let binary = "/usr/local/bin/cloudflared";
+                if self
+                    .output(
+                        binary,
+                        &["tunnel", "--origincert", &cert_arg, "delete", &tunnel_id],
+                    )
+                    .await
+                    .is_err()
+                {
+                    let listed = self
+                        .output(
+                            binary,
+                            &[
+                                "tunnel",
+                                "--origincert",
+                                &cert_arg,
+                                "list",
+                                "--show-deleted",
+                                "--id",
+                                &tunnel_id,
+                                "--output",
+                                "json",
+                            ],
+                        )
+                        .await
+                        .ok()
+                        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+                    let entry = listed
+                        .as_ref()
+                        .and_then(|value| listed_tunnel(value, plan.tunnel));
+                    if !entry.is_some_and(tunnel_deleted) {
+                        let has_connections = entry
+                            .and_then(|entry| entry["connections"].as_array())
+                            .is_some_and(|connections| !connections.is_empty());
+                        anyhow::ensure!(
+                            has_connections
+                                && self
+                                    .output(
+                                        binary,
+                                        &[
+                                            "tunnel",
+                                            "--origincert",
+                                            &cert_arg,
+                                            "cleanup",
+                                            &tunnel_id
+                                        ]
+                                    )
+                                    .await
+                                    .is_ok()
+                                && self
+                                    .output(
+                                        binary,
+                                        &[
+                                            "tunnel",
+                                            "--origincert",
+                                            &cert_arg,
+                                            "delete",
+                                            &tunnel_id
+                                        ]
+                                    )
+                                    .await
+                                    .is_ok(),
+                            "Could not confirm Cloudflare tunnel deletion. Local credentials were preserved; check tunnel permissions and dependencies, then retry."
+                        );
+                    }
+                }
+                plan.remote_done = true;
+                write_json(&journal, plan)?;
+            }
+            remove_local_file(&self.state.join("cloudflare.json"))?;
+            remove_local_file(&self.state.join("cloudflare-next.json"))?;
+            remove_local_file(&self.state.join(&plan.credential))?;
+        } else {
+            anyhow::ensure!(
+                tunnel.is_none() && !cloudflare_configured(&self.state),
+                "Could not identify the managed Cloudflare tunnel. Verify it in Cloudflare before retrying."
+            );
+            remove_local_file(&cert)?;
+            self.clear_provider_state(&Profile::Cloudflare)?;
+            return Ok(
+                "No managed Cloudflare tunnel was found. Local Cloudflare authorization was cleared; account authorization was not revoked.",
+            );
+        }
+        remove_local_file(&cert)?;
+        self.clear_provider_state(&Profile::Cloudflare)?;
+        remove_local_file(&journal)?;
+        Ok(
+            "Disconnected Cloudflare. Removed the managed tunnel and matching DNS records, and cleared local Cloudflare credentials. Account authorization was not revoked.",
+        )
+    }
+
     async fn rename_cloudflare(
         &self,
         request: &ConnectionRequest,
@@ -404,6 +908,16 @@ impl Agent {
             format!("talos-companion.{domain}"),
             format!("omni.{domain}"),
         ];
+        let config = self.state.join("cloudflare.json");
+        let configuration = json!({"tunnel":id,"credentials-file":credential,"ingress":[
+            {"hostname":hostnames[0],"service":"http://127.0.0.1:18081"},
+            {"hostname":hostnames[1],"service":"http://127.0.0.1:18082"},
+            {"service":"http_status:404"}
+        ]});
+        let staged = self.state.join("cloudflare-next.json");
+        if !config.try_exists()? && !staged.try_exists()? {
+            write_json(&staged, &configuration)?;
+        }
         for hostname in &hostnames {
             self.output(
                 "/usr/local/bin/cloudflared",
@@ -419,12 +933,6 @@ impl Agent {
             )
             .await.map_err(|_| anyhow::anyhow!("Couldn’t create the DNS record for {hostname}. Check that the approved domain matches and that this hostname has no conflicting DNS record, then try again."))?;
         }
-        let config = self.state.join("cloudflare.json");
-        let configuration = json!({"tunnel":id,"credentials-file":credential,"ingress":[
-            {"hostname":hostnames[0],"service":"http://127.0.0.1:18081"},
-            {"hostname":hostnames[1],"service":"http://127.0.0.1:18082"},
-            {"service":"http_status:404"}
-        ]});
         write_json(&config, &configuration)?;
         self.output(
             "/usr/local/bin/cloudflared",
@@ -670,6 +1178,33 @@ fn cloudflare_configured(state: &Path) -> bool {
         || state.join("cloudflare.json").is_file()
 }
 
+fn cleanup_status(path: &Path, id: &str, state: &str, message: &str) -> anyhow::Result<()> {
+    write_json(
+        path,
+        &CleanupStatus {
+            id: id.into(),
+            state: state.into(),
+            message: message.into(),
+        },
+    )
+}
+
+fn recover_cleanup(path: &Path) -> anyhow::Result<Option<CleanupStatus>> {
+    let status: Option<CleanupStatus> = optional_json(path)
+        .map_err(|_| anyhow::anyhow!("Could not read the provider cleanup journal"))?;
+    if let Some(status) = &status
+        && status.state == "running"
+    {
+        cleanup_status(
+            path,
+            &status.id,
+            "failed",
+            "Provider cleanup was interrupted. Check provider status and explicitly retry the disconnect.",
+        )?;
+    }
+    Ok(status)
+}
+
 pub async fn run() -> anyhow::Result<()> {
     anyhow::ensure!(
         cfg!(target_os = "linux"),
@@ -685,6 +1220,8 @@ pub async fn run() -> anyhow::Result<()> {
         .write(true)
         .open(state.join(".lock"))?;
     lock.try_lock()?;
+    let cleanup_path = control.join("cleanup-status.json");
+    let mut last_cleanup = recover_cleanup(&cleanup_path)?.map(|status| status.id);
     let source = |key: &str, default: &str| -> anyhow::Result<String> {
         let value = std::env::var(key).unwrap_or_else(|_| default.into());
         let url = url::Url::parse(&value)?;
@@ -732,7 +1269,10 @@ pub async fn run() -> anyhow::Result<()> {
         });
         relays.spawn(async move { axum::serve(listener, router).await });
     }
-    let mut daemon = if provider_bundled(&Profile::Tailscale) {
+    let mut daemon = if provider_bundled(&Profile::Tailscale)
+        && agent.state.join("tailscaled.state").try_exists()?
+        && !agent.state.join(TAILSCALE_LOGGED_OUT).try_exists()?
+    {
         Some(agent.daemon_command().spawn()?)
     } else {
         None
@@ -740,7 +1280,10 @@ pub async fn run() -> anyhow::Result<()> {
     // Heartbeat runs during browser authorization as well as while idle.
     let mut heartbeat = tokio::spawn(heartbeat(agent.clone()));
     let mut tunnel: Option<Child> = None;
-    if provider_bundled(&Profile::Cloudflare) && cloudflare_configured(&agent.state) {
+    if provider_bundled(&Profile::Cloudflare)
+        && !agent.state.join(CLOUDFLARE_CLEANUP).try_exists()?
+        && cloudflare_configured(&agent.state)
+    {
         tunnel = Some(agent.spawn_cloudflare(&agent.state.join("cloudflare.json"))?);
     }
     let mut last = read_json::<ConnectionStatus>(&control.join("status.json"))
@@ -749,6 +1292,57 @@ pub async fn run() -> anyhow::Result<()> {
         .map(|s| s.id)
         .unwrap_or_default();
     loop {
+        if let Ok(request) = read_json::<CleanupRequest>(&control.join("cleanup-request.json"))
+            && last_cleanup.as_deref() != Some(request.id.as_str())
+            && request.expires_at > now()
+        {
+            cleanup_status(
+                &cleanup_path,
+                &request.id,
+                "running",
+                "Disconnecting the managed provider…",
+            )?;
+            last_cleanup = Some(request.id.clone());
+            let deadline = Duration::from_secs(
+                request
+                    .expires_at
+                    .saturating_sub(now())
+                    .saturating_sub(3)
+                    .min(165),
+            );
+            let result = tokio::time::timeout(deadline, async {
+                anyhow::ensure!(
+                    !read_json::<ConnectionRequest>(&control.join("request.json")).is_ok_and(
+                        |connection| { connection.id != last && connection.expires_at > now() }
+                    ),
+                    "Finish the pending provider authorization before disconnecting"
+                );
+                anyhow::ensure!(
+                    provider_bundled(&request.profile),
+                    "The provider connector is not available"
+                );
+                match request.profile {
+                    Profile::Cloudflare => agent.cleanup_cloudflare(&mut tunnel).await,
+                    Profile::Tailscale => agent.cleanup_tailscale(&mut daemon).await,
+                    Profile::Lan => anyhow::bail!("LAN has no provider to disconnect"),
+                }
+            })
+            .await;
+            match result {
+                Ok(Ok(message)) => {
+                    cleanup_status(&cleanup_path, &request.id, "succeeded", message)?
+                }
+                Ok(Err(error)) => {
+                    cleanup_status(&cleanup_path, &request.id, "failed", &error.to_string())?
+                }
+                Err(_) => cleanup_status(
+                    &cleanup_path,
+                    &request.id,
+                    "failed",
+                    "Provider cleanup timed out. Some remote changes may have completed; explicitly retry the disconnect.",
+                )?,
+            }
+        }
         if let Some(child) = daemon.as_mut() {
             anyhow::ensure!(child.try_wait()?.is_none(), "Tailscale daemon stopped");
         }
@@ -778,6 +1372,10 @@ pub async fn run() -> anyhow::Result<()> {
                     );
                     match request.profile {
                         Profile::Cloudflare => {
+                            anyhow::ensure!(
+                                !agent.state.join(CLOUDFLARE_CLEANUP).try_exists()?,
+                                "Finish the interrupted Cloudflare disconnect before reconnecting"
+                            );
                             let (integration, child) = if request.companion_url.is_empty() {
                                 agent.cloudflare(&request).await?
                             } else {
@@ -790,6 +1388,13 @@ pub async fn run() -> anyhow::Result<()> {
                             Ok(integration)
                         }
                         Profile::Tailscale => {
+                            anyhow::ensure!(
+                                !agent.state.join(TAILSCALE_LOGGED_OUT).try_exists()?,
+                                "Finish the interrupted Tailscale disconnect before reconnecting"
+                            );
+                            if daemon.is_none() {
+                                daemon = Some(agent.daemon_command().spawn()?);
+                            }
                             if request.companion_url.is_empty() {
                                 agent.tailscale(&request).await
                             } else {
@@ -831,6 +1436,84 @@ pub async fn run() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn interrupted_cleanup_becomes_terminal_even_without_a_current_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("cleanup-status.json");
+        cleanup_status(&status_path, "old", "running", "working").unwrap();
+        assert_eq!(recover_cleanup(&status_path).unwrap().unwrap().id, "old");
+        let recovered: CleanupStatus = read_json(&status_path).unwrap();
+        assert_eq!(recovered.state, "failed");
+        assert!(recovered.message.contains("explicitly retry"));
+        assert_eq!(
+            recover_cleanup(&status_path).unwrap().unwrap().state,
+            "failed"
+        );
+    }
+
+    #[tokio::test]
+    async fn cloudflare_dns_retry_skips_deleted_records_and_preserves_other_targets() {
+        use axum::{Json, Router, extract::Request};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let tunnel = uuid::Uuid::new_v4();
+        let target = format!("{tunnel}.cfargotunnel.com");
+        let host = "companion.example.com";
+        let good_id = "11111111111111111111111111111111";
+        let changed_id = "22222222222222222222222222222222";
+        let other_id = "33333333333333333333333333333333";
+        let deletes = Arc::new(AtomicUsize::new(0));
+        let calls = deletes.clone();
+        let router = Router::new().fallback(move |request: Request| {
+            let calls = calls.clone();
+            let target = target.clone();
+            async move {
+                let record = |id, name, content: &str| json!({"id":id,"name":name,"content":content,"type":"CNAME"});
+                let base = "/dns_records";
+                let path = request.uri().path();
+                let result = match (request.method().as_str(), path) {
+                    ("GET", "/dns_records") => {
+                        assert!(request.uri().query().unwrap().contains("name.exact=companion.example.com"));
+                        let mut rows = vec![record(changed_id, host, &target), record(other_id, "other.example.com", &target), record(other_id, host, "other.cfargotunnel.com")];
+                        if calls.load(Ordering::SeqCst) == 0 {
+                            rows.push(record(good_id, host, &target));
+                        }
+                        return Json(json!({"success":true,"result_info":{"total_pages":1},"result":rows}));
+                    }
+                    ("GET", _) if path == format!("{base}/{good_id}") => record(good_id, host, &target),
+                    ("GET", _) if path == format!("{base}/{changed_id}") => record(changed_id, host, "changed.example.com"),
+                    ("DELETE", _) if path == format!("{base}/{good_id}") => {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        json!({"id":good_id})
+                    }
+                    _ => panic!("unexpected DNS request"),
+                };
+                Json(json!({"success":true,"result":result}))
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}/dns_records", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let plan = CloudflareCleanup {
+            tunnel,
+            account: String::new(),
+            credential: String::new(),
+            hosts: [host.to_owned()].into(),
+            remote_done: false,
+        };
+        for _ in 0..2 {
+            remove_tunnel_dns(&client, &endpoint, "test-token", &plan)
+                .await
+                .unwrap();
+        }
+        assert_eq!(deletes.load(Ordering::SeqCst), 1);
+        server.abort();
+    }
+
     #[tokio::test]
     async fn tailscale_browser_login_https_approval_and_existing_identity_use_localapi() {
         use std::sync::{

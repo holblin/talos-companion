@@ -4,6 +4,7 @@ import { Button } from "@react-spectrum/s2/Button";
 import { ButtonGroup } from "@react-spectrum/s2/ButtonGroup";
 import { Checkbox } from "@react-spectrum/s2/Checkbox";
 import { Link } from "@react-spectrum/s2/Link";
+import { ToastQueue } from "@react-spectrum/s2/Toast";
 import { api } from "./api";
 import Panel from "./Panel";
 import Field from "./Field";
@@ -119,6 +120,15 @@ export default function PublicUrls({
             r.integration.companion_url === integration.companion_url,
         );
         const active = integration.companion_url === catalog.active_issuer;
+        const providerActive =
+          catalog.active_profile === integration.profile ||
+          catalog.accesses.some(
+            (entry) =>
+              entry.integration.profile === integration.profile &&
+              entry.integration.companion_url === catalog.active_issuer,
+          );
+        const providerName =
+          integration.profile === "tailscale" ? "Tailscale" : "Cloudflare";
         return (
           <section key={key} aria-label={integration.companion_url}>
             <h3 className={documentClass("h3")}>{integration.companion_url}</h3>
@@ -203,6 +213,43 @@ export default function PublicUrls({
                 This removes the saved address. Provider tunnels keep running.
                 Check that clients have migrated before removing it.
               </RemoveAction>
+              {integration.profile !== "lan" && (
+                <RemoveAction
+                  title={`Disconnect ${providerName} and clean up?`}
+                  actionLabel={`Disconnect ${providerName}`}
+                  isDisabled={
+                    busy ||
+                    providerActive ||
+                    window.location.origin === integration.companion_url
+                  }
+                  disabledReason={
+                    providerActive
+                      ? "Migrate the active public URL to another provider or Local HTTPS first."
+                      : window.location.origin === integration.companion_url
+                        ? "Open Companion through another access method before disconnecting this provider."
+                        : undefined
+                  }
+                  onRemove={() => {
+                    void work(async () => {
+                      const result = await api<{ message: string }>(
+                        "/api/companion/access",
+                        {
+                          profile: integration.profile,
+                          companion_url: integration.companion_url,
+                          cleanup_provider: true,
+                        },
+                        "DELETE",
+                      );
+                      await refresh();
+                      ToastQueue.positive(result.message);
+                    });
+                  }}
+                >
+                  {integration.profile === "tailscale"
+                    ? "Disconnect the entire Companion Tailscale device, clear its HTTPS routes, expire its node key by logging out, and remove its local identity. All saved Tailscale URLs are removed. Omni and backups using this device will stop working. An expired device record may remain in the Tailscale admin console; delete it there if needed. This does not revoke account-wide permissions."
+                    : "Disconnect the entire Companion Cloudflare tunnel and delete its managed DNS routes and local credentials. All saved Cloudflare URLs are removed. Omni and backups using this tunnel will stop working. Other tunnels and unrelated DNS records are preserved. Account-wide Cloudflare authorization is not revoked; manage it in Cloudflare if needed."}
+                </RemoveAction>
+              )}
             </ButtonGroup>
           </section>
         );

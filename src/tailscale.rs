@@ -168,6 +168,83 @@ impl LocalApi {
             .await?;
         Ok(())
     }
+
+    pub async fn disconnect(&self) -> anyhow::Result<()> {
+        let response = self
+            .request(Method::GET, "serve-config", None, None)
+            .await?;
+        let etag = response
+            .headers()
+            .get(reqwest::header::ETAG)
+            .context("Tailscale serve configuration has no ETag")?
+            .to_str()?
+            .to_owned();
+        let mut config = Self::json(response).await?;
+        if clear_managed_serve(&mut config)? {
+            self.request(Method::POST, "serve-config", Some(&config), Some(&etag))
+                .await?;
+        }
+        self.request(Method::POST, "logout", None, None).await?;
+        Ok(())
+    }
+}
+
+fn clear_managed_serve(config: &mut Value) -> anyhow::Result<bool> {
+    if config.is_null() {
+        return Ok(false);
+    }
+    anyhow::ensure!(config.is_object(), "Invalid Tailscale serve configuration");
+    let Some(web) = config.get_mut("Web").filter(|web| !web.is_null()) else {
+        return Ok(false);
+    };
+    let web = web
+        .as_object_mut()
+        .context("Invalid Tailscale web routes")?;
+    let mut removed = Vec::new();
+    let mut empty_ports = Vec::new();
+    for (port, proxy) in [
+        ("443", "http://127.0.0.1:18081"),
+        ("8443", "http://127.0.0.1:18082"),
+        ("10000", "http://127.0.0.1:18083"),
+    ] {
+        let suffix = format!(":{port}");
+        for (host_port, route) in web.iter_mut() {
+            if host_port.ends_with(&suffix)
+                && let Some(handlers) = route.get_mut("Handlers").and_then(Value::as_object_mut)
+                && handlers.get("/") == Some(&json!({"Proxy": proxy}))
+            {
+                handlers.remove("/");
+                removed.push((host_port.clone(), handlers.is_empty()));
+            }
+        }
+        if removed.iter().any(|(host, _)| host.ends_with(&suffix))
+            && !web.keys().any(|host| {
+                host.ends_with(&suffix) && !removed.iter().any(|(key, empty)| key == host && *empty)
+            })
+        {
+            empty_ports.push(port);
+        }
+    }
+    for (host, empty) in &removed {
+        if *empty {
+            web.remove(host);
+        }
+    }
+    if let Some(tcp) = config.get_mut("TCP").and_then(Value::as_object_mut) {
+        for port in empty_ports {
+            if tcp.get(port) == Some(&json!({"HTTPS": true})) {
+                tcp.remove(port);
+            }
+        }
+    }
+    if let Some(funnel) = config.get_mut("AllowFunnel").and_then(Value::as_object_mut) {
+        for (host, empty) in &removed {
+            if *empty {
+                funnel.remove(host);
+            }
+        }
+    }
+    Ok(!removed.is_empty())
 }
 
 #[cfg(test)]
@@ -180,6 +257,61 @@ mod tests {
         response::Response,
     };
     use std::sync::{Arc, Mutex};
+
+    #[tokio::test]
+    async fn disconnect_clears_only_managed_routes_and_logs_out_after_etag_update() {
+        for reject_update in [false, true] {
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let captured = calls.clone();
+            let router = Router::new().fallback(move |request: Request| {
+                let captured = captured.clone();
+                async move {
+                    let (parts, body) = request.into_parts();
+                    captured.lock().unwrap().push(parts.uri.path().to_owned());
+                    match (parts.method.as_str(), parts.uri.path()) {
+                        ("GET", "/localapi/v0/serve-config") => Response::builder()
+                            .header("etag", "saved")
+                            .body(Body::from(json!({
+                                "TCP":{"443":{"HTTPS":true},"8443":{"HTTPS":true},"10000":{"HTTPS":true}},
+                                "Web":{
+                                    "old.example.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:18081"}}},
+                                    "new.example.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:18081"},"/keep":{"Text":"unmanaged"}}},
+                                    "new.example.ts.net:8443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:9999"}}},
+                                    "new.example.ts.net:10000":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:18083"}}}
+                                },
+                                "AllowFunnel":{"old.example.ts.net:443":true,"new.example.ts.net:8443":true}
+                            }).to_string())).unwrap(),
+                        ("POST", "/localapi/v0/serve-config") => {
+                            assert_eq!(parts.headers["if-match"], "saved");
+                            let body = to_bytes(body, 65536).await.unwrap();
+                            let config: Value = serde_json::from_slice(&body).unwrap();
+                            assert_eq!(config, json!({
+                                "TCP":{"443":{"HTTPS":true},"8443":{"HTTPS":true}},
+                                "Web":{
+                                    "new.example.ts.net:443":{"Handlers":{"/keep":{"Text":"unmanaged"}}},
+                                    "new.example.ts.net:8443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:9999"}}}
+                                },
+                                "AllowFunnel":{"new.example.ts.net:8443":true}
+                            }));
+                            Response::builder().status(if reject_update { 412 } else { 200 }).body(Body::empty()).unwrap()
+                        }
+                        ("POST", "/localapi/v0/logout") => Response::builder().status(204).body(Body::empty()).unwrap(),
+                        _ => panic!("unexpected LocalAPI request"),
+                    }
+                }
+            });
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let api = LocalApi::for_test(format!("http://{}", listener.local_addr().unwrap()));
+            let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+            assert_eq!(api.disconnect().await.is_err(), reject_update);
+            let mut expected = vec!["/localapi/v0/serve-config", "/localapi/v0/serve-config"];
+            if !reject_update {
+                expected.push("/localapi/v0/logout");
+            }
+            assert_eq!(*calls.lock().unwrap(), expected);
+            server.abort();
+        }
+    }
 
     #[tokio::test]
     async fn protocol_preserves_identity_and_unrelated_routes_and_uses_etag() {
