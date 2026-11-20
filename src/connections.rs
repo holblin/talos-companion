@@ -52,6 +52,8 @@ pub fn settings_path() -> PathBuf {
 }
 #[derive(Default, Deserialize, Serialize)]
 pub struct Settings {
+    #[serde(default)]
+    pub removed_urls: Vec<String>,
     pub omni_origin: String,
     pub integration: Option<Integration>,
     #[serde(default)]

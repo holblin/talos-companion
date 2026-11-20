@@ -89,11 +89,17 @@ export default function SetupWizard({
             "Save your backup passphrase and re-enter it to confirm. Uncheck the box to see the original again.",
           );
         }
+        if (deployment.public_url !== window.location.origin) {
+          throw new Error(
+            "Installation blocked: open the intended public URL in your browser before continuing.",
+          );
+        }
         if (mode === "create") {
           await api(
             "/api/setup",
             {
               ...account,
+              public_url: deployment.public_url,
               settings,
               backup_passphrase_confirmation: recoveryConfirmation,
             },
@@ -527,7 +533,19 @@ export default function SetupWizard({
                     Public address / OIDC issuer
                   </dt>
                   <dd className={documentClass("dd")}>
-                    {deployment?.public_url}
+                    <Field
+                      label="Public URL"
+                      type="url"
+                      value={deployment?.public_url ?? window.location.origin}
+                      onChange={(value) => {
+                        setDeployment((previous) =>
+                          previous
+                            ? { ...previous, public_url: value }
+                            : previous,
+                        );
+                      }}
+                      description="Must match this browser address. Open your intended public URL before installing."
+                    />
                   </dd>
                   <dt className={documentClass("dt")}>Installation</dt>
                   <dd className={documentClass("dd")}>
@@ -565,7 +583,8 @@ export default function SetupWizard({
                   <p className={documentClass("p", classes("hint"))}>
                     The public address uses HTTP. For access outside your
                     trusted local network, configure HTTPS at your reverse proxy
-                    and update PUBLIC_URL before connecting Omni.
+                    and update your public URL in Companion access before
+                    connecting Omni.
                   </p>
                 )}
                 {deployment && (

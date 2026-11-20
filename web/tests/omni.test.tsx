@@ -1,5 +1,5 @@
 import { User } from "@react-aria/test-utils";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "@react-spectrum/s2/Provider";
 import { ToastContainer } from "@react-spectrum/s2/Toast";
@@ -48,8 +48,10 @@ let accesses: AccessMethod[],
 let client: QueryClient;
 let providers: Integration["profile"][];
 let localDnsPending: boolean;
+let unhealthy = false;
 beforeEach(() => {
   localDnsPending = false;
+  unhealthy = false;
   providers = ["cloudflare", "tailscale"];
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -71,7 +73,15 @@ beforeEach(() => {
       if (init?.method === "POST") posted.push({ path, body });
       let value: unknown = { ok: true },
         status = 200;
-      if (path === "/api/companion/access") {
+      if (path === "/api/companion/access/health") {
+        value = {
+          results: accesses.map((a) => ({
+            integration: a.integration,
+            available: !unhealthy,
+            local_dns_pending: false,
+          })),
+        };
+      } else if (path === "/api/companion/access") {
         if (init?.method === "POST") {
           const base =
             [local, cloud, tailscale].find((i) => i.profile === body.profile) ??
@@ -354,7 +364,17 @@ async function selectOmni(name: string) {
         name: /Companion access for Omni/,
       }),
     })
-    .toggleOptionSelection({ option: name });
+    .toggleOptionSelection({
+      option:
+        name +
+        " " +
+        (name === "Tailscale"
+          ? tailscale
+          : name === "Cloudflare"
+            ? cloud
+            : local
+        ).companion_url,
+    });
   return events;
 }
 it("enumerates independent access methods without an Omni prerequisite", async () => {
@@ -370,7 +390,7 @@ it("enumerates independent access methods without an Omni prerequisite", async (
   ).toBeTruthy();
   expect(screen.getByRole("button", { name: "Manage Tailscale" })).toBeTruthy();
   expect(screen.queryByRole("textbox", { name: "Omni address" })).toBeNull();
-  expect(posted).toEqual([]);
+  expect(posted.map((p) => p.path)).toEqual(["/api/companion/access/health"]);
 });
 it("saves local access after explicit trust and verification without changing the issuer", async () => {
   const events = userEvent.setup();
@@ -575,4 +595,46 @@ it("keeps manual Cloudflare domain entry under Advanced and displays actionable 
     profile: "cloudflare",
     domain: "example.test",
   });
+});
+
+it("proposes the browser URL and verifies consent before migrating a saved public URL", async () => {
+  accesses = [
+    { integration: local, verified_at: 100 },
+    { integration: cloud, verified_at: 100 },
+  ];
+  issuer = local.companion_url;
+  const events = userEvent.setup();
+  mount();
+  await screen.findByText(/You’re using a different address/);
+  const address = await screen.findByRole("region", {
+    name: cloud.companion_url,
+  });
+  const migrate = within(address).getByRole<HTMLButtonElement>("button", {
+    name: "Migrate public URL",
+  });
+  expect(migrate.disabled).toBe(true);
+  await events.click(within(address).getByRole("checkbox"));
+  await events.click(migrate);
+  await waitFor(() => {
+    expect(issuer).toBe(cloud.companion_url);
+  });
+  expect(
+    accesses.some((a) => a.integration.companion_url === local.companion_url),
+  ).toBe(true);
+});
+it("checks old URLs automatically and proposes migration or removal when unavailable", async () => {
+  accesses = [{ integration: cloud, verified_at: 100 }];
+  unhealthy = true;
+  mount();
+  const address = await screen.findByRole("region", {
+    name: cloud.companion_url,
+  });
+  await within(address).findByText(/Unavailable — check routing/);
+  expect(
+    within(address).queryByRole("button", { name: "Migrate public URL" }),
+  ).toBeNull();
+  expect(
+    within(address).getByRole<HTMLButtonElement>("button", { name: "Remove" })
+      .disabled,
+  ).toBe(false);
 });

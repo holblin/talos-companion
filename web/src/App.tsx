@@ -94,6 +94,7 @@ type Settings = {
 type Overview = {
   settings: Settings;
   issuer: string;
+  public_urls?: string[];
   client_id: string;
   client_secret: string;
   redirect_uri: string;
@@ -860,6 +861,20 @@ export default function App() {
             )}
           </div>
           {messages}
+          {user.admin &&
+            overview &&
+            view !== "Companion access" &&
+            overview.issuer !== window.location.origin &&
+            !overview.public_urls?.includes(window.location.origin) && (
+              <p className={documentClass("p")} role="status">
+                This browser address differs from your saved public URLs.{" "}
+                <Link href="/access">
+                  Verify this address and add it or migrate your public URL
+                </Link>
+                .
+              </p>
+            )}
+
           {user.admin && (
             <>
               <QueryNotice

@@ -12,8 +12,8 @@ const read=path=>readFileSync(resolve(root,path),'utf8');
 const sorted=values=>[...values].sort();
 
 for(const [file,variables,environment] of [
-  ['compose.yaml',['PUID','PGID','WEB_PORT','S3_PORT','PUBLIC_URL','SETUP_TOKEN','BACKUP_PASSPHRASE','DATA_PATH'],['PUBLIC_URL','SETUP_TOKEN','BACKUP_PASSPHRASE','RUST_LOG']],
-  ['deploy/compose.hub.yaml',['TALOS_COMPANION_IMAGE','PUID','PGID','WEB_PORT','S3_PORT','PUBLIC_URL','SETUP_TOKEN','BACKUP_PASSPHRASE','DATA_PATH'],['PUBLIC_URL','SETUP_TOKEN','BACKUP_PASSPHRASE']],
+  ['compose.yaml',['PUID','PGID','WEB_PORT','S3_PORT','SETUP_TOKEN','BACKUP_PASSPHRASE','DATA_PATH'],['SETUP_TOKEN','BACKUP_PASSPHRASE','RUST_LOG']],
+  ['deploy/compose.hub.yaml',['TALOS_COMPANION_IMAGE','PUID','PGID','WEB_PORT','S3_PORT','SETUP_TOKEN','BACKUP_PASSPHRASE','DATA_PATH'],['SETUP_TOKEN','BACKUP_PASSPHRASE']],
 ]) test(`${file} keeps the existing Docker setup contract`,()=>{
   const source=read(file);
   assert.deepEqual(sorted(new Set([...source.matchAll(/\$\{([A-Z0-9_]+)/g)].map(m=>m[1]))),sorted(variables),reason);
@@ -34,7 +34,7 @@ for(const file of ['deploy/unraid/talos-companion.xml','dist/community-apps/temp
       const attr=name=>new RegExp(`${name}="([^"]*)"`).exec(attrs)?.[1];
       return `${attr('Type')}:${attr('Target')}`;
     });
-    assert.deepEqual(sorted(parameters),sorted(['Port:8080','Port:9000','Path:/data','Path:/omni-managed','Variable:PUBLIC_URL','Variable:SETUP_TOKEN','Variable:BACKUP_PASSPHRASE']),reason);
+    assert.deepEqual(sorted(parameters),sorted(['Port:8080','Port:9000','Path:/data','Path:/omni-managed','Variable:SETUP_TOKEN','Variable:BACKUP_PASSPHRASE']),reason);
     assert.equal(/<ExtraParams>([^<]*)<\/ExtraParams>/.exec(source)?.[1],'--user 99:100 --read-only --cap-drop ALL --security-opt no-new-privileges:true',reason);
     assert.match(source,/<Privileged>false<\/Privileged>/,reason);
   });

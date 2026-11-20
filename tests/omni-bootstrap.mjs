@@ -105,6 +105,9 @@ test("offline Omni bootstrap preserves identity, authorizes downloads and review
     ).json();
     assert.equal(second.account_id, first.account_id);
     assert.ok((await download()).includes(settings.client_secret));
+    const mismatchedApply = await request(port, "/api/omni/apply", { cookie, body: { integration: { profile: "lan", companion_url: "https://wrong.test", omni_url: config.omni_url, s3_endpoint: "https://wrong.test" } } });
+    assert.equal(mismatchedApply.status, 400);
+    assert.match(await mismatchedApply.text(), /Installation blocked/);
     for (const changed of [
       { companion_url: "https://wrong.test" },
       { etcd_path: "/config/etcd" },

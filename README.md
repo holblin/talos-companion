@@ -63,7 +63,7 @@ Tool versions live in `mise.toml`; download metadata lives in `mise.lock`. Rust 
 Optionally set `SETUP_TOKEN` (24+ characters) and `BACKUP_PASSPHRASE` (16+ characters) in your shell. Otherwise a fresh installation generates private persistent `/data/setup-token` and `/data/backup-passphrase` files with mode `0600`; the setup token appears in the first-start logs. The backup passphrase is shown only in the token-protected setup wizard. An initialized installation never silently replaces missing secret files. `.env` is used by Docker Compose; it is not automatically read by the Rust executable.
 
 ```sh
-# Terminal 1: backend. This task sets PUBLIC_URL=http://localhost:5173.
+# Terminal 1: backend. Setup detects the browser address.
 mise run dev
 # Terminal 2: Vite, with API/OIDC proxies to the backend.
 mise run web:dev
@@ -180,9 +180,10 @@ Native NFSv3 and SMB connections are configured in **Backups → Set up NFS / SM
 
 Local and mounted retention runs after a successful write. Drive retention runs after a successful upload and moves expired application-tagged recovery files in its configured folder to Trash. Remote failures preserve the new local recovery file and appear in the UI/logs. Use dedicated destination directories/folders for this instance.
 
+Public URLs are configured in the setup wizard and Companion access UI. Setup requires the chosen URL to match the browser address. Add and verify HTTPS URLs, check saved addresses, and migrate the active issuer before removing an old address. Update Omni sign-in configuration after migration. Existing `PUBLIC_URL` environment values remain supported for legacy bootstrap access.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PUBLIC_URL` | `http://localhost:8080` | Initial browser origin and issuer. The in-app access wizard verifies and activates the HTTPS issuer without changing Docker settings. |
 | `SETUP_TOKEN` | generated on fresh installation | Optional override protecting setup and restore. Minimum 24 characters; otherwise persisted privately in `/data/setup-token`. |
 | `BACKUP_PASSPHRASE` | generated on fresh installation | Optional override encrypting new backups. Minimum 16 characters; otherwise persisted privately in `/data/backup-passphrase`. Save a separate recovery copy. |
 | `DATA_DIR` | `data` (`/data` in Docker) | State, S3 receiver files, and recovery files. |
@@ -205,6 +206,6 @@ Creation writes an encrypted temporary file in `/data/backups`, completes encryp
 
 Retention runs on backup creation, including scheduled backups. New archives include only the newest configured Omni snapshots per cluster. Expired source snapshots are removed **only after** the new local recovery file is fully committed. Only Omni's recognized `<cluster-UUID>/<16-hex-reverse-timestamp>.snapshot` objects and their exact `s3s-fs` sidecars are pruned; unrelated objects, credential files, and multipart staging files are preserved. The receiver pauses S3 operations while archiving and pruning, so configure Omni/proxy timeouts for large snapshots.
 
-Restore is permitted only on an uninitialized instance. The archive is decrypted and validated incrementally in staging before replacement. Absolute paths, traversal, links, special files, duplicate paths, unsupported versions, malformed identity state, oversized metadata fields, and archives with over one million entries are rejected. Archive byte size is not limited. Sessions and pending authorization codes live only in memory and are never backed up. New `PUBLIC_URL`, setup token, and backup passphrase values come from the replacement container environment.
+Restore is permitted only on an uninitialized instance. The archive is decrypted and validated incrementally in staging before replacement. Absolute paths, traversal, links, special files, duplicate paths, unsupported versions, malformed identity state, oversized metadata fields, and archives with over one million entries are rejected. Archive byte size is not limited. Sessions and pending authorization codes live only in memory and are never backed up. Setup token and backup passphrase values come from the replacement container environment. Public URLs are managed in Companion access after restoring.
 
 Keep `/data` private: active credentials and signing keys are stored there; encrypted export protects the recovery file, not the live data directory. Only trusted administrators should have access to backup/identity APIs. Configure local HTTPS, Tailscale or Cloudflare in **Companion access**, then select a verified method in **Omni configuration**. An existing reverse proxy is also supported. The app has no public registration or email verification service: an administrator adding an account asserts ownership of its email address. Omni roles and ACLs remain managed in Omni. Password changes and removals revoke companion sessions; already issued tokens remain valid until expiry (five minutes), and Omni may retain its own sessions.

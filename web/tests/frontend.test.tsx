@@ -72,7 +72,7 @@ beforeEach(() => {
       else if (path === "/api/setup/check")
         value = {
           backup_passphrase: "test recovery passphrase",
-          public_url: overview.issuer,
+          public_url: window.location.origin,
           mounted: null,
           settings,
         };
@@ -582,6 +582,7 @@ describe("Spectrum frontend workflows", () => {
       password: "test-only-password",
       settings,
       backup_passphrase_confirmation: "test recovery passphrase",
+      public_url: window.location.origin,
     });
   });
 

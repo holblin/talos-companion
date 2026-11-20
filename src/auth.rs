@@ -59,6 +59,7 @@ pub fn csrf(app: &App, headers: &HeaderMap) -> Result<()> {
     if let Some(origin) = headers.get("origin")
         && origin.to_str().ok() != Some(app.issuer().as_str())
         && origin.to_str().ok() != Some(app.public_url.as_str())
+        && !same_request_origin(headers)
         && !crate::connections::settings()
             .accesses
             .iter()
@@ -70,9 +71,38 @@ pub fn csrf(app: &App, headers: &HeaderMap) -> Result<()> {
             .integration
             .is_some_and(|i| origin.to_str().ok() == Some(i.companion_url.as_str()))
     {
-        return Err(bad("Origin does not match PUBLIC_URL"));
+        return Err(bad(
+            "This browser address is not a configured Companion URL",
+        ));
     }
     Ok(())
+}
+// Browser-facing Host is used directly; forwarded headers cannot grant CSRF access.
+fn same_request_origin(headers: &HeaderMap) -> bool {
+    headers
+        .get("origin")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| crate::endpoint_checks::origin(v).ok())
+        .is_some_and(|url| {
+            headers.get("host").and_then(|v| v.to_str().ok())
+                == Some(&url[url::Position::BeforeHost..url::Position::AfterPort])
+        })
+}
+fn setup_origin(app: &App, headers: &HeaderMap, proposed: Option<&str>) -> Result<String> {
+    let browser = headers
+        .get("origin")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or(&app.public_url);
+    let selected = crate::endpoint_checks::origin(proposed.unwrap_or(browser))
+        .map_err(|_| bad("Enter a public HTTP(S) origin without a path or credentials"))?
+        .origin()
+        .ascii_serialization();
+    if selected != browser.trim_end_matches('/') {
+        return Err(bad(
+            "Installation blocked: the public URL differs from this browser address. Open the intended URL and restart setup.",
+        ));
+    }
+    Ok(selected)
 }
 pub fn setup_auth(app: &App, headers: &HeaderMap) -> Result<()> {
     csrf(app, headers)?;
@@ -125,6 +155,7 @@ pub async fn status(State(app): State<App>) -> Json<Value> {
 }
 #[derive(Deserialize)]
 pub struct Setup {
+    pub public_url: Option<String>,
     #[serde(flatten)]
     pub account: Account,
     pub settings: Option<crate::settings::Settings>,
@@ -136,7 +167,7 @@ pub async fn setup_check(State(app): State<App>, headers: HeaderMap) -> Result<J
         return Err(bad("Already initialized"));
     }
     Ok(Json(
-        json!({"public_url":app.issuer(),"mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"settings":app.settings.borrow().clone(),"backup_passphrase":app.backup_passphrase}),
+        json!({"public_url":setup_origin(&app, &headers, None)?,"mounted":app.mounted.as_ref().map(|p|p.to_string_lossy()),"settings":app.settings.borrow().clone(),"backup_passphrase":app.backup_passphrase}),
     ))
 }
 pub async fn setup(
@@ -151,6 +182,7 @@ pub async fn setup(
         return Err(bad("Already initialized"));
     }
     crate::recovery::confirm(&app, input.backup_passphrase_confirmation.as_deref())?;
+    let public_url = setup_origin(&app, &headers, input.public_url.as_deref())?;
     let mut account = input.account;
     account.admin = true;
     let u = make_user(account)?;
@@ -180,7 +212,10 @@ pub async fn setup(
         s3_secret_key: secret(),
         drive: Drive::default(),
         network: None,
-        integration: Default::default(),
+        integration: crate::omni::Integration {
+            companion_url: public_url.clone(),
+            ..Default::default()
+        },
         omni_bootstrap: None,
     };
     settings.persist(&app.data)?;
@@ -189,6 +224,7 @@ pub async fn setup(
         return Err(e.into());
     }
     *guard = Some(store);
+    app.issuer.send_replace(public_url);
     app.settings.send_replace(settings);
     Ok(Json(json!({"ok":true})))
 }

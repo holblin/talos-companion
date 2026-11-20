@@ -27,7 +27,7 @@ unrelated settings. Keep the original and inspect CLI/later-file overrides befor
 
 ## OIDC login
 
-1. Set Companion’s `PUBLIC_URL` to its stable HTTPS origin, reachable from Omni and from your browser. Put your existing reverse proxy in front of web port 8080. Preserve the Host header; the issuer is taken from `PUBLIC_URL`, never from forwarded request headers.
+1. Configure and verify a stable HTTPS URL in Companion access, reachable from Omni and your browser, then select it as the active public URL. Put your existing reverse proxy in front of web port 8080 and preserve the Host header. The issuer is saved in app state, never inferred from forwarded request headers.
 2. In Companion → Identity, register Omni’s **exact** OIDC callback URL. Current Omni implementations commonly use `https://omni.example.com/oidc/consume`; verify your Omni version’s configuration. Redirect matching is exact.
 3. Use the issuer, client ID, and client secret shown in Companion. An Omni configuration excerpt:
 

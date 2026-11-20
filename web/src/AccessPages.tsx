@@ -1,4 +1,5 @@
 import Panel from "./Panel";
+import PublicUrls from "./PublicUrls";
 import { Link } from "@react-spectrum/s2/Link";
 import { documentClass } from "./layout";
 import { type ReactNode, useState } from "react";
@@ -84,6 +85,9 @@ export function CompanionAccess() {
         <p className={documentClass("p")} role="alert">
           {catalog.error.message}
         </p>
+      )}
+      {catalog.data && (
+        <PublicUrls catalog={catalog.data} onEdit={setEditing} />
       )}
       <div className={classes("three-cols")}>
         {methods.map((method) => {
@@ -322,7 +326,7 @@ function ExistingOmniConfiguration({
 }: { children?: ReactNode } = {}) {
   const catalog = useAccessCatalog();
   const client = useQueryClient();
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<string | null>(null);
   const [accepted, setAccepted] = useState(false);
   const [configured, setConfigured] = useState<Integration | null>(null);
   const { busy, work } = useTask({ toastErrors: true });
@@ -343,7 +347,7 @@ function ExistingOmniConfiguration({
   const verified =
     catalog.data?.accesses.filter((a) => a.verified_at > 0) ?? [];
   const selected = verified.find(
-    (a) => a.integration.profile === profile,
+    (a) => a.integration.profile + a.integration.companion_url === profile,
   )?.integration;
   const changesIssuer =
     selected && selected.companion_url !== catalog.data?.active_issuer;
@@ -393,17 +397,31 @@ function ExistingOmniConfiguration({
               value={profile}
               isDisabled={busy}
               onChange={(value) => {
-                setProfile(value as Profile);
+                setProfile(value as string);
                 setAccepted(false);
               }}
             >
               {verified.map((access) => (
                 <PickerItem
-                  key={access.integration.profile}
-                  id={access.integration.profile}
+                  textValue={
+                    (methods.find(
+                      (m) => m.profile === access.integration.profile,
+                    )?.name ?? access.integration.profile) +
+                    " " +
+                    access.integration.companion_url
+                  }
+                  key={
+                    access.integration.profile +
+                    access.integration.companion_url
+                  }
+                  id={
+                    access.integration.profile +
+                    access.integration.companion_url
+                  }
                 >
                   {methods.find((m) => m.profile === access.integration.profile)
-                    ?.name ?? access.integration.profile}
+                    ?.name ?? access.integration.profile}{" "}
+                  {access.integration.companion_url}
                 </PickerItem>
               ))}
             </Picker>

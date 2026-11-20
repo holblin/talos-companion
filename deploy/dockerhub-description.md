@@ -19,7 +19,7 @@ Version and commit tags use the same suffixes. All variants retain the same depl
 
 Map persistent storage to `/data` with ownership `99:100`. Expose web port `8080` through
 your HTTPS reverse proxy, and make S3 port `9000` reachable from Omni.
-Set `PUBLIC_URL` to the exact browser origin. Leave `SETUP_TOKEN` and `BACKUP_PASSPHRASE`
+Configure public URLs in the setup wizard and Companion access UI. Leave `SETUP_TOKEN` and `BACKUP_PASSPHRASE`
 unset to generate persistent private startup secrets, or supply explicit overrides.
 Find the generated setup token in first-start container logs or `/data/setup-token`.
 The wizard shows the backup passphrase, then hides it and requires exact re-entry after

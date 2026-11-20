@@ -104,10 +104,13 @@ test('Companion gets trusted HTTPS and activates its issuer before any Omni addr
         assert.equal(integration.omni_url, profile === 'cloudflare' ? refreshedProvider.omni_url : '');
         assert.equal(integration.s3_endpoint, profile === 'cloudflare' ? refreshedProvider.s3_endpoint : endpoint.companion_url, 'editing Companion URL preserves the backup endpoint');
       }
+      assert.equal((await request(port, '/api/companion/access', { cookie, method: 'DELETE', body: endpoint })).status, 400, 'active URL cannot be removed');
       validProxy = false;
+      const health = await (await request(port, '/api/companion/access/health', { cookie, body: {} })).json();
+      assert.ok(health.results.filter(r => r.integration.companion_url === proxyEndpoint.companion_url).every(r => !r.available), 'health checks reject a different installation');
       assert.equal((await request(port, '/api/companion/access', { cookie, body: proxyEndpoint })).status, 400);
       const afterFailure = await (await request(port, '/api/companion/access', { cookie })).json();
-      assert.equal(afterFailure.accesses.find(a => a.integration.profile === 'cloudflare').verified_at, 0, 'failed checks mark only that method as needing verification');
+      assert.equal(afterFailure.accesses.find(a => a.integration.profile === 'cloudflare' && a.integration.companion_url === proxyEndpoint.companion_url).verified_at, 0, 'failed checks mark only that method as needing verification');
       assert.ok(afterFailure.accesses.filter(a => a.integration.profile !== 'cloudflare').every(a => a.verified_at > 0));
       assert.equal(afterFailure.active_issuer, endpoint.companion_url, 'a failed alternative does not change the selected issuer');
       assert.equal((await request(port, '/api/companion/activate', { cookie, body: proxyEndpoint })).status, 400, 'an access method needing verification cannot be selected');
@@ -116,16 +119,19 @@ test('Companion gets trusted HTTPS and activates its issuer before any Omni addr
     assert.equal(await (await request(port, '/api/companion/ca', { cookie })).text(), ca, 'retry preserves trust');
     const state = JSON.parse(await readFile(join(data, 'state.json'), 'utf8'));
     assert.equal(state.integration.companion_url, endpoint.companion_url);
-    assert.equal((await (await request(port, '/api/companion/access', { cookie })).json()).accesses.length, 3);
+    assert.equal((await (await request(port, '/api/companion/access', { cookie })).json()).accesses.length, 5, 'old and additional URLs are retained');
     await stop(child); ({ child } = await server(port, data));
     cookie = await login(port);
     const restartedAccesses = (await (await request(port, '/api/companion/access', { cookie })).json()).accesses;
-    assert.equal(restartedAccesses.length, 3, 'access methods survive restart');
+    assert.equal(restartedAccesses.length, 5, 'all URLs survive restart');
     for (const profile of ['cloudflare', 'tailscale']) {
-      const integration = restartedAccesses.find(a => a.integration.profile === profile).integration;
+      const integration = restartedAccesses.find(a => a.integration.profile === profile && a.integration.companion_url === proxyEndpoint.companion_url).integration;
       assert.equal(integration.companion_url, proxyEndpoint.companion_url, 'edited access URLs survive restart');
       assert.equal(integration.s3_endpoint, profile === 'cloudflare' ? refreshedProvider.s3_endpoint : endpoint.companion_url);
     }
+    assert.equal((await request(port, '/api/companion/access', { cookie, method: 'DELETE', body: proxyEndpoint })).status, 200);
+    const cleaned = await (await request(port, '/api/companion/access', { cookie })).json();
+    assert.equal(cleaned.accesses.length, 3, 'remove keeps original URLs and suppresses removed legacy candidates');
     assert.equal(JSON.parse((await trusted(port, ca, '/.well-known/openid-configuration')).body).issuer, endpoint.companion_url);
     assert.equal((await request(port, '/api/companion/check', { cookie, body: endpoint, origin: `http://127.0.0.1:${port}` })).status, 200, 'bootstrap origin remains accepted after restart');
   } finally { if (child) await stop(child); await rm(data, { recursive: true, force: true }); }

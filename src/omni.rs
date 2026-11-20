@@ -176,7 +176,11 @@ pub(crate) fn defaults(app: &App, store: &Store) -> Integration {
     {
         return saved;
     }
-    if !store.integration.companion_url.is_empty() {
+    if !store.integration.companion_url.is_empty()
+        && (!store.integration.s3_endpoint.is_empty()
+            || !store.integration.omni_url.is_empty()
+            || crate::companion_setup::local_root().is_some())
+    {
         let mut integration = store.integration.clone();
         if integration.s3_endpoint.is_empty()
             && integration.profile == Profile::Lan
@@ -258,6 +262,11 @@ pub async fn apply(
 ) -> Result<Json<Value>> {
     auth::csrf(&app, &headers)?;
     auth::admin(&app, &headers).await?;
+    if origin(&req.integration.companion_url)? != origin(&app.issuer())? {
+        return Err(bad(
+            "Installation blocked: select and verify this public URL in Companion access before applying Omni configuration",
+        ));
+    }
     let directory = Path::new(MANAGED);
     if !directory.is_dir() {
         return Err(bad(
@@ -280,6 +289,11 @@ pub async fn apply(
     }
     let _serial = app.backup_lock.lock().await;
     let mut guard = app.store.write().await;
+    if origin(&req.integration.companion_url)? != origin(&app.issuer())? {
+        return Err(bad(
+            "Public URL changed. Review the active URL and preview the configuration again",
+        ));
+    }
     let mut store = guard.clone().ok_or_else(denied)?;
     let planned = plan(&store, &req, directory)?;
     if req.revision.as_deref() != planned["revision"].as_str() {
@@ -560,8 +574,8 @@ pub async fn generate(
 ) -> Result<Json<Value>> {
     auth::csrf(&app, &headers)?;
     let actor = auth::admin(&app, &headers).await?;
-    config.validate(&app.issuer())?;
     let mut guard = app.store.write().await;
+    config.validate(&app.issuer())?;
     let mut store = guard.clone().ok_or_else(denied)?;
     if !store.users.iter().any(|u| u.id == actor.id && u.admin) {
         return Err(denied());

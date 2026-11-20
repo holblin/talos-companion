@@ -198,7 +198,7 @@ for name in talos-companion omni-companion talos-home-proxy; do
 done
 docker run -d --name talos-companion --restart unless-stopped --user 99:100 --read-only --cap-drop ALL --security-opt no-new-privileges:true \
   -p 18480:8080 -p 19000:9000 -v "$COMPANION_DATA:/data" -v "$BASE/managed:/omni-managed" \
-  -e "PUBLIC_URL=$COMPANION_URL" -l net.unraid.docker.managed=dockerman -l "net.unraid.docker.webui=$COMPANION_URL" "$IMAGE" >/dev/null
+  -l net.unraid.docker.managed=dockerman -l "net.unraid.docker.webui=$COMPANION_URL" "$IMAGE" >/dev/null
 # The official Caddy binary carries cap_net_bind_service; keep that capability in
 # the bounding set or Linux refuses exec even though our listeners use high ports.
 docker run -d --name talos-home-proxy --restart unless-stopped --network host --cap-drop ALL --cap-add NET_BIND_SERVICE --security-opt no-new-privileges:true \

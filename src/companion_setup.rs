@@ -274,10 +274,12 @@ pub async fn accesses(State(app): State<App>, headers: HeaderMap) -> Result<Json
     );
     // Legacy entries must be checked explicitly before Omni can select them.
     for integration in candidates.into_iter().flatten() {
-        if !integration.companion_url.is_empty()
-            && !accesses
-                .iter()
-                .any(|a| a.integration.profile == integration.profile)
+        if integration.companion_url.starts_with("https://")
+            && !saved.removed_urls.contains(&integration.companion_url)
+            && !accesses.iter().any(|a| {
+                a.integration.profile == integration.profile
+                    && a.integration.companion_url == integration.companion_url
+            })
         {
             accesses.push(connections::AccessMethod {
                 integration,
@@ -324,7 +326,13 @@ pub async fn save_access(
     let existing = saved
         .accesses
         .iter()
-        .find(|a| a.integration.profile == input.profile)
+        .find(|a| a.integration.profile == input.profile && a.integration.companion_url == origin)
+        .or_else(|| {
+            saved
+                .accesses
+                .iter()
+                .find(|a| a.integration.profile == input.profile)
+        })
         .map(|a| a.integration.clone());
     let legacy = saved
         .integration
@@ -340,12 +348,26 @@ pub async fn save_access(
             s3_endpoint: origin.clone(),
         });
     integration.companion_url = origin;
+    saved
+        .removed_urls
+        .retain(|url| url != &integration.companion_url);
+    if saved.accesses.len() >= 32
+        && !saved
+            .accesses
+            .iter()
+            .any(|a| a.integration.companion_url == integration.companion_url)
+    {
+        return Err(bad(
+            "Remove an unused public URL before adding another (maximum 32)",
+        ));
+    }
     if input.profile == Profile::Lan {
         integration.s3_endpoint = integration.companion_url.clone();
     }
-    saved
-        .accesses
-        .retain(|a| a.integration.profile != input.profile);
+    saved.accesses.retain(|a| {
+        a.integration.profile != input.profile
+            || a.integration.companion_url != integration.companion_url
+    });
     saved.accesses.push(connections::AccessMethod {
         integration: integration.clone(),
         verified_at: now(),
@@ -356,6 +378,72 @@ pub async fn save_access(
     Ok(Json(
         json!({"ok":true,"integration":integration,"active_issuer":app.issuer(),"local_dns_pending":local_dns_pending}),
     ))
+}
+pub async fn remove_access(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<Endpoint>,
+) -> Result<Json<Value>> {
+    auth::csrf(&app, &headers)?;
+    auth::admin(&app, &headers).await?;
+    let _serial = app.backup_lock.lock().await;
+    let origin = https(&input.companion_url)?.origin().ascii_serialization();
+    if origin == app.issuer() {
+        return Err(bad(
+            "Migrate the active public URL before removing it. Update Omni sign-in configuration to the replacement URL.",
+        ));
+    }
+    let mut saved = connections::settings();
+    saved
+        .accesses
+        .retain(|a| a.integration.companion_url != origin);
+    if !saved.removed_urls.contains(&origin) {
+        saved.removed_urls.push(origin.clone());
+    }
+    if saved
+        .integration
+        .as_ref()
+        .is_some_and(|i| i.companion_url == origin)
+    {
+        saved.integration = None;
+    }
+    connections::private_directory(&connections::root())?;
+    connections::write_json(&connections::settings_path(), &saved)?;
+    Ok(Json(json!({"ok":true})))
+}
+pub async fn health(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+    auth::csrf(&app, &headers)?;
+    auth::admin(&app, &headers).await?;
+    let catalog = accesses(State(app.clone()), headers).await?.0;
+    let mut results = Vec::new();
+    let mut checks = tokio::task::JoinSet::new();
+    if let Some(entries) = catalog["accesses"].as_array() {
+        for entry in entries {
+            let integration: crate::omni::Integration =
+                serde_json::from_value(entry["integration"].clone())
+                    .map_err(anyhow::Error::from)?;
+            let endpoint = Endpoint {
+                companion_url: integration.companion_url.clone(),
+                profile: integration.profile.clone(),
+            };
+            let app = app.clone();
+            checks.spawn(async move {
+                let check = tokio::time::timeout(std::time::Duration::from_secs(15), verify_access(&app, &endpoint)).await;
+                let available = matches!(&check, Ok(Ok(_)));
+                let local_dns_pending = matches!(&check, Ok(Ok((_, true))));
+                let message = match check {
+                    Ok(Err(error)) => Some(error.1),
+                    Err(_) => Some("URL check timed out. Check routing and try again.".into()),
+                    _ => None,
+                };
+                json!({"integration":integration,"available":available,"local_dns_pending":local_dns_pending,"message":message})
+            });
+        }
+    }
+    while let Some(result) = checks.join_next().await {
+        results.push(result.map_err(anyhow::Error::from)?);
+    }
+    Ok(Json(json!({"results":results})))
 }
 pub async fn activate(
     State(app): State<App>,

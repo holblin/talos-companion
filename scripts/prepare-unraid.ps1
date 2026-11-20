@@ -128,7 +128,7 @@ overlay directory, never Omni's database or encryption keys.
    ``templates/talos-companion.xml`` to
    ``/boot/config/plugins/dockerMan/templates-user/my-talos-companion.xml`` on your server.
    Then open Docker > Add Container and choose talos-companion.
-3. Set PUBLIC_URL to the exact address you will use, including scheme and port.
+3. Open your intended Companion address and confirm the public URL in the setup wizard.
    Use HTTPS at your reverse proxy for deployment beyond a trusted local network.
 4. Leave secret overrides empty to generate private persistent secrets automatically,
    or supply your own SETUP_TOKEN (24+ characters) and BACKUP_PASSPHRASE (16+ characters).
